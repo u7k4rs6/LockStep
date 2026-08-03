@@ -128,7 +128,15 @@ _REGISTRY: dict[str, Config] = {
         num_stages=1,
         BLOCK_SIZE=4096,
     ),
-    # ---- RoPE. Elementwise; there is no reduction to order. ----
+    # ---- Elementwise. No reduction, so nothing to order. ----
+    "swiglu": _cfg(
+        "silu(gate) * up over a flat index space. Invariant by construction "
+        "since each output element reads one gate element and one up element; "
+        "the tile width only sets how many launches cover the tensor.",
+        num_warps=4,
+        num_stages=1,
+        BLOCK_SIZE=1024,
+    ),
     "rope": _cfg(
         "Purely elementwise over head_dim/2 rotation pairs. Listed here so the "
         "registry is the complete set of launches, not the interesting subset.",
@@ -143,22 +151,27 @@ _REGISTRY: dict[str, Config] = {
         "four ascending 128-token tiles. The number of splits is "
         "ceil(kv_len/512), a function of this request's own KV length and of "
         "nothing else in the batch. A fixed split *count* would divide by a "
-        "batch-max sequence length and reintroduce the dependence.",
+        "batch-max sequence length and reintroduce the dependence. BLOCK_M "
+        "matches gemm.default for the same reason it is pinned there.",
         num_warps=4,
         num_stages=2,
+        BLOCK_M=16,
         BLOCK_N=KV_TILE,
         BLOCK_D=HEAD_DIM,
         SPLIT_SIZE=SPLIT_SIZE,
     ),
     "attention.combine": _cfg(
-        "A single CTA per (request, head) folds the per-split partials in "
-        "ascending split index, accumulating in fp32. One CTA means no atomics "
-        "and no cross-CTA ordering; ascending order means the fold is a pure "
-        "function of the split count. MAX_SPLITS bounds the fixed tile the CTA "
-        "loads; 128 splits at 512 tokens each covers 65536 KV tokens, well past "
-        "what 8 GB of VRAM holds.",
+        "A single CTA per (query tile, head) folds that tile's per-split "
+        "partials in ascending split index, accumulating in fp32. Every row's "
+        "fold happens inside one CTA, so there are no atomics and no cross-CTA "
+        "ordering; ascending order makes the fold a pure function of the split "
+        "count. MAX_SPLITS is an asserted ceiling, not a tile: the fold loops to "
+        "the request's own split count, and the assertion refuses a KV length "
+        "past what has been validated. 128 splits of 512 covers 65536 KV "
+        "tokens, well past what 8 GB of VRAM holds.",
         num_warps=4,
         num_stages=1,
+        BLOCK_M=16,
         BLOCK_D=HEAD_DIM,
         MAX_SPLITS=128,
     ),
