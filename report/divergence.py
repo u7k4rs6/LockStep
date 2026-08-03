@@ -158,3 +158,35 @@ class Divergence:
 
     def __str__(self) -> str:
         return self.render(color=False)
+
+
+# A synthetic case, so the layout can be inspected before anything diverges.
+# The trigger is the SGLang block-boundary condition named in the PRD, prefix_len
+# exactly equal to block_size, which is the poster child the architecture doc's
+# coverage section asks the boundary predicates to be built around.
+EXAMPLE = Divergence(
+    request_uid="r02",
+    position=131,
+    first_differing_byte=0x1A2E,
+    expected_sha256="8f3a1c04d9e2b77a6f5039c8ba14ed2277b0c9f31e6a48d5029cb7361af8e2c1",
+    observed_sha256="2b7de1904cc35a8f2610bd47e9a0f38c15d2760be4193ac8f5d02e6b7a4c1309",
+    trigger="cache_hit(len=64) with block_size=64",
+    schedule_events=12,
+    schedule_events_before_minimization=847,
+    env_fingerprint="sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    replay_artifact="results/2026-08-14/case-0031.json",
+    boundary_hit=True,
+)
+
+
+if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Render the example divergence report.")
+    parser.add_argument(
+        "--fenced",
+        action="store_true",
+        help="Wrap in a Markdown code fence for pasting into a GitHub issue.",
+    )
+    args = parser.parse_args()
+    print(EXAMPLE.render(fenced=args.fenced))
