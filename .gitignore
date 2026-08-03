@@ -1,0 +1,19 @@
+# Model weights are never redistributed. scripts/download_weights.py fetches
+# them pinned by revision SHA and verifies checksums against weights.lock.
+weights/
+
+# fp64 reference tensors. Regenerable by scripts/build_fp64_reference.py in
+# single-digit minutes; a few MB compressed, multi-GB in --exact mode.
+reference/
+
+# Result artifacts. Published numbers are committed deliberately, one at a time,
+# after review. Nothing lands here by default.
+results/
+
+.env
+
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.hypothesis/
+.venv/

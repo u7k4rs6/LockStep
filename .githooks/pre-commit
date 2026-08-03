@@ -1,0 +1,4 @@
+#!/bin/sh
+# Enabled by: git config core.hooksPath .githooks
+# Committed so the hook is in history rather than living only on one machine.
+exec python3 "$(git rev-parse --show-toplevel)/scripts/secret_scan.py"

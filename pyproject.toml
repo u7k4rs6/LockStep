@@ -1,0 +1,30 @@
+[project]
+name = "lockstep"
+version = "0.1.0"
+description = "A batch-invariant LLM inference engine certified by deterministic-simulation fuzzing"
+requires-python = "==3.12.*"
+license = { text = "Apache-2.0" }
+
+# The direct dependency set is fixed by docs/03-security-and-access.md section 5.
+# Every addition beyond this list is a deliberate decision, not a convenience.
+dependencies = [
+    "torch==2.6.0",
+    "triton==3.2.0",
+    "transformers==4.49.0",
+    "numpy==2.1.3",
+]
+
+[dependency-groups]
+dev = [
+    "pytest==8.3.4",
+    "hypothesis==6.123.2",
+]
+
+[tool.uv]
+# Timing-based resolution has no place in a determinism project; neither does an
+# unpinned install. Everything resolves from the committed uv.lock.
+package = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
