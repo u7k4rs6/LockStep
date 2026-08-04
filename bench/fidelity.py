@@ -28,6 +28,7 @@ HF is a sanity check, never ground truth, because it is not shape-invariant
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 
@@ -338,11 +339,17 @@ def main() -> int:
     # The tuning-proof number: the tightest threshold at which the match rate is
     # still 100 percent. Reporting only the derived one invites "the threshold was
     # chosen so the rate came out 100 percent", whether or not that happened.
-    if mismatch_gaps.numel():
-        minimum_perfect = float(mismatch_gaps.max()) * (1.0 + 1e-9)
-    else:
-        minimum_perfect = 0.0
+    # The comparison is `gap >= threshold`, so a threshold equal to the largest
+    # mismatching gap would still include that mismatch and the rate would not be
+    # 100 percent. The minimum is therefore the next representable double above
+    # it, via nextafter rather than a fudge factor: an earlier version multiplied
+    # by (1 + 1e-9), which is 1.28e-11 at this magnitude where one ULP is 1.7e-18,
+    # so it was arbitrary and printed at six decimals as the same number as the
+    # gap it had to exceed.
+    largest_mismatch_gap = float(mismatch_gaps.max()) if mismatch_gaps.numel() else 0.0
+    minimum_perfect = math.nextafter(largest_mismatch_gap, math.inf)
     perfect_kept = int((gap >= minimum_perfect).sum())
+    perfect_matched = int((agree & (gap >= minimum_perfect)).sum())
 
     # At the p99.9 threshold, 0.1 percent of positions have a difference-error
     # exceeding it, so a mismatch above the threshold is not impossible, merely
@@ -354,8 +361,11 @@ def main() -> int:
     print(f"  near ties excluded        {tie_total}/{int(near_tie.numel())}")
     print(f"  match, near ties only     {tie_match}/{tie_total}")
     print()
-    print(f"  minimum threshold reaching 100 percent   {minimum_perfect:.6e} nats")
-    print(f"    match there                            {perfect_kept}/{perfect_kept}")
+    print(f"  the comparison is: gap >= threshold")
+    print(f"  largest gap among mismatches             {largest_mismatch_gap:.17e}")
+    print(f"  minimum threshold reaching 100 percent   {minimum_perfect:.17e}")
+    print(f"    one representable double above it, so that mismatch is excluded")
+    print(f"    match there                            {perfect_matched}/{perfect_kept}")
     print(f"    ratio to the derived threshold         "
           f"{threshold / minimum_perfect:.1f}x tighter")
     print("    the result survives a threshold far stricter than the derived one,")
@@ -437,6 +447,9 @@ def main() -> int:
                 "match_above_threshold": {"matched": clean_match, "total": clean_total},
                 "minimum_threshold_for_100_percent": minimum_perfect,
                 "positions_kept_at_that_threshold": perfect_kept,
+                "matched_at_that_threshold": perfect_matched,
+                "largest_gap_among_mismatches_exact": largest_mismatch_gap,
+                "match_comparison": "gap >= threshold",
                 "expected_exceedances_at_quantile": expected_exceedances,
                 "observed_exceedances": clean_total - clean_match,
                 "match_near_ties_only": {"matched": tie_match, "total": tie_total},
