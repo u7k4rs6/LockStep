@@ -48,10 +48,11 @@ class EnvLock:
     python_version: str
     os_kernel: str
     cpu_model: str
-    omp_num_threads: str
-    mkl_num_threads: str
+    omp_num_threads: str | None
+    mkl_num_threads: str | None
+    torch_intraop_threads: int
     kernel_registry_sha256: str
-    corpus_sha256: str
+    corpus_sha256: str | None
 
     def fingerprint(self) -> str:
         """The short form that terminates every bitwise claim line.
@@ -155,11 +156,13 @@ def _assert_scrubbed(lock: EnvLock) -> None:
         raise EnvLockLeak("env.lock contains an absolute home path and was not emitted")
 
 
-def capture(corpus_sha256: str = UNKNOWN) -> EnvLock:
+def capture(corpus_sha256: str | None = None) -> EnvLock:
     """Snapshot the current environment.
 
-    `corpus_sha256` ties a fidelity number to the prompt corpus that produced it;
-    callers that do not touch a corpus leave it unset.
+    `corpus_sha256` ties a fidelity number to the prompt corpus that produced it.
+    Callers that do not touch a corpus leave it None rather than passing a
+    human-readable placeholder: a placeholder string can be published inside an
+    artifact and read as a real value, whereas null cannot be mistaken for one.
     """
     import numpy
     import torch
@@ -185,8 +188,12 @@ def capture(corpus_sha256: str = UNKNOWN) -> EnvLock:
         python_version=platform.python_version(),
         os_kernel=f"{platform.system()} {platform.release()} {platform.machine()}",
         cpu_model=_cpu_model(),
-        omp_num_threads=os.environ.get("OMP_NUM_THREADS", UNKNOWN),
-        mkl_num_threads=os.environ.get("MKL_NUM_THREADS", UNKNOWN),
+        # All three, because OMP_NUM_THREADS and MKL_NUM_THREADS are
+        # backend-specific environment variables while torch's intraop pool is
+        # what actually governs reduction order whichever backend is underneath.
+        omp_num_threads=os.environ.get("OMP_NUM_THREADS"),
+        mkl_num_threads=os.environ.get("MKL_NUM_THREADS"),
+        torch_intraop_threads=torch.get_num_threads(),
         kernel_registry_sha256=_sha256_file(KERNEL_REGISTRY),
         corpus_sha256=corpus_sha256,
     )

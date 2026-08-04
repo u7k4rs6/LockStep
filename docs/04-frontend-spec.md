@@ -61,6 +61,17 @@ DIVERGENCE  req=r02  position=131  first differing byte=0x1a2e
     lockstep replay results/2026-08-14/case-0031.json
 ```
 
+The form above is what the terminal prints. The form that goes into an issue is the same block inside a Markdown fence, and that is what `--fenced` emits and what the issue-paste path uses by default:
+
+````
+```
+DIVERGENCE  req=r02  position=131  first differing byte=0x1a2e
+...
+```
+````
+
+Unfenced, GitHub renders the header as a paragraph and the indented lines as an accidental code block, so the bare form is pasteable-unedited only into a box that is already a code block.
+
 Constraints: fits in 80 columns, fits on one screen, contains no information the reader must scroll to find, and is directly pasteable into an issue without editing.
 
 ## 2. HTML report

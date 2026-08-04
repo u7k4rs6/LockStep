@@ -1,37 +1,28 @@
 """F1: the engine's fp16 logits against the fp64 CPU reference.
 
-docs/02-technical-architecture.md section 7 names the reported metrics: max
-absolute error, per-position KL, greedy-token match rate, with near-tie positions
-excluded from the match rate and counted separately.
+docs/02-technical-architecture.md section 7 names the reported metrics and
+section 7.1 states the pass criterion this script decides.
 
-Three KL numbers are reported, not one:
+KL is exact, over the full 151936-token vocabulary, at every position. There is
+no compressed variant. An earlier version cached top-k fp64 logits so KL could be
+computed without re-running the fp64 pass; the measured sweep showed top-k KL
+missing 27.4 percent of the true value at k=256 and still 4.0 percent at k=8192,
+closing only about 1.3x per doubling, so the cache was buying a loose lower bound
+in place of a number the fp64 pass produces exactly in about two minutes. Both
+passes now run in the same process and KL is accumulated in row chunks, so
+nothing large is written or held.
 
-  * **exact KL**, over all 151936 tokens, on the stratified audit subset. This is
-    the headline KL, because it is the only one that is exact.
-  * **compressed KL**, over every position, from the top-k reference. It
-    partitions the vocabulary into the k retained tokens plus one bin holding the
-    rest. KL over a coarser partition is never larger than KL over the finer one,
-    so this is a *lower bound* on the true full-vocabulary KL, never an estimate.
-  * **the gap between them on the audit subset**, which says how loose that bound
-    is.
-
-The gap was measured rather than assumed, and the measurement changed the design.
-At k=256 the compressed KL was missing 27.4 percent of the true KL, and the
-sweep from 256 to 8192 (still available under --k-sweep) closes the gap only
-about 1.3x per doubling. There is no practical k at which top-k KL becomes exact
-on a 151936-token vocabulary with a tail this heavy; reaching one percent would
-take k in the tens of thousands, which is not compression. So k moved to 2048 and
-the framing moved with it: the exact number leads, and the wide-coverage number
-is presented as the bound it is, with its measured looseness printed beside it.
-
-Near-tie exclusion is exact under compression, because it needs only the fp64
-top-1 and top-2, both of which the top-256 reference retains at full fp64
-precision. That is stated in the output so a reader does not have to wonder
-whether the threshold was applied to approximated values.
+**The near-tie threshold is derived, not chosen.** A greedy argmax flips when the
+error on the top-1-minus-top-2 logit *difference* exceeds the fp64 gap between
+them, so that difference-error is measured directly in this run and its 99.9th
+percentile becomes the threshold. Positions whose fp64 gap falls below it are
+near ties: rounding alone can reorder them, so a mismatch there carries no
+information. A mismatch *above* it cannot be explained by measured rounding and
+is a real signal. The previous hardcoded 1e-2 was below the median of this
+distribution, which made it indefensible.
 
 HF is a sanity check, never ground truth, because it is not shape-invariant
-(architecture doc section 7). It appears at the bottom, after the reference
-comparison, in that framing.
+(architecture doc section 7).
 """
 
 from __future__ import annotations
@@ -46,7 +37,9 @@ sys.path.insert(0, str(REPO_ROOT))
 import torch  # noqa: E402
 
 from bench.corpus import PROMPTS, corpus_sha256  # noqa: E402
+from bench.fp64_reference import Fp64Reference, require_pinned_threads  # noqa: E402
 from engine import envlock  # noqa: E402
+from engine.kernels import registry  # noqa: E402
 from engine.kernels.softmax import log_softmax  # noqa: E402
 from engine.model.qwen3 import KVCache, Qwen3  # noqa: E402
 from report.artifact import Artifact, relpath  # noqa: E402
@@ -55,404 +48,343 @@ DEFAULT_WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 DEFAULT_REFERENCE = REPO_ROOT / "reference"
 
 HISTOGRAM_EDGES = [0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, float("inf")]
+ROW_CHUNK = 64
+
+# Relative error is only meaningful where the denominator has magnitude. Most of
+# a 151936-wide logit row sits near zero, so an unfloored relative error reports
+# 1e6 for a 1e-3 absolute miss on a logit of 1e-9.
+REL_ERROR_FLOOR = 1.0
+
+# The rule, stated once here and printed in the output. See the module docstring.
+NEAR_TIE_QUANTILE = 0.999
 
 
 def quantiles(values: torch.Tensor) -> dict[str, float]:
     flat = values.flatten().to(torch.float64)
     if flat.numel() == 0:
-        return {"median": float("nan"), "p99": float("nan"), "max": float("nan"),
-                "mean": float("nan")}
+        return dict.fromkeys(("mean", "median", "p99", "max"), float("nan"))
+    ordered = flat.sort().values
     return {
         "mean": float(flat.mean()),
-        "median": float(flat.median()),
-        "p99": float(torch.quantile(flat, 0.99)) if flat.numel() < 16_000_000
-        else float(flat.sort().values[int(0.99 * (flat.numel() - 1))]),
-        "max": float(flat.max()),
+        "median": float(ordered[(ordered.numel() - 1) // 2]),
+        "p99": float(ordered[int(0.99 * (ordered.numel() - 1))]),
+        "max": float(ordered[-1]),
     }
 
 
-def histogram(values: torch.Tensor) -> list[tuple[str, int]]:
-    flat = values.flatten().to(torch.float64)
-    rows: list[tuple[str, int]] = []
-    for lo, hi in zip(HISTOGRAM_EDGES, HISTOGRAM_EDGES[1:]):
-        count = int(((flat >= lo) & (flat < hi)).sum())
+def histogram(counts: list[int]) -> list[tuple[str, int]]:
+    rows = []
+    for (lo, hi), count in zip(zip(HISTOGRAM_EDGES, HISTOGRAM_EDGES[1:]), counts):
         label = f"[{lo:g}, {hi:g})" if hi != float("inf") else f"[{lo:g}, inf)"
         rows.append((label, count))
     return rows
 
 
 def bar(count: int, total: int, width: int = 24) -> str:
-    if total == 0:
-        return ""
-    filled = round(width * count / total)
-    return "█" * filled
+    return "█" * round(width * count / total) if total else ""
 
 
-def compressed_kl(
-    ref_top_logits: torch.Tensor,
-    ref_full_lse: torch.Tensor,
-    ref_tail_lse: torch.Tensor,
-    engine_log_probs_at_top: torch.Tensor,
-    engine_tail_log_mass: torch.Tensor,
-) -> torch.Tensor:
-    """KL(P_ref || Q_engine) over the {top-k} + {everything else} partition.
-
-    Every quantity here is exact: the reference's top-k logits and its
-    full-vocab and tail logsumexps are stored at fp64, and the engine's tail mass
-    is computed from its own full logit row rather than by subtraction, so it
-    does not lose precision when the head holds almost all the mass.
-    """
-    log_p = ref_top_logits - ref_full_lse[:, None]
-    p = log_p.exp()
-    head = (p * (log_p - engine_log_probs_at_top)).sum(dim=-1)
-
-    log_p_tail = ref_tail_lse - ref_full_lse
-    p_tail = log_p_tail.exp()
-    tail = torch.where(
-        p_tail > 0, p_tail * (log_p_tail - engine_tail_log_mass), torch.zeros_like(p_tail)
-    )
-    return head + tail
-
-
-def exact_kl(ref_logits: torch.Tensor, engine_log_probs: torch.Tensor) -> torch.Tensor:
-    log_p = ref_logits - torch.logsumexp(ref_logits, dim=-1, keepdim=True)
-    p = log_p.exp()
-    return (p * (log_p - engine_log_probs)).sum(dim=-1)
-
-
-def run_engine_prefill(model: Qwen3, token_ids: list[int]) -> tuple[torch.Tensor, torch.Tensor]:
-    """Engine logits (fp16) and log-probs (fp32) for every prompt position.
-
-    The cache is sized to the prompt rather than to model.max_len. A 4096-token
-    cache is 470 MB across 28 layers, and allocating one per prompt to hold 30
-    tokens is pure churn on a device that also holds the weights and a
-    151936-wide logit tensor.
-    """
-    cache = KVCache(model.cfg, len(token_ids), model.device)
-    ids = torch.tensor(token_ids, dtype=torch.long, device=model.device)
-    logits = model.forward(ids, 0, cache)
-    return logits, log_softmax(logits)
+def attention_splits(kv_len: int) -> int:
+    """How many fixed-size attention splits a prompt of this length launches."""
+    return -(-kv_len // registry.SPLIT_SIZE)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", type=Path, default=DEFAULT_WEIGHTS)
     parser.add_argument("--reference", type=Path, default=DEFAULT_REFERENCE)
-    parser.add_argument(
-        "--near-tie-threshold",
-        type=float,
-        default=1e-2,
-        help="fp64 top1-to-top2 logit gap below which a position is a near tie.",
-    )
-    parser.add_argument(
-        "--k-sweep",
-        action="store_true",
-        help="Report compressed-KL loss at several k, to choose the reference k.",
-    )
     parser.add_argument("--hf-new-tokens", type=int, default=32)
     parser.add_argument("--skip-hf", action="store_true")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
 
-    compressed_path = args.reference / "compressed.pt"
-    if not compressed_path.is_file():
-        raise SystemExit(
-            f"{relpath(compressed_path)} is missing. Build it with:\n"
-            "    OMP_NUM_THREADS=8 python3 scripts/build_fp64_reference.py --exact"
-        )
+    threads = require_pinned_threads()
 
-    ref = torch.load(compressed_path, weights_only=False)
-    if ref["corpus_sha256"] != corpus_sha256():
+    cache_path = args.reference / "top2.pt"
+    if not cache_path.is_file():
         raise SystemExit(
-            "reference was built from a different corpus.\n"
-            f"  reference  {ref['corpus_sha256'][:16]}\n"
+            f"{relpath(cache_path)} is missing. Build it with:\n"
+            "    OMP_NUM_THREADS=8 MKL_NUM_THREADS=8 python3 scripts/build_fp64_reference.py"
+        )
+    cache = torch.load(cache_path, weights_only=False)
+    if cache["corpus_sha256"] != corpus_sha256():
+        raise SystemExit(
+            "cache was built from a different corpus.\n"
+            f"  cache      {cache['corpus_sha256'][:16]}\n"
             f"  corpus.py  {corpus_sha256()[:16]}\n"
-            "Rebuild the reference; a fidelity number is scoped to its corpus."
+            "Rebuild it; a fidelity number is scoped to its corpus."
         )
 
-    exact_path = args.reference / "exact.pt"
-    exact_ref = torch.load(exact_path, weights_only=False) if exact_path.is_file() else None
-
-    model = Qwen3(args.weights)
+    engine = Qwen3(args.weights)
+    reference = Fp64Reference(args.weights)
     env = envlock.capture(corpus_sha256=corpus_sha256())
 
-    print(f"lockstep fidelity  corpus sha256:{corpus_sha256()[:16]}  "
-          f"positions={int(ref['entropy'].numel())}")
+    total_positions = int(cache["entropy"].numel())
+    print(f"lockstep fidelity  corpus sha256:{corpus_sha256()[:16]}  positions={total_positions}")
     print()
     print("reference")
-    print("  method            fp64 CPU forward, exact per-row softmax")
+    print("  method            fp64 CPU forward, exact per-row softmax, run this run")
     print("  weights           engine fp16 values upcast to fp64, not the bf16 checkpoint")
-    print(f"  compression       top-{ref['top_k']} logits + full-vocab logsumexp, max, tail")
-    print(f"  omp_num_threads   {ref['omp_num_threads']}  (pinned; reduction order depends on it)")
-    entropy = ref["entropy"].to(torch.float64)
+    print("  KL               exact over all 151936 tokens; no top-k compression")
+    print(f"  threads           omp={threads['omp_num_threads']} "
+          f"mkl={threads['mkl_num_threads']} torch_intraop={threads['torch_intraop_threads']}")
+    entropy = cache["entropy"].to(torch.float64)
     print(f"  entropy (nats)    min {float(entropy.min()):.4f}  "
           f"median {float(entropy.median()):.4f}  max {float(entropy.max()):.4f}")
 
-    cast = model.weight_cast_report()
+    cast = engine.weight_cast_report()
     print(f"  weight cast       {cast['checkpoint_dtype']} -> {cast['engine_dtype']}, "
-          f"{cast['elements_not_exactly_representable']}/{cast['elements']} inexact, "
+          f"{cast['distinct_elements']} distinct params")
+    print(f"                    tied lm_head aliased, {cast['duplicate_elements_dropped']}"
+          f" duplicate params dropped")
+    print(f"                    {cast['elements_not_exactly_representable']} inexact, "
           f"max abs {cast['max_abs_error']:.3e}")
     print("                    reported separately: F1 measures the forward pass, not the cast")
 
-    # ---- engine pass over every prompt --------------------------------------
-    abs_err_parts: list[torch.Tensor] = []
-    rel_err_parts: list[torch.Tensor] = []
+    # -- B5: coverage of the paths the measurement is supposed to exercise ----
+    split_counts = [attention_splits(len(ids)) for ids in cache["prompt_token_ids"]]
+    max_splits = max(split_counts)
+    multi = sum(1 for s in split_counts if s >= 2)
+    print()
+    print("path coverage over the corpus")
+    print(f"  attention splits reached   max {max_splits}, "
+          f"{multi}/{len(split_counts)} prompts launch two or more")
+    if max_splits < 2:
+        raise SystemExit(
+            "no prompt in this corpus reaches a second attention split, so the "
+            f"split-combine fold never executes and every number below would be "
+            f"produced without it. SPLIT_SIZE is {registry.SPLIT_SIZE}; the corpus "
+            "needs a prompt longer than that."
+        )
+
+    # -- the two passes, streamed together ------------------------------------
+    abs_hist = [0] * (len(HISTOGRAM_EDGES) - 1)
+    abs_max = 0.0
+    abs_sum = 0.0
+    abs_count = 0
+    rel_max = 0.0
+    rel_count = 0
+    abs_sample: list[torch.Tensor] = []
     kl_parts: list[torch.Tensor] = []
+    top2_err_parts: list[torch.Tensor] = []
     engine_top1: list[torch.Tensor] = []
-    engine_log_prob_rows: dict[int, torch.Tensor] = {}
+    streamed_top2_idx: list[torch.Tensor] = []
+    streamed_top2_val: list[torch.Tensor] = []
 
     offset = 0
-    exact_positions = (
-        set(exact_ref["positions"].tolist()) if exact_ref is not None else set()
-    )
-
-    # A 727-position prompt is 727 x 151936; one fp64 copy of that is 884 MB and
-    # the tail-mass computation needs two live at once. Chunking the fp64 work
-    # over rows keeps the peak near 150 MB, which matters on 8 GB alongside the
-    # engine's own weights and KV cache.
-    ROW_CHUNK = 64
-
-    for prompt, token_ids in zip(PROMPTS, ref["prompt_token_ids"]):
+    for prompt, token_ids in zip(PROMPTS, cache["prompt_token_ids"]):
         seq_len = len(token_ids)
-        logits, log_probs = run_engine_prefill(model, token_ids)
-        engine_top1.append(logits.argmax(dim=-1).cpu())
+
+        kv = KVCache(engine.cfg, seq_len, engine.device)
+        ids = torch.tensor(token_ids, dtype=torch.long, device=engine.device)
+        eng_logits = engine.forward(ids, 0, kv)
+        eng_log_probs = log_softmax(eng_logits)
+        engine_top1.append(eng_logits.argmax(dim=-1).cpu())
+
+        hidden = reference.hidden(token_ids)
 
         for start in range(0, seq_len, ROW_CHUNK):
             stop = min(start + ROW_CHUNK, seq_len)
-            rows = slice(offset + start, offset + stop)
+            ref_rows = reference.logits_for(hidden[start:stop])  # [chunk, vocab] fp64
+            eng_rows = eng_logits[start:stop].to(torch.float64).cpu()
+            eng_lp = eng_log_probs[start:stop].to(torch.float64).cpu()
 
-            top_idx = ref["top_indices"][rows].to(torch.int64).to(model.device)
-            ref_top = ref["top_logits"][rows].to(torch.float64)
+            # Exact KL(P_ref || Q_engine) over the whole vocabulary.
+            ref_lp = ref_rows - torch.logsumexp(ref_rows, dim=-1, keepdim=True)
+            p = ref_lp.exp()
+            kl_parts.append((p * (ref_lp - eng_lp)).sum(dim=-1))
 
-            chunk64 = logits[start:stop].to(torch.float64)
-            engine_at_top = torch.gather(chunk64, 1, top_idx).cpu()
-            abs_err = (engine_at_top - ref_top).abs()
-            abs_err_parts.append(abs_err)
-            rel_err_parts.append(abs_err / ref_top.abs().clamp_min(1e-12))
+            # Logit error, over the whole vocabulary rather than a top-k slice.
+            err = (eng_rows - ref_rows).abs()
+            abs_max = max(abs_max, float(err.max()))
+            abs_sum += float(err.sum())
+            abs_count += err.numel()
+            # Relative error only where the reference logit carries magnitude.
+            # Over the full vocabulary most logits pass near zero, and dividing
+            # by one of those reports 1e6 for an absolute error of 1e-3. The
+            # floor is stated in the output rather than buried in a clamp.
+            big = ref_rows.abs() >= REL_ERROR_FLOOR
+            if bool(big.any()):
+                rel_max = max(rel_max, float((err[big] / ref_rows.abs()[big]).max()))
+                rel_count += int(big.sum())
+            for i, (lo, hi) in enumerate(zip(HISTOGRAM_EDGES, HISTOGRAM_EDGES[1:])):
+                abs_hist[i] += int(((err >= lo) & (err < hi)).sum())
+            if len(abs_sample) < 8:
+                abs_sample.append(err[:, ::701].flatten().clone())
 
-            lp = log_probs[start:stop].to(torch.float64)
-            engine_lp_at_top = torch.gather(lp, 1, top_idx).cpu()
+            values, indices = torch.topk(ref_rows, 2, dim=-1, sorted=True)
+            streamed_top2_val.append(values)
+            streamed_top2_idx.append(indices.to(torch.int32))
 
-            # Engine tail mass from its own full row, by masking the reference's
-            # retained ids. Exact even when the head carries almost everything.
-            engine_full_lse = torch.logsumexp(chunk64, dim=-1)
-            masked = chunk64.scatter_(1, top_idx, float("-inf"))
-            engine_tail_log_mass = (torch.logsumexp(masked, dim=-1) - engine_full_lse).cpu()
-
-            kl_parts.append(
-                compressed_kl(
-                    ref_top,
-                    ref["full_logsumexp"][rows].to(torch.float64),
-                    ref["tail_logsumexp"][rows].to(torch.float64),
-                    engine_lp_at_top,
-                    engine_tail_log_mass,
-                )
+            # The quantity that actually flips a greedy argmax.
+            eng_at_top2 = torch.gather(eng_rows, 1, indices)
+            top2_err_parts.append(
+                ((eng_at_top2[:, 0] - eng_at_top2[:, 1]) - (values[:, 0] - values[:, 1])).abs()
             )
 
-            for local in range(start, stop):
-                if offset + local in exact_positions:
-                    engine_log_prob_rows[offset + local] = lp[local - start].cpu().clone()
-
-            del chunk64, lp, masked
+            del ref_rows, eng_rows, eng_lp, ref_lp, p, err
 
         offset += seq_len
-        del logits, log_probs
+        del eng_logits, eng_log_probs, hidden
         torch.cuda.empty_cache()
 
-    abs_err = torch.cat(abs_err_parts)
-    rel_err = torch.cat(rel_err_parts)
-    kl_compressed = torch.cat(kl_parts)
+    kl = torch.cat(kl_parts)
+    top2_err = torch.cat(top2_err_parts)
     engine_argmax = torch.cat(engine_top1)
 
-    # ---- logit error --------------------------------------------------------
-    abs_stats = quantiles(abs_err)
-    rel_stats = quantiles(rel_err)
-    print()
-    print(f"logit error, engine fp16 vs fp64 reference, over top-{ref['top_k']} "
-          f"({abs_err.numel()} values)")
-    print(f"  absolute   max {abs_stats['max']:.6e}  p99 {abs_stats['p99']:.6e}  "
-          f"median {abs_stats['median']:.6e}")
-    print(f"  relative   max {rel_stats['max']:.6e}  p99 {rel_stats['p99']:.6e}  "
-          f"median {rel_stats['median']:.6e}")
-    print("  ULP is not reported: it is meaningless across dtypes")
+    # -- the fp64 pass must reproduce the cached top-2 exactly ----------------
+    streamed_idx = torch.cat(streamed_top2_idx)
+    streamed_val = torch.cat(streamed_top2_val)
+    idx_match = bool(torch.equal(streamed_idx, cache["top2_indices"]))
+    val_match = bool(torch.equal(streamed_val, cache["top2_logits"]))
+    print(f"  fp64 reproducibility       streamed top-2 vs cached: "
+          f"ids {'identical' if idx_match else 'DIFFER'}, "
+          f"logits {'bitwise identical' if val_match else 'DIFFER'}")
+    if not (idx_match and val_match):
+        raise SystemExit(
+            "the fp64 reference did not reproduce its own cached top-2. The pinned "
+            "thread counts are supposed to make it deterministic; ground truth that "
+            "moves between runs invalidates every number in this report."
+        )
 
+    # -- logit error ----------------------------------------------------------
+    print()
+    print(f"logit error, engine fp16 vs fp64 reference, full vocabulary ({abs_count} values)")
+    print(f"  absolute   max {abs_max:.6e}  mean {abs_sum / abs_count:.6e}")
+    print(f"  relative   max {rel_max:.6e}   over the {rel_count} values with "
+          f"|reference logit| >= {REL_ERROR_FLOOR:g}")
+    print("  ULP is not reported: it is meaningless across dtypes")
     print()
     print("  absolute error histogram")
-    rows = histogram(abs_err)
-    total = abs_err.numel()
-    for label, count in rows:
-        print(f"    {label:<16} {bar(count, total):<24} {count:>10}")
+    for label, count in histogram(abs_hist):
+        print(f"    {label:<16} {bar(count, abs_count):<24} {count:>12}")
 
-    # ---- KL -----------------------------------------------------------------
+    # -- KL -------------------------------------------------------------------
+    kl_stats = quantiles(kl)
     print()
-    print("per-position KL(fp64 reference || engine), nats")
-    stats = quantiles(kl_compressed)
+    print(f"per-position KL(fp64 reference || engine), nats, exact over the full")
+    print(f"vocabulary at all {kl.numel()} positions")
+    print(f"  mean {kl_stats['mean']:.6e}  median {kl_stats['median']:.6e}  "
+          f"p99 {kl_stats['p99']:.6e}  max {kl_stats['max']:.6e}")
 
-    delta_summary: dict[str, float] | None = None
-    if exact_ref is None:
-        print(f"  compressed, top-{ref['top_k']}, {kl_compressed.numel()} positions")
-        print(f"    mean {stats['mean']:.6e}  median {stats['median']:.6e}  "
-              f"max {stats['max']:.6e}")
-        print("  exact,      not built     rerun the reference builder with --exact")
-        print("    without it the bound's looseness is asserted rather than measured,")
-        print("    and it was measured at 27% for k=256, so it is not a small thing")
-    else:
-        positions = exact_ref["positions"]
-        ref_full = exact_ref["logits"].to(torch.float64)
-        engine_lp = torch.stack([engine_log_prob_rows[int(p)] for p in positions]).to(
-            torch.float64
-        )
-        kl_exact = exact_kl(ref_full, engine_lp)
-        kl_comp_subset = kl_compressed[positions]
-        delta = kl_exact - kl_comp_subset
-
-        exact_stats = quantiles(kl_exact)
-        delta_stats = quantiles(delta)
-
-        # Per-position ratios are unusable on their own: at a position where the
-        # engine nearly matches the reference, exact KL approaches zero and any
-        # fixed floor turns the ratio into whatever the floor was. The aggregate
-        # ratio is the honest summary, since it weights each position by how much
-        # KL it actually carries. The per-position ratio is reported alongside it
-        # but only over positions carrying at least the median KL, with the
-        # denominator stated.
-        aggregate = float(delta.sum() / kl_exact.sum())
-        carries = kl_exact >= kl_exact.median()
-        rel_delta = (delta[carries] / kl_exact[carries]).abs()
-        rel_stats_delta = quantiles(rel_delta)
-
-        print(f"  exact, full vocab, {kl_exact.numel()} positions   <- headline")
-        print(f"    mean {exact_stats['mean']:.6e}  median {exact_stats['median']:.6e}  "
-              f"max {exact_stats['max']:.6e}")
-        print(f"  compressed, top-{ref['top_k']}, {kl_compressed.numel()} positions"
-              f"   <- lower bound, wider coverage")
-        print(f"    mean {stats['mean']:.6e}  median {stats['median']:.6e}  "
-              f"max {stats['max']:.6e}")
-        print("    a bound, not an estimate: coarsening the partition to top-k plus")
-        print("    one tail bin can only decrease KL (log-sum inequality)")
-        print(f"  how loose that bound is, on the same {kl_exact.numel()} positions")
-        print(f"    exact minus compressed   mean {delta_stats['mean']:.6e}  "
-              f"max {delta_stats['max']:.6e}")
-        print(f"    aggregate KL missed      {aggregate:.4%}  "
-              f"(sum of delta / sum of exact)")
-        print(f"    per position, over the {int(carries.sum())} carrying at least "
-              f"the median KL")
-        print(f"      fraction of exact      median {rel_stats_delta['median']:.4%}  "
-              f"max {rel_stats_delta['max']:.4%}")
-        verdict = (
-            f"top-{ref['top_k']} compression is defensible on this corpus"
-            if aggregate < 0.01
-            else f"the bound understates true KL by {aggregate:.1%}; exact KL is the headline"
-        )
-        print(f"    verdict                  {verdict}")
-        delta_summary = {
-            "exact_mean": exact_stats["mean"],
-            "delta_mean": delta_stats["mean"],
-            "delta_max": delta_stats["max"],
-            "aggregate_fraction_missed": aggregate,
-            "relative_delta_median_over_carrying": rel_stats_delta["median"],
-            "relative_delta_max_over_carrying": rel_stats_delta["max"],
-        }
-
-        if args.k_sweep:
-            print()
-            print("  choosing k: compressed KL at each k against the same exact KL")
-            print(f"    {'k':>7}  {'aggregate KL missed':>21}  {'max per-position':>17}")
-            sweep = []
-            ref_lse = torch.logsumexp(ref_full, dim=-1)
-            for k in (256, 512, 1024, 2048, 4096, 8192):
-                values, indices = torch.topk(ref_full, k, dim=-1)
-                masked = ref_full.scatter(-1, indices, float("-inf"))
-                tail_lse = torch.logsumexp(masked, dim=-1)
-                lp_at = torch.gather(engine_lp, -1, indices)
-                eng_masked = engine_lp.scatter(-1, indices, float("-inf"))
-                eng_tail = torch.logsumexp(eng_masked, dim=-1)
-                kl_k = compressed_kl(values, ref_lse, tail_lse, lp_at, eng_tail)
-                miss = float((kl_exact - kl_k).sum() / kl_exact.sum())
-                per = (kl_exact - kl_k)[carries] / kl_exact[carries]
-                sweep.append({"k": k, "aggregate_missed": miss, "max_per_position": float(per.max())})
-                print(f"    {k:>7}  {miss:>20.4%}  {float(per.max()):>16.4%}")
-            delta_summary["k_sweep"] = sweep
-
-    # ---- greedy token match -------------------------------------------------
-    ref_top1 = ref["top_indices"][:, 0].to(torch.int64)
-    gap = (ref["top_logits"][:, 0] - ref["top_logits"][:, 1]).to(torch.float64)
-    near_tie = gap < args.near_tie_threshold
+    # -- greedy match with a derived threshold --------------------------------
+    ref_top1 = cache["top2_indices"][:, 0].to(torch.int64)
+    gap = (cache["top2_logits"][:, 0] - cache["top2_logits"][:, 1]).to(torch.float64)
+    err_stats = quantiles(top2_err)
+    ordered = top2_err.sort().values
+    threshold = float(ordered[int(NEAR_TIE_QUANTILE * (ordered.numel() - 1))])
 
     agree = engine_argmax == ref_top1
+    near_tie = gap < threshold
     clean = ~near_tie
-    clean_match = int((agree & clean).sum())
-    clean_total = int(clean.sum())
-    tie_match = int((agree & near_tie).sum())
-    tie_total = int(near_tie.sum())
+    clean_match, clean_total = int((agree & clean).sum()), int(clean.sum())
+    tie_match, tie_total = int((agree & near_tie).sum()), int(near_tie.sum())
 
     print()
     print("greedy token match, engine argmax vs fp64 reference argmax")
-    print(f"  near-tie threshold        {args.near_tie_threshold:.1e} nats, "
-          f"fp64 top1-to-top2 gap")
-    print("  near-tie test is exact:   it reads only fp64 top-1 and top-2, both "
-          "retained uncompressed")
-    print(f"  excluded as near ties     {tie_total}/{int(near_tie.numel())}")
-    print(f"  match, near ties excluded {clean_match}/{clean_total}")
+    print("  the threshold is derived from this run, not chosen:")
+    print("    an argmax flips when the error on the fp64 top1-minus-top2 logit")
+    print("    difference exceeds the gap between them, so that difference-error is")
+    print("    measured directly and its p99.9 is the near-tie threshold")
+    print(f"  measured top1-top2 difference error   median {err_stats['median']:.6e}  "
+          f"p99 {err_stats['p99']:.6e}  max {err_stats['max']:.6e}")
+    print(f"  derived near-tie threshold            {threshold:.6e} nats  "
+          f"(p{NEAR_TIE_QUANTILE * 100:g} of that error)")
+    print("  near-tie test is exact:               it reads only fp64 top-1 and top-2,")
+    print("                                        both cached uncompressed")
+    print()
+    print(f"  match, gap >= threshold   {clean_match}/{clean_total}   <- headline")
+    print(f"  near ties excluded        {tie_total}/{int(near_tie.numel())}")
     print(f"  match, near ties only     {tie_match}/{tie_total}")
+
+    # Rank discipline: a mismatch that is not a top1/top2 swap is a different
+    # class of failure and rounding does not explain it.
+    mismatch = torch.nonzero(~agree).flatten()
+    ref_top2 = cache["top2_indices"][:, 1].to(torch.int64)
+    swaps = int((engine_argmax[mismatch] == ref_top2[mismatch]).sum())
+    print(f"  every mismatch a top1/top2 swap       {swaps}/{mismatch.numel()}")
+    worst_gap = float(gap[mismatch].max()) if mismatch.numel() else 0.0
+    print(f"  largest fp64 gap among mismatches     {worst_gap:.6e} nats"
+          f"  ({'below' if worst_gap < threshold else 'ABOVE'} threshold)")
 
     print()
     print("  sensitivity to the threshold")
     sensitivity = []
-    for threshold in (0.0, 1e-3, 1e-2, 1e-1):
-        mask = gap >= threshold
-        matched = int((agree & mask).sum())
-        kept = int(mask.sum())
-        sensitivity.append({"threshold": threshold, "match": matched, "total": kept})
-        print(f"    gap >= {threshold:<8.0e}  {matched}/{kept}")
+    for t in (0.0, 1e-3, 1e-2, threshold, 1e-1):
+        mask = gap >= t
+        matched, kept = int((agree & mask).sum()), int(mask.sum())
+        tag = "  <- derived" if t == threshold else ""
+        sensitivity.append({"threshold": t, "match": matched, "total": kept})
+        print(f"    gap >= {t:<10.4e}  {matched}/{kept}{tag}")
 
-    # ---- HF sanity check ----------------------------------------------------
-    hf_summary: dict[str, object] | None = None
-    if not args.skip_hf:
-        hf_summary = hf_sanity_check(model, args)
-
-    fingerprint = env.fingerprint()
+    # -- pass criterion, architecture doc 7.1 ---------------------------------
+    checks = [
+        ("no mismatch above the derived threshold", clean_match == clean_total),
+        ("every mismatch is a top1/top2 swap", swaps == mismatch.numel()),
+        ("mean exact KL <= 1e-4 nats", kl_stats["mean"] <= 1e-4),
+        ("max exact KL <= 1e-3 nats", kl_stats["max"] <= 1e-3),
+        ("max absolute logit error <= 0.5", abs_max <= 0.5),
+        ("corpus reaches two attention splits", max_splits >= 2),
+        ("fp64 reference reproduced its cached top-2", idx_match and val_match),
+    ]
     print()
-    print(f"env  {fingerprint}")
+    print("F1 pass criterion (docs/02-technical-architecture.md 7.1)")
+    for name, ok in checks:
+        print(f"  [{'pass' if ok else 'FAIL'}]  {name}")
+    passed = all(ok for _, ok in checks)
+    print(f"  F1 {'PASS' if passed else 'FAIL'}")
+
+    hf_summary = None if args.skip_hf else hf_sanity_check(engine, args)
+
+    print()
+    print(f"env  {env.fingerprint()}")
 
     if not args.no_artifact:
-        artifact = Artifact(
+        path = Artifact(
             kind="fidelity",
             env=env,
             payload={
                 "corpus_sha256": corpus_sha256(),
-                "positions": int(kl_compressed.numel()),
-                "top_k": int(ref["top_k"]),
-                "omp_num_threads": int(ref["omp_num_threads"]),
+                "positions": int(kl.numel()),
+                "threads": threads,
                 "weight_cast": cast,
-                "logit_abs_error": abs_stats,
-                "logit_rel_error": rel_stats,
+                "max_attention_splits": max_splits,
+                "prompts_with_multiple_splits": multi,
+                "fp64_reproduced_cached_top2": idx_match and val_match,
+                "logit_abs_error": {"max": abs_max, "mean": abs_sum / abs_count},
+                "logit_rel_error": {
+                    "max": rel_max,
+                    "floor": REL_ERROR_FLOOR,
+                    "values_counted": rel_count,
+                },
                 "abs_error_histogram": [
-                    {"bin": label, "count": count} for label, count in rows
+                    {"bin": label, "count": count} for label, count in histogram(abs_hist)
                 ],
-                "kl_compressed": stats,
-                "kl_method_delta": delta_summary,
-                "near_tie_threshold": args.near_tie_threshold,
-                "near_tie_excluded": tie_total,
-                "match_excluding_near_ties": {"matched": clean_match, "total": clean_total},
+                "kl_exact_full_vocab": kl_stats,
+                "top2_difference_error": err_stats,
+                "near_tie_rule": f"p{NEAR_TIE_QUANTILE * 100:g} of the top1-top2 difference error",
+                "near_tie_threshold": threshold,
+                "match_above_threshold": {"matched": clean_match, "total": clean_total},
                 "match_near_ties_only": {"matched": tie_match, "total": tie_total},
+                "mismatches_that_are_top1_top2_swaps": {"swaps": swaps, "total": mismatch.numel()},
+                "largest_gap_among_mismatches": worst_gap,
                 "threshold_sensitivity": sensitivity,
+                "f1_checks": [{"check": n, "pass": ok} for n, ok in checks],
+                "f1_pass": passed,
                 "hf_sanity_check": hf_summary,
             },
-        )
-        path = artifact.write()
+        ).write()
         print(f"artifact  {relpath(path)}")
 
-    return 0
+    return 0 if passed else 1
 
 
 def hf_sanity_check(model: Qwen3, args: argparse.Namespace) -> dict[str, object]:
     """Greedy decode, engine versus HF. Exercises the decode path, not prefill.
 
     HF is not shape-invariant and is not ground truth. A mismatch here is a lead,
-    not a verdict; the fp64 comparison above is the measurement. It is here
-    because week 1's exit criterion is a working greedy batch-1 decode, and a
-    prefill-only comparison would never touch the single-token KV-cache path.
+    not a verdict. It is here because a prefill-only comparison would never touch
+    the single-token KV-cache path.
     """
     import gc
 
@@ -461,7 +393,7 @@ def hf_sanity_check(model: Qwen3, args: argparse.Namespace) -> dict[str, object]
     tokenizer = AutoTokenizer.from_pretrained(str(args.weights))
     eos = {tokenizer.eos_token_id} if tokenizer.eos_token_id is not None else set()
 
-    engine_runs: dict[str, list[int]] = {}
+    engine_runs = {}
     for prompt in PROMPTS:
         ids = tokenizer(prompt.text, add_special_tokens=False)["input_ids"]
         generated, _ = model.generate_greedy(ids, args.hf_new_tokens, eos_token_ids=eos)
@@ -472,17 +404,14 @@ def hf_sanity_check(model: Qwen3, args: argparse.Namespace) -> dict[str, object]
     torch.cuda.empty_cache()
 
     # .to("cuda") rather than device_map="cuda": device_map pulls in accelerate,
-    # which is not in the dependency set the security doc fixes, and a single-GPU
-    # 0.6B model does not need a dispatch plan.
+    # which is not in the dependency set the security doc fixes.
     hf = (
         AutoModelForCausalLM.from_pretrained(str(args.weights), torch_dtype=torch.float16)
         .to("cuda")
         .eval()
     )
 
-    exact_sequences = 0
-    matched_tokens = 0
-    total_tokens = 0
+    exact_sequences = matched_tokens = total_tokens = 0
     first_divergence: list[int] = []
 
     for prompt in PROMPTS:
@@ -494,20 +423,16 @@ def hf_sanity_check(model: Qwen3, args: argparse.Namespace) -> dict[str, object]
                 do_sample=False,
                 pad_token_id=tokenizer.eos_token_id,
             )
-        hf_generated = out[0, len(ids):].tolist()
+        theirs = out[0, len(ids):].tolist()
         ours = engine_runs[prompt.uid]
+        pairs = list(zip(ours, theirs))
 
-        pairs = list(zip(ours, hf_generated))
-        matched = sum(1 for a, b in pairs if a == b)
-        matched_tokens += matched
-        total_tokens += max(len(ours), len(hf_generated))
-        if ours == hf_generated:
+        matched_tokens += sum(1 for a, b in pairs if a == b)
+        total_tokens += max(len(ours), len(theirs))
+        if ours == theirs:
             exact_sequences += 1
         else:
-            diverged_at = next(
-                (i for i, (a, b) in enumerate(pairs) if a != b), len(pairs)
-            )
-            first_divergence.append(diverged_at)
+            first_divergence.append(next((i for i, (a, b) in enumerate(pairs) if a != b), len(pairs)))
 
     print()
     print("HF sanity check  (not ground truth; HF is not shape-invariant)")
@@ -515,8 +440,8 @@ def hf_sanity_check(model: Qwen3, args: argparse.Namespace) -> dict[str, object]
     print(f"  identical sequences       {exact_sequences}/{len(PROMPTS)}")
     print(f"  identical tokens          {matched_tokens}/{total_tokens}")
     if first_divergence:
-        median_div = sorted(first_divergence)[len(first_divergence) // 2]
-        print(f"  median first divergence   token {median_div} of {args.hf_new_tokens}")
+        print(f"  median first divergence   token "
+              f"{sorted(first_divergence)[len(first_divergence) // 2]} of {args.hf_new_tokens}")
     print("  differences are expected: this engine keeps fp32 through the RMSNorm")
     print("  weight multiply and rotates by fp32 cos/sin, where HF rounds both to fp16")
 

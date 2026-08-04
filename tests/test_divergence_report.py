@@ -120,3 +120,10 @@ def test_never_exceeds_80_columns(
 def test_abbreviate_hash_keeps_both_ends():
     assert abbreviate_hash("8f3a" + "0" * 58 + "c1") == "8f3a…c1"
     assert abbreviate_hash("abc") == "abc"
+
+
+def test_issue_form_is_fenced_and_uncolored():
+    """Frontend spec 1.3: the issue-paste path is the fenced form."""
+    lines = SYNTHETIC.for_issue().splitlines()
+    assert lines[0] == "```" and lines[-1] == "```"
+    assert "\033[" not in SYNTHETIC.for_issue()

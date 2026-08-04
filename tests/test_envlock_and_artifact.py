@@ -88,3 +88,32 @@ def test_loading_an_artifact_without_an_env_tuple_is_an_error(tmp_path):
     path.write_text(json.dumps({"kind": "fidelity", "payload": {}}))
     with pytest.raises(ValueError, match="no environment tuple"):
         load(path)
+
+
+def test_registry_get_takes_only_a_name():
+    """The structural guarantee that no batch-derived quantity reaches a config.
+
+    `registry.get` accepting a second parameter would be the exact door through
+    which a shape could arrive, and nothing else in the codebase would notice.
+    This asserts the door stays shut rather than relying on nobody opening it.
+    """
+    import inspect
+
+    from engine.kernels import registry
+
+    parameters = list(inspect.signature(registry.get).parameters.values())
+    assert [p.name for p in parameters] == ["name"], (
+        f"registry.get gained parameters {[p.name for p in parameters]}. A config "
+        "is looked up by name and by nothing else; see the module docstring."
+    )
+    # A string, not the type: registry.py uses `from __future__ import annotations`.
+    assert parameters[0].annotation in (str, "str")
+    assert not any(
+        p.kind in (p.VAR_POSITIONAL, p.VAR_KEYWORD) for p in parameters
+    ), "registry.get must not accept *args or **kwargs"
+
+
+def test_corpus_sha_defaults_to_null_not_a_placeholder():
+    """A placeholder string can be published and read as a real value."""
+    assert envlock.capture().corpus_sha256 is None
+    assert envlock.capture().to_dict()["corpus_sha256"] is None

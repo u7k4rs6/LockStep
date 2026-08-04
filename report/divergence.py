@@ -118,11 +118,11 @@ class Divergence:
     def render(self, color: bool | None = None, fenced: bool = False) -> str:
         """The 80-column block.
 
-        `fenced=True` wraps the block in a Markdown code fence. The spec's
-        example is unfenced, but GitHub renders a bare block with mixed
-        indentation as a paragraph followed by an accidental code block, so the
-        unfenced form is pasteable-unedited only into a comment box that is
-        already a code block. See the note in the module docstring of the CLI.
+        `fenced=True` wraps the block in a Markdown code fence, which is what
+        the issue-paste path uses; `for_issue()` is that path. Unfenced, GitHub
+        renders the bare block as a paragraph followed by an accidental code
+        block, so only the fenced form is pasteable unedited. Frontend spec 1.3
+        now shows both.
         """
         painted = color_enabled() if color is None else color
 
@@ -156,6 +156,14 @@ class Divergence:
         block = "\n".join(lines)
         return f"```\n{block}\n```" if fenced else block
 
+    def for_issue(self) -> str:
+        """The form that goes into a GitHub issue: fenced, uncolored.
+
+        Separate from `render` so that the issue path cannot accidentally inherit
+        terminal colouring or the unfenced layout.
+        """
+        return self.render(color=False, fenced=True)
+
     def __str__(self) -> str:
         return self.render(color=False)
 
@@ -184,9 +192,9 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Render the example divergence report.")
     parser.add_argument(
-        "--fenced",
+        "--terminal",
         action="store_true",
-        help="Wrap in a Markdown code fence for pasting into a GitHub issue.",
+        help="Print the bare 80-column block instead of the issue-ready fenced form.",
     )
     args = parser.parse_args()
-    print(EXAMPLE.render(fenced=args.fenced))
+    print(EXAMPLE.render() if args.terminal else EXAMPLE.for_issue())

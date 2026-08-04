@@ -7,7 +7,8 @@ Version 0.1, August 2026. Read alongside `01-PRD.md`.
 Pinned and recorded in `env.lock`, emitted into every result artifact. No claim in this project is portable across this tuple.
 
 - GPU: NVIDIA RTX 4060 Laptop, 8 GB VRAM, sm_89
-- CPU: Intel Core i5, 13th gen. No AVX-512 on consumer 13th gen; the fp64 reference is a cached one-time pass, not a hot path
+- CPU: Intel Core i5-12450HX, 12th gen. No AVX-512 on consumer parts; the fp64 reference runs in roughly two minutes, so it is re-run per measurement rather than cached
+- Thread counts pinned: `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, and torch's intraop pool are all asserted before the reference runs and recorded in `env.lock`, because MKL and OpenMP choose reduction trees by thread count
 - OS: Linux, zsh. `python3` only, no bare `python` on PATH. uv for env management
 - Stack: PyTorch, Triton, single GPU, single process
 - Model: Qwen3-0.6B fp16 primary. 28 layers, 8 KV heads, head_dim 128, so roughly 112 KB of KV per token in fp16. Qwen3-1.7B only if the KV budget survives
@@ -97,7 +98,9 @@ lockstep/
     mutate/         Mutation operators, campaign runner, scoring
   certify/          Black-box MR suite for OpenAI-compatible endpoints
   bench/            Throughput and cost-of-invariance scripts
-  report/           HTML report generator (see frontend spec)
+  report/           User-facing output surfaces (see frontend spec)
+    divergence.py   The section 1.3 divergence report. Printed by the CLI
+    artifact.py     Result artifacts, each embedding env.lock
 ```
 
 The single most important architectural decision: **`sched/policy.py` is the seam**. Every scheduler decision (admit, chunk boundary, preempt or not, which block to evict, whether to honor a cache hit) is a call into a policy object. Production uses a heuristic policy; the fuzzer supplies an adversarial one; replay supplies a recorded one. Because execution is a pure function of `(W, sigma, seeds)`, ddmin is exact rather than best-effort. This is the entire differentiator versus live-server trace fuzzing. Do not let scheduling logic leak outside this seam.
@@ -106,11 +109,30 @@ The single most important architectural decision: **`sched/policy.py` is the sea
 
 Not an oracle for invariance, only for "the model is actually right".
 
-- fp64 CPU forward pass of Qwen3-0.6B, a one-time cached run over a few thousand positions, results on disk
-- Reported metrics: max absolute error, per-position KL, greedy-token match rate
-- Near-tie positions (fp64 top1-to-top2 gap below a stated threshold) are excluded from the match rate and counted separately. Not excluding them is how people accidentally publish a misleading match rate
+- fp64 CPU forward pass of Qwen3-0.6B over the whole corpus, re-run per measurement. It takes about two minutes, so caching it was removed
+- Reported metrics: max absolute error, per-position KL, greedy-token match rate. KL is exact over the full 151936-token vocabulary. Top-k compression was measured and dropped: at k=256 it missed 27.4 percent of true KL and still missed 4.0 percent at k=8192, closing only about 1.3x per doubling
+- The only cached artifact is fp64 top-2 logits per position, a few hundred KB. It is what the match-rate and near-tie metrics read, and the streamed fp64 pass is checked against it every run, which is also how reference reproducibility is verified
+- Near-tie positions are excluded from the match rate and counted separately. Not excluding them is how people accidentally publish a misleading match rate
 - ULP bounds are meaningless across dtypes. Use absolute and relative error against fp64, and reserve ULP language for same-dtype comparisons
 - HF transformers is used as a sanity check only, never as ground truth, because it is not shape-invariant
+
+### 7.1 The near-tie threshold, and the F1 pass criterion
+
+The threshold is derived from the run, never hardcoded. A greedy argmax flips when the error on the fp64 top-1-minus-top-2 logit *difference* exceeds the gap between them, so that difference-error is measured directly and its 99.9th percentile is the threshold. A mismatch below it is explained by rounding and carries no information; a mismatch above it is not explained by measured rounding and is a real signal.
+
+F1 passes, on the pinned environment and the corpus named by its sha256, when all of:
+
+| # | Bound |
+|---|---|
+| F1.1 | No greedy mismatch at any position whose fp64 top1-to-top2 gap is at or above the derived threshold |
+| F1.2 | Every mismatch is a top-1/top-2 swap. A mismatch at a deeper rank is a different failure class and rounding does not explain it |
+| F1.3 | Mean per-position exact KL <= 1e-4 nats |
+| F1.4 | Max per-position exact KL <= 1e-3 nats |
+| F1.5 | Max absolute logit error <= 0.5 |
+| F1.6 | The corpus reaches at least two attention splits, so the split-combine fold executes during the measurement |
+| F1.7 | The streamed fp64 pass reproduces the cached top-2 bitwise |
+
+These bounds are fixed here, before week 3, so that they cannot be set after seeing the numbers they judge. They carry roughly 2x to 20x headroom over week 1's measurements, which are recorded in the committed artifact.
 
 ## 8. Fuzzer design
 
