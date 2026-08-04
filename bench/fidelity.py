@@ -37,6 +37,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import torch  # noqa: E402
 
 from bench.corpus import PROMPTS, corpus_sha256  # noqa: E402
+from bench import memprobe  # noqa: E402
 from bench.fp64_reference import Fp64Reference, require_pinned_threads  # noqa: E402
 from engine import envlock  # noqa: E402
 from engine.kernels import registry  # noqa: E402
@@ -50,10 +51,11 @@ DEFAULT_REFERENCE = REPO_ROOT / "reference"
 HISTOGRAM_EDGES = [0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, float("inf")]
 ROW_CHUNK = 64
 
-# Relative error is only meaningful where the denominator has magnitude. Most of
-# a 151936-wide logit row sits near zero, so an unfloored relative error reports
-# 1e6 for a 1e-3 absolute miss on a logit of 1e-9.
-REL_ERROR_FLOOR = 1.0
+# Relative logit error is deliberately absent. A logit has no meaningful zero,
+# so dividing by one is not a scale: an unfloored ratio reported 1.45e6, and the
+# floor that "fixed" it discarded 21 percent of the values to make the metric
+# behave, which is a tell rather than a justification. Absolute logit error and
+# exact KL already cover fidelity, and both survive scrutiny unqualified.
 
 # The rule, stated once here and printed in the output. See the module docstring.
 NEAR_TIE_QUANTILE = 0.999
@@ -96,6 +98,12 @@ def main() -> int:
     parser.add_argument("--hf-new-tokens", type=int, default=32)
     parser.add_argument("--skip-hf", action="store_true")
     parser.add_argument("--no-artifact", action="store_true")
+    parser.add_argument(
+        "--memory-ceiling-mib",
+        type=int,
+        default=4096,
+        help="Projected host memory the pass may use. Fails fast rather than swapping.",
+    )
     args = parser.parse_args()
 
     threads = require_pinned_threads()
@@ -115,8 +123,18 @@ def main() -> int:
             "Rebuild it; a fidelity number is scoped to its corpus."
         )
 
+    probes: list[str] = []
+    probes.append(memprobe.format_breakdown("before any model load",
+                                            memprobe.live_tensor_breakdown()))
+
     engine = Qwen3(args.weights)
+    probes.append(memprobe.format_breakdown("after the engine (GPU) loaded",
+                                            memprobe.live_tensor_breakdown()))
+
     reference = Fp64Reference(args.weights)
+    probes.append(memprobe.format_breakdown("after the fp64 reference loaded",
+                                            memprobe.live_tensor_breakdown()))
+
     env = envlock.capture(corpus_sha256=corpus_sha256())
 
     total_positions = int(cache["entropy"].numel())
@@ -157,13 +175,37 @@ def main() -> int:
             "needs a prompt longer than that."
         )
 
+    # -- memory ceiling, asserted before the pass rather than discovered -------
+    longest = max(len(ids) for ids in cache["prompt_token_ids"])
+    heads = engine.cfg.num_attention_heads
+    vocab = engine.cfg.vocab_size
+    # The two transients that scale: the fp64 attention score matrix, which is
+    # quadratic in prompt length, and one row-chunk of full-vocab logits on each
+    # side of the comparison. Three live copies each is what the arithmetic below
+    # actually holds at once.
+    attention_scratch = longest * longest * heads * 8 * 3
+    logit_scratch = ROW_CHUNK * vocab * 8 * 4
+    anon_now, _ = memprobe.rss_split()
+    projected = anon_now + attention_scratch + logit_scratch
+
+    print()
+    print("host memory projection")
+    print(f"  resident now (anon)        {anon_now / memprobe.MIB:8.1f} MiB")
+    print(f"  fp64 attention scratch     {attention_scratch / memprobe.MIB:8.1f} MiB"
+          f"  ({longest} positions squared x {heads} heads)")
+    print(f"  logit chunk scratch        {logit_scratch / memprobe.MIB:8.1f} MiB"
+          f"  ({ROW_CHUNK} positions x {vocab})")
+    print(f"  projected peak             {projected / memprobe.MIB:8.1f} MiB"
+          f"  ceiling {args.memory_ceiling_mib} MiB")
+    memprobe.require_headroom(
+        projected, args.memory_ceiling_mib * memprobe.MIB, "the fp64 reference pass"
+    )
+
     # -- the two passes, streamed together ------------------------------------
     abs_hist = [0] * (len(HISTOGRAM_EDGES) - 1)
     abs_max = 0.0
     abs_sum = 0.0
     abs_count = 0
-    rel_max = 0.0
-    rel_count = 0
     abs_sample: list[torch.Tensor] = []
     kl_parts: list[torch.Tensor] = []
     top2_err_parts: list[torch.Tensor] = []
@@ -199,14 +241,6 @@ def main() -> int:
             abs_max = max(abs_max, float(err.max()))
             abs_sum += float(err.sum())
             abs_count += err.numel()
-            # Relative error only where the reference logit carries magnitude.
-            # Over the full vocabulary most logits pass near zero, and dividing
-            # by one of those reports 1e6 for an absolute error of 1e-3. The
-            # floor is stated in the output rather than buried in a clamp.
-            big = ref_rows.abs() >= REL_ERROR_FLOOR
-            if bool(big.any()):
-                rel_max = max(rel_max, float((err[big] / ref_rows.abs()[big]).max()))
-                rel_count += int(big.sum())
             for i, (lo, hi) in enumerate(zip(HISTOGRAM_EDGES, HISTOGRAM_EDGES[1:])):
                 abs_hist[i] += int(((err >= lo) & (err < hi)).sum())
             if len(abs_sample) < 8:
@@ -224,9 +258,17 @@ def main() -> int:
 
             del ref_rows, eng_rows, eng_lp, ref_lp, p, err
 
+        if len(probes) == 3:
+            probes.append(memprobe.format_breakdown(
+                f"mid-pass, inside the longest prompt so far ({seq_len} positions)",
+                memprobe.live_tensor_breakdown()))
+
         offset += seq_len
         del eng_logits, eng_log_probs, hidden
         torch.cuda.empty_cache()
+
+    probes.append(memprobe.format_breakdown("after both passes finished",
+                                            memprobe.live_tensor_breakdown()))
 
     kl = torch.cat(kl_parts)
     top2_err = torch.cat(top2_err_parts)
@@ -251,9 +293,8 @@ def main() -> int:
     print()
     print(f"logit error, engine fp16 vs fp64 reference, full vocabulary ({abs_count} values)")
     print(f"  absolute   max {abs_max:.6e}  mean {abs_sum / abs_count:.6e}")
-    print(f"  relative   max {rel_max:.6e}   over the {rel_count} values with "
-          f"|reference logit| >= {REL_ERROR_FLOOR:g}")
-    print("  ULP is not reported: it is meaningless across dtypes")
+    print("  no relative error: a logit has no meaningful zero, so dividing by one")
+    print("  is not a scale. ULP is not reported either; it is meaningless across dtypes")
     print()
     print("  absolute error histogram")
     for label, count in histogram(abs_hist):
@@ -275,6 +316,8 @@ def main() -> int:
     threshold = float(ordered[int(NEAR_TIE_QUANTILE * (ordered.numel() - 1))])
 
     agree = engine_argmax == ref_top1
+    mismatch = torch.nonzero(~agree).flatten()
+    mismatch_gaps = gap[mismatch]
     near_tie = gap < threshold
     clean = ~near_tie
     clean_match, clean_total = int((agree & clean).sum()), int(clean.sum())
@@ -292,14 +335,39 @@ def main() -> int:
           f"(p{NEAR_TIE_QUANTILE * 100:g} of that error)")
     print("  near-tie test is exact:               it reads only fp64 top-1 and top-2,")
     print("                                        both cached uncompressed")
+    # The tuning-proof number: the tightest threshold at which the match rate is
+    # still 100 percent. Reporting only the derived one invites "the threshold was
+    # chosen so the rate came out 100 percent", whether or not that happened.
+    if mismatch_gaps.numel():
+        minimum_perfect = float(mismatch_gaps.max()) * (1.0 + 1e-9)
+    else:
+        minimum_perfect = 0.0
+    perfect_kept = int((gap >= minimum_perfect).sum())
+
+    # At the p99.9 threshold, 0.1 percent of positions have a difference-error
+    # exceeding it, so a mismatch above the threshold is not impossible, merely
+    # unlikely. Stating the expectation is what makes observing zero meaningful.
+    expected_exceedances = (1.0 - NEAR_TIE_QUANTILE) * float(gap.numel())
+
     print()
     print(f"  match, gap >= threshold   {clean_match}/{clean_total}   <- headline")
     print(f"  near ties excluded        {tie_total}/{int(near_tie.numel())}")
     print(f"  match, near ties only     {tie_match}/{tie_total}")
+    print()
+    print(f"  minimum threshold reaching 100 percent   {minimum_perfect:.6e} nats")
+    print(f"    match there                            {perfect_kept}/{perfect_kept}")
+    print(f"    ratio to the derived threshold         "
+          f"{threshold / minimum_perfect:.1f}x tighter")
+    print("    the result survives a threshold far stricter than the derived one,")
+    print("    so it does not rest on where the derived one landed")
+    print()
+    print(f"  expected exceedances at p{NEAR_TIE_QUANTILE * 100:g} over {gap.numel()} "
+          f"positions: {expected_exceedances:.1f}")
+    print(f"  observed                                                    "
+          f"{clean_total - clean_match}")
 
     # Rank discipline: a mismatch that is not a top1/top2 swap is a different
     # class of failure and rounding does not explain it.
-    mismatch = torch.nonzero(~agree).flatten()
     ref_top2 = cache["top2_indices"][:, 1].to(torch.int64)
     swaps = int((engine_argmax[mismatch] == ref_top2[mismatch]).sum())
     print(f"  every mismatch a top1/top2 swap       {swaps}/{mismatch.numel()}")
@@ -336,6 +404,13 @@ def main() -> int:
 
     hf_summary = None if args.skip_hf else hf_sanity_check(engine, args)
 
+    peak_rss = memprobe.peak_rss_bytes()
+    print()
+    print("host memory")
+    for probe in probes:
+        print(probe)
+    print(f"  peak RSS  {peak_rss / memprobe.MIB:.1f} MiB")
+
     print()
     print(f"env  {env.fingerprint()}")
 
@@ -352,11 +427,6 @@ def main() -> int:
                 "prompts_with_multiple_splits": multi,
                 "fp64_reproduced_cached_top2": idx_match and val_match,
                 "logit_abs_error": {"max": abs_max, "mean": abs_sum / abs_count},
-                "logit_rel_error": {
-                    "max": rel_max,
-                    "floor": REL_ERROR_FLOOR,
-                    "values_counted": rel_count,
-                },
                 "abs_error_histogram": [
                     {"bin": label, "count": count} for label, count in histogram(abs_hist)
                 ],
@@ -365,11 +435,20 @@ def main() -> int:
                 "near_tie_rule": f"p{NEAR_TIE_QUANTILE * 100:g} of the top1-top2 difference error",
                 "near_tie_threshold": threshold,
                 "match_above_threshold": {"matched": clean_match, "total": clean_total},
+                "minimum_threshold_for_100_percent": minimum_perfect,
+                "positions_kept_at_that_threshold": perfect_kept,
+                "expected_exceedances_at_quantile": expected_exceedances,
+                "observed_exceedances": clean_total - clean_match,
                 "match_near_ties_only": {"matched": tie_match, "total": tie_total},
                 "mismatches_that_are_top1_top2_swaps": {"swaps": swaps, "total": mismatch.numel()},
                 "largest_gap_among_mismatches": worst_gap,
                 "threshold_sensitivity": sensitivity,
                 "f1_checks": [{"check": n, "pass": ok} for n, ok in checks],
+                "peak_rss_bytes": peak_rss,
+                "peak_rss_anon_bytes": memprobe.rss_split()[0],
+                "projected_peak_bytes": projected,
+                "memory_ceiling_bytes": args.memory_ceiling_mib * memprobe.MIB,
+                "peak_vram_bytes": int(torch.cuda.max_memory_allocated()),
                 "f1_pass": passed,
                 "hf_sanity_check": hf_summary,
             },

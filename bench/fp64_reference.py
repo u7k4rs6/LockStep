@@ -95,26 +95,35 @@ class Fp64Reference:
     """A pure-CPU fp64 forward pass. Weights stay fp16; each op upcasts."""
 
     def __init__(self, weights_dir: Path):
-        from safetensors.torch import load_file
+        from safetensors import safe_open
 
         weights_dir = Path(weights_dir)
         self.cfg = Qwen3Config.from_file(weights_dir / "config.json")
-        raw = load_file(str(weights_dir / "model.safetensors"), device="cpu")
+
+        # One tensor at a time, for the same reason the engine loader does it:
+        # load_file would hold the entire 1.5 GB checkpoint alongside the fp16
+        # copy being built from it.
+        handle = safe_open(str(weights_dir / "model.safetensors"), framework="pt", device="cpu")
+        names = list(handle.keys())
 
         # Same tied-embedding handling as the engine: the checkpoint ships a
         # bitwise-identical duplicate of the embedding as lm_head, and holding
         # both costs 311 MB for nothing.
         if (
             self.cfg.tie_word_embeddings
-            and "lm_head.weight" in raw
-            and "model.embed_tokens.weight" in raw
+            and "lm_head.weight" in names
+            and "model.embed_tokens.weight" in names
         ):
-            if not torch.equal(raw["lm_head.weight"], raw["model.embed_tokens.weight"]):
+            if not torch.equal(
+                handle.get_tensor("lm_head.weight"),
+                handle.get_tensor("model.embed_tokens.weight"),
+            ):
                 raise ValueError("tie_word_embeddings set but the two tensors differ")
-            del raw["lm_head.weight"]
+            names.remove("lm_head.weight")
 
-        self.w = {name: t.to(ENGINE_DTYPE) for name, t in raw.items()}
-        del raw
+        self.w = {}
+        for name in names:
+            self.w[name] = handle.get_tensor(name).to(ENGINE_DTYPE)
         if self.cfg.tie_word_embeddings and "lm_head.weight" not in self.w:
             self.w["lm_head.weight"] = self.w["model.embed_tokens.weight"]
         self.sm_scale = 1.0 / math.sqrt(self.cfg.head_dim)

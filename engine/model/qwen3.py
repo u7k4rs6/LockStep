@@ -48,6 +48,10 @@ from engine.kernels.swiglu import swiglu
 
 ENGINE_DTYPE = torch.float16
 
+# Elements per slice when measuring the weight cast. 16.8M elements is 67 MB in
+# fp32, which bounds the temporary regardless of the widest tensor in the model.
+CAST_REPORT_CHUNK = 1 << 24
+
 
 def write_kv(
     pool: "paged.PagedKVCache",
@@ -69,8 +73,8 @@ def write_kv(
     total = k.shape[0]
     while written < total:
         position = start_pos + written
-        logical, slot = divmod(position, paged.BLOCK_SIZE)
-        take = min(paged.BLOCK_SIZE - slot, total - written)
+        logical, slot = divmod(position, pool.block_size)
+        take = min(pool.block_size - slot, total - written)
         physical = table[logical]
         pool.k[layer][physical, slot : slot + take] = k[written : written + take]
         pool.v[layer][physical, slot : slot + take] = v[written : written + take]
@@ -121,10 +125,17 @@ class KVCache:
     second one kept alive for convenience.
     """
 
-    def __init__(self, cfg: Qwen3Config, max_len: int, device: torch.device):
-        blocks = -(-max_len // paged.BLOCK_SIZE)
+    def __init__(
+        self,
+        cfg: Qwen3Config,
+        max_len: int,
+        device: torch.device,
+        block_size: int = paged.DEFAULT_BLOCK_SIZE,
+    ):
+        blocks = -(-max_len // block_size)
         self.pool = paged.PagedKVCache(
             num_blocks=blocks,
+            block_size=block_size,
             num_layers=cfg.num_hidden_layers,
             num_kv_heads=cfg.num_key_value_heads,
             head_dim=cfg.head_dim,
@@ -208,48 +219,70 @@ class Qwen3:
         aliasing on the strength of a config flag alone would silently use the
         wrong weights on any checkpoint where they had diverged.
         """
-        from safetensors.torch import load_file
+        from safetensors import safe_open
 
-        raw = load_file(str(path), device="cpu")
-        self.checkpoint_dtype = str(next(iter(raw.values())).dtype)
+        # safe_open reads one tensor at a time. load_file materializes the whole
+        # 1.5 GB checkpoint as a dict before anything is cast, which put a
+        # 1.5 GB floor under peak RSS for no reason: the loader only ever needs
+        # one tensor live at a time.
+        handle = safe_open(str(path), framework="pt", device="cpu")
+        names = list(handle.keys())
+        self.checkpoint_dtype = str(handle.get_tensor(names[0]).dtype)
 
         tie = (
             self.cfg.tie_word_embeddings
-            and "lm_head.weight" in raw
-            and "model.embed_tokens.weight" in raw
+            and "lm_head.weight" in names
+            and "model.embed_tokens.weight" in names
         )
         if tie:
-            if not torch.equal(raw["lm_head.weight"], raw["model.embed_tokens.weight"]):
+            if not torch.equal(
+                handle.get_tensor("lm_head.weight"),
+                handle.get_tensor("model.embed_tokens.weight"),
+            ):
                 raise ValueError(
                     "config sets tie_word_embeddings but lm_head.weight and "
                     "model.embed_tokens.weight differ in this checkpoint; refusing "
                     "to alias them"
                 )
-            del raw["lm_head.weight"]
+            names.remove("lm_head.weight")
 
         # Measured while streaming, one tensor at a time, and the raw checkpoint
-        # is released as we go. This machine has ~5 GB of headroom and the
-        # checkpoint is 1.5 GB; keeping it resident to measure it later is how a
-        # reference build ends up in swap.
+        # is released as we go.
+        #
+        # In fp64 over a whole tensor this measurement was the single largest
+        # host allocation in the project: the 151936 x 1024 embedding produced
+        # five 1.24 GB fp64 temporaries at once and drove peak RSS to 5318 MiB,
+        # more than the fp64 reference pass itself ever used. Two changes fix it
+        # without moving a digit of the result.
+        #
+        # fp32 instead of fp64: fp32 carries 8 exponent and 23 mantissa bits, so
+        # it represents every bf16 (8 and 7) and every fp16 (5 and 10) value
+        # exactly. The comparison is therefore still exact, at half the width.
+        #
+        # Chunked over the leading dimension: no temporary exceeds a bounded
+        # size regardless of how wide the vocabulary gets.
         elements = 0
         inexact = 0
         max_abs = 0.0
         max_rel = 0.0
+        tiny = torch.finfo(torch.float32).tiny
 
         weights: dict[str, torch.Tensor] = {}
-        for name in list(raw.keys()):
-            tensor = raw.pop(name)
+        for name in names:
+            tensor = handle.get_tensor(name)
             cast = tensor.to(ENGINE_DTYPE)
+            elements += tensor.numel()
 
-            exact = tensor.to(torch.float64)
-            diff = (exact - cast.to(torch.float64)).abs()
-            elements += diff.numel()
-            inexact += int((diff > 0).sum())
-            if diff.numel():
+            flat_exact = tensor.reshape(-1)
+            flat_cast = cast.reshape(-1)
+            for start in range(0, flat_exact.numel(), CAST_REPORT_CHUNK):
+                exact = flat_exact[start : start + CAST_REPORT_CHUNK].to(torch.float32)
+                diff = (exact - flat_cast[start : start + CAST_REPORT_CHUNK].to(torch.float32)).abs()
+                inexact += int((diff > 0).sum())
                 max_abs = max(max_abs, float(diff.max()))
-                denom = exact.abs().clamp_min(torch.finfo(torch.float64).tiny)
-                max_rel = max(max_rel, float((diff / denom).max()))
-            del tensor, exact, diff
+                max_rel = max(max_rel, float((diff / exact.abs().clamp_min(tiny)).max()))
+                del exact, diff
+            del tensor, flat_exact, flat_cast
 
             weights[name] = cast.to(self.device).contiguous()
 
