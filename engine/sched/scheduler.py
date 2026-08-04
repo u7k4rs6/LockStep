@@ -27,8 +27,10 @@ from dataclasses import dataclass, field
 
 import torch
 
+from engine.audit.counters import Counters
 from engine.audit.trajectory import TrajectoryHash
 from engine.cache.prefix import PrefixCache
+from engine.kernels import registry
 from engine.kv import paged
 from engine.model.qwen3 import Qwen3
 from engine.sampler import philox
@@ -68,6 +70,10 @@ class Request:
         return len(self.context()) - self.kv_len
 
 
+class OversizedRequest(ValueError):
+    """A request that cannot fit the pool even when the pool is empty."""
+
+
 class Scheduler:
     """Continuous batching over a paged KV pool."""
 
@@ -85,6 +91,13 @@ class Scheduler:
         self.policy = policy or DefaultPolicy()
         self.eos = eos_token_ids or set()
         self.audit_enabled = audit
+        self.counters = Counters()
+        # The engine owns its own lifecycle event stream. Recording it in a
+        # policy would mean a policy that declines to record produces a
+        # different coverage report from one that does, and would emit ADMIT
+        # where the state machine says RESUME because a policy cannot see that a
+        # request was previously preempted.
+        self.lifecycle: dict[str, list] = {}
 
         self.pool = paged.PagedKVCache(
             num_blocks=num_blocks,
@@ -94,8 +107,12 @@ class Scheduler:
             device=model.device,
             dtype=torch.float16,
             block_size=block_size,
+            counters=self.counters,
         )
-        self.cache = PrefixCache(block_size=block_size) if enable_prefix_cache else None
+        self.cache = (
+            PrefixCache(block_size=block_size, counters=self.counters)
+            if enable_prefix_cache else None
+        )
         self.waiting: list[Request] = []
         self.running: list[Request] = []
         self.done: list[Request] = []
@@ -104,7 +121,32 @@ class Scheduler:
         self.trajectory = TrajectoryHash()
 
     def submit(self, request: Request) -> None:
+        """Queue a request, refusing one that can never fit.
+
+        Found by the fuzzer against the unmutated engine, minimized to a single
+        61-token request with max_new_tokens=4 against a 2-block pool at
+        block_size 32: 65 tokens needs 3 blocks, so the request could never be
+        admitted, but it sat in the queue until nothing was running and the
+        scheduler raised "N requests waiting, M blocks free, and nothing running
+        to free them". That message named free blocks the request could never
+        have used, which pointed at pressure rather than at the real cause.
+
+        A request larger than the whole pool is not a pressure condition and no
+        amount of eviction or preemption will help, so it is refused at the door
+        with the arithmetic that decides it.
+        """
+        needed = self._blocks_needed(request)
+        if needed > self.pool.num_blocks:
+            raise OversizedRequest(
+                f"{request.uid} needs {needed} blocks "
+                f"({len(request.prompt)} prompt + {request.max_new_tokens} new tokens "
+                f"at block_size {self.pool.block_size}) but the pool holds "
+                f"{self.pool.num_blocks}. No eviction or preemption can satisfy it."
+            )
         self.waiting.append(request)
+
+    def _event(self, uid: str, event) -> None:
+        self.lifecycle.setdefault(uid, []).append(event)
 
     def _state(self) -> SchedulerState:
         return SchedulerState(
@@ -131,6 +173,13 @@ class Scheduler:
         the cache index; including a block a running sequence holds is mutation
         operator 10.1's "eviction eligible-set includes a running sequence".
         """
+        # The loop is bounded by the candidate count at entry, not by an argument
+        # that the set shrinks. Each pass evicts exactly one block and no pass
+        # creates a candidate, so more passes than there were candidates means
+        # the invariant broke. A hostile schedule probing this surface should get
+        # a loud assertion, not a hang the campaign reports as a timeout.
+        max_passes = len(self.cache.evictable_blocks(self.pool)) + 1 if self.cache else 1
+        passes = 0
         while True:
             try:
                 self.pool.reserve(uid, tokens)
@@ -138,6 +187,14 @@ class Scheduler:
             except paged.OutOfBlocks:
                 if self.cache is None:
                     raise
+                passes += 1
+                self.counters.hit("eviction_pass")
+                assert passes <= max_passes, (
+                    f"reserve-with-eviction ran {passes} passes for {uid} with only "
+                    f"{max_passes - 1} candidates at entry. Each pass must evict "
+                    "exactly one block and no pass may create a candidate, so this "
+                    "is a livelock, not slow progress."
+                )
                 candidates = self.cache.evictable_blocks(self.pool)
                 if not candidates:
                     raise
@@ -150,6 +207,7 @@ class Scheduler:
                     )
                 self.cache.evict(victim, self.pool)
                 self.evictions += 1
+                self._event(uid, Event.EVICT)
                 if isinstance(self.policy, RecordingPolicy):
                     self.policy.record(self.step_index, Event.EVICT, uid, (victim,))
 
@@ -175,8 +233,12 @@ class Scheduler:
             if hit_tokens >= len(request.prompt) and blocks:
                 hit_tokens -= self.pool.block_size
                 blocks = blocks[:-1]
+                self.counters.hit("cache_full_prompt_trimmed")
 
-            if hit_tokens and self.policy.honor_cache_hit(state, request.uid, hit_tokens):
+            if hit_tokens and not self.policy.honor_cache_hit(state, request.uid, hit_tokens):
+                self.counters.hit("cache_hit_refused")
+            elif hit_tokens:
+                self._event(request.uid, Event.CACHE_HIT)
                 self.pool.adopt(request.uid, blocks)
                 request.kv_len = hit_tokens
                 request.cache_hit_tokens = hit_tokens
@@ -215,18 +277,30 @@ class Scheduler:
         state = self._state()
         for request in list(self.waiting):
             if not self.policy.admit(state, request.uid, self._blocks_needed(request)):
+                self.counters.hit("admit_refused")
                 continue
+            self.counters.hit("admit")
+            if request.preempt_count:
+                self.counters.hit("resume")
+                self._event(request.uid, Event.RESUME)
+            else:
+                self._event(request.uid, Event.ADMIT)
             self.waiting.remove(request)
             self._admit(request, state)
             self.running.append(request)
             state = self._state()
 
         if not self.running:
-            # Nothing could be admitted and nothing is running: the pool cannot
-            # satisfy the head of the queue. Failing loudly beats spinning.
+            # Nothing could be admitted and nothing is running. Every waiting
+            # request fits the pool in principle, since submit() refuses those
+            # that do not, so this is genuine fragmentation or a policy that
+            # will not admit. Naming the smallest waiting request makes the
+            # difference visible.
+            smallest = min(self._blocks_needed(r) for r in self.waiting)
             raise paged.OutOfBlocks(
-                f"{len(self.waiting)} requests waiting, {self.pool.free_blocks} blocks free, "
-                "and nothing running to free them"
+                f"{len(self.waiting)} requests waiting, smallest needs {smallest} blocks, "
+                f"{self.pool.free_blocks} free and "
+                f"{self._state().reclaimable_blocks} reclaimable, nothing running to free more"
             )
 
         # Preemption, before any work is packed. A preempted request loses its
@@ -238,6 +312,12 @@ class Scheduler:
                 continue
             if self.policy.should_preempt(state, request.uid):
                 self._preempt(request)
+                self.counters.hit("preempt_fired")
+                self._event(request.uid, Event.PREEMPT_RC)
+                if request.preempt_count == 2:
+                    self.counters.hit("preempt_depth_2")
+                elif request.preempt_count >= 3:
+                    self.counters.hit("preempt_depth_3_plus")
                 state = self._state()
 
         if not self.running:
@@ -258,7 +338,27 @@ class Scheduler:
                     f"{request.uid} with {remaining} remaining; must be in [1, remaining]"
                 )
             start = request.kv_len
-            work.append((request.uid, context[start : start + take], start))
+            end = start + take
+            work.append((request.uid, context[start:end], start))
+
+            if take == 1 and start == len(context) - 1:
+                self.counters.hit("decode_step")
+                self._event(request.uid, Event.DECODE)
+            else:
+                self.counters.hit("prefill_chunk")
+                self._event(request.uid,
+                            Event.CHUNK if end < len(context) else Event.DECODE)
+            if end < len(context):
+                if end % self.pool.block_size:
+                    self.counters.hit("chunk_boundary_mid_block")
+                else:
+                    self.counters.hit("chunk_boundary_on_block")
+                if end % registry.SPLIT_SIZE:
+                    self.counters.hit("chunk_boundary_mid_split")
+            if end > registry.SPLIT_SIZE:
+                self.counters.hit("attention_multi_split")
+            else:
+                self.counters.hit("attention_single_split")
 
         logits = self.model.forward_batch(self.pool, work)
 
@@ -269,6 +369,8 @@ class Scheduler:
             if request.kv_len < len(request.context()):
                 # Mid-context: this was a partial chunk, so nothing is emitted.
                 continue
+            if request.kv_len == len(request.prompt) and not request.generated:
+                self.counters.hit("prefill_complete")
             row = logits[request.uid][-1]
             position = request.total_tokens() - 1
             if request.temperature <= 0:
@@ -306,6 +408,8 @@ class Scheduler:
             )
             if done:
                 request.finished = True
+                self.counters.hit("finish")
+                self._event(request.uid, Event.FINISH)
                 self.running.remove(request)
                 self.done.append(request)
                 if self.cache is not None:
