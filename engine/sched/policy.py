@@ -76,6 +76,11 @@ class SchedulerState:
     running: tuple[str, ...]
     free_blocks: int
     total_blocks: int
+    # Blocks the prefix cache holds that no live sequence is using. They are
+    # capacity, not occupancy: admission that counted only free_blocks would
+    # refuse a request the pool could serve by evicting, which makes the whole
+    # eviction path unreachable.
+    reclaimable_blocks: int = 0
 
 
 class Policy:
@@ -126,16 +131,35 @@ class DefaultPolicy(Policy):
     def admit(self, state: SchedulerState, uid: str, blocks_needed: int) -> bool:
         if len(state.running) >= self.max_running:
             return False
-        return blocks_needed <= state.free_blocks
+        return blocks_needed <= state.free_blocks + state.reclaimable_blocks
 
     def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
         """Prefill the whole remainder. The production heuristic does not chunk.
 
         Chunking exists to bound step latency, which is week 7's concern. The
-        seam is exercised regardless: FixedChunkPolicy and ArbitraryChunkPolicy
+        seam is exercised regardless: FixedChunkPolicy and ScriptedChunkPolicy
         drive it in the tests, which is the point of the decision living here.
         """
         return remaining
+
+    def should_preempt(self, state: SchedulerState, uid: str) -> bool:
+        """Never, by default. Preemption is a response to pressure, and the
+        default policy admits only what fits, so it never creates any."""
+        return False
+
+    def evict_victim(self, state: SchedulerState, candidates: tuple[int, ...]) -> int:
+        """Lowest block id among the candidates.
+
+        Not least-recently-used: recency is wall-clock-shaped state, and a
+        replayed schedule would have to reproduce it to reproduce the eviction.
+        Lowest-id is a pure function of the candidate set, which keeps eviction
+        inside (workload, schedule, seeds).
+        """
+        return min(candidates)
+
+    def honor_cache_hit(self, state: SchedulerState, uid: str, hit_length: int) -> bool:
+        """Always. Refusing is what the fuzzer does to test MR4 both ways."""
+        return True
 
 
 class RecordingPolicy(Policy):
@@ -210,3 +234,34 @@ class ScriptedChunkPolicy(DefaultPolicy):
         if not queue:
             return remaining
         return min(queue.pop(0), remaining)
+
+
+class PreemptAtStepPolicy(DefaultPolicy):
+    """Preempt one named request at one named decode step, exactly once.
+
+    MR3 sweeps the preemption point rather than sampling it, so the relation
+    needs to place the preemption at a chosen step rather than hope a heuristic
+    lands there.
+    """
+
+    def __init__(self, uid: str, at_step: int, max_running: int = 32):
+        super().__init__(max_running=max_running)
+        self.uid = uid
+        self.at_step = at_step
+        self.fired = False
+        self.name = f"preempt({uid}@{at_step})"
+
+    def should_preempt(self, state: SchedulerState, uid: str) -> bool:
+        if self.fired or uid != self.uid or state.step != self.at_step:
+            return False
+        self.fired = True
+        return True
+
+
+class NoCacheHitPolicy(DefaultPolicy):
+    """Refuse every prefix hit. The cold half of MR4."""
+
+    name = "no-cache-hit"
+
+    def honor_cache_hit(self, state: SchedulerState, uid: str, hit_length: int) -> bool:
+        return False

@@ -120,6 +120,12 @@ class PagedKVCache:
         self.refcount: list[int] = [0] * num_blocks
         self.sequences: dict[str, Sequence] = {}
 
+        # Blocks the prefix cache index holds a reference on. Tracked separately
+        # from sequence holds so audit() can attribute every reference to a
+        # holder: a refcount that balances only in aggregate would let a leaked
+        # cache reference look exactly like a live sequence.
+        self.pinned: dict[int, int] = {}
+
         # Counters the trajectory hash covers; they make an off-by-one in the
         # allocator visible even when the output bits happen to survive it.
         self.stats = {"allocated": 0, "freed": 0, "cow_copies": 0, "forks": 0}
@@ -154,6 +160,36 @@ class PagedKVCache:
             self.stats["freed"] += 1
 
     # -- sequences -----------------------------------------------------------
+
+    def pin(self, block: int) -> None:
+        """Take a reference on behalf of the prefix cache index."""
+        assert self.refcount[block] > 0, f"pinning free block {block}"
+        self.refcount[block] += 1
+        self.pinned[block] = self.pinned.get(block, 0) + 1
+
+    def unpin(self, block: int) -> None:
+        """Release the prefix cache index's reference."""
+        held = self.pinned.get(block, 0)
+        assert held > 0, f"unpinning block {block}, which the cache does not hold"
+        if held == 1:
+            del self.pinned[block]
+        else:
+            self.pinned[block] = held - 1
+        self._release_block(block)
+
+    def adopt(self, uid: str, blocks: list[int]) -> None:
+        """Share `blocks` into `uid` as its leading logical blocks.
+
+        Used by a prefix cache hit. Each block gains one reference, so the
+        sequence and the index both hold it and neither can free it out from
+        under the other.
+        """
+        sequence = self.sequences[uid]
+        assert not sequence.block_ids, "adopt expects a sequence with no blocks yet"
+        for block in blocks:
+            assert self.refcount[block] > 0, f"adopting free block {block}"
+            self.refcount[block] += 1
+        sequence.block_ids = list(blocks)
 
     def create(self, uid: str) -> Sequence:
         if uid in self.sequences:
@@ -239,6 +275,8 @@ class PagedKVCache:
         equivalent, so the ledger is checked directly.
         """
         expected = [0] * self.num_blocks
+        for block, count in self.pinned.items():
+            expected[block] += count
         for sequence in self.sequences.values():
             seen = set()
             for block in sequence.block_ids:
@@ -253,8 +291,10 @@ class PagedKVCache:
         for block in range(self.num_blocks):
             if self.refcount[block] != expected[block]:
                 raise AuditFailure(
-                    f"refcount ledger does not balance at block {block}: "
-                    f"refcount {self.refcount[block]}, held by {expected[block]} sequences"
+                    f"refcount ledger does not balance at block {block}: refcount "
+                    f"{self.refcount[block]}, but holders total {expected[block]} "
+                    f"({self.pinned.get(block, 0)} cache, "
+                    f"{expected[block] - self.pinned.get(block, 0)} sequences)"
                 )
 
         free = set(self._free)
@@ -277,5 +317,6 @@ class PagedKVCache:
                 for uid in sorted(self.sequences)
             ),
             tuple(sorted(self.stats.items())),
+            tuple(sorted(self.pinned.items())),
             self.block_size,
         )

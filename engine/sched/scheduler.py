@@ -28,6 +28,7 @@ from dataclasses import dataclass, field
 import torch
 
 from engine.audit.trajectory import TrajectoryHash
+from engine.cache.prefix import PrefixCache
 from engine.kv import paged
 from engine.model.qwen3 import Qwen3
 from engine.sampler import philox
@@ -47,13 +48,24 @@ class Request:
 
     generated: list[int] = field(default_factory=list)
     finished: bool = False
-    prefilled: int = 0  # prompt tokens whose KV is already in the pool
+
+    # Positions whose KV is in the pool. Prefill and decode both advance it,
+    # which is what lets one code path serve both: a decode step is a prefill of
+    # exactly one token at the end of the context. Preemption sets it back to
+    # whatever survived, and recompute simply prefills the gap.
+    kv_len: int = 0
+    preempt_count: int = 0
+    cache_hit_tokens: int = 0
+
+    def context(self) -> list[int]:
+        """Every token whose KV should eventually exist for this request."""
+        return self.prompt + self.generated
 
     def total_tokens(self) -> int:
         return len(self.prompt) + len(self.generated)
 
-    def prefill_complete(self) -> bool:
-        return self.prefilled >= len(self.prompt)
+    def needs_compute(self) -> int:
+        return len(self.context()) - self.kv_len
 
 
 class Scheduler:
@@ -67,6 +79,7 @@ class Scheduler:
         eos_token_ids: set[int] | None = None,
         audit: bool = True,
         block_size: int = paged.DEFAULT_BLOCK_SIZE,
+        enable_prefix_cache: bool = False,
     ):
         self.model = model
         self.policy = policy or DefaultPolicy()
@@ -82,10 +95,12 @@ class Scheduler:
             dtype=torch.float16,
             block_size=block_size,
         )
+        self.cache = PrefixCache(block_size=block_size) if enable_prefix_cache else None
         self.waiting: list[Request] = []
         self.running: list[Request] = []
         self.done: list[Request] = []
         self.step_index = 0
+        self.evictions = 0
         self.trajectory = TrajectoryHash()
 
     def submit(self, request: Request) -> None:
@@ -98,11 +113,99 @@ class Scheduler:
             running=tuple(r.uid for r in self.running),
             free_blocks=self.pool.free_blocks,
             total_blocks=self.pool.num_blocks,
+            reclaimable_blocks=(
+                len(self.cache.evictable_blocks(self.pool)) if self.cache else 0
+            ),
         )
 
     def _blocks_needed(self, request: Request) -> int:
         total = len(request.prompt) + request.max_new_tokens
         return -(-total // self.pool.block_size)
+
+    def _reserve_with_eviction(self, uid: str, tokens: int) -> None:
+        """Reserve blocks, evicting cached-but-unused ones under pressure.
+
+        Which block to evict is a policy decision (architecture doc section 6),
+        so the candidate set comes from the cache and the choice comes from the
+        policy. The candidate set is only blocks whose sole remaining holder is
+        the cache index; including a block a running sequence holds is mutation
+        operator 10.1's "eviction eligible-set includes a running sequence".
+        """
+        while True:
+            try:
+                self.pool.reserve(uid, tokens)
+                return
+            except paged.OutOfBlocks:
+                if self.cache is None:
+                    raise
+                candidates = self.cache.evictable_blocks(self.pool)
+                if not candidates:
+                    raise
+                victim = self.policy.evict_victim(self._state(), tuple(candidates))
+                if victim not in candidates:
+                    raise ValueError(
+                        f"policy {self.policy.name} chose block {victim} to evict, "
+                        f"which is not in the candidate set; a block held by a "
+                        f"running sequence must never be reclaimed"
+                    )
+                self.cache.evict(victim, self.pool)
+                self.evictions += 1
+                if isinstance(self.policy, RecordingPolicy):
+                    self.policy.record(self.step_index, Event.EVICT, uid, (victim,))
+
+    def _admit(self, request: Request, state: SchedulerState) -> None:
+        """Create the sequence, honour any prefix hit, and reserve its blocks."""
+        self.pool.create(request.uid)
+        request.kv_len = 0
+        request.cache_hit_tokens = 0
+
+        if self.cache is not None:
+            hit_tokens, blocks = self.cache.lookup(request.prompt)
+
+            # A hit covering the whole prompt leaves nothing to compute, and a
+            # request with nothing to compute has no logits to sample from: the
+            # KV for the last position exists, but the forward pass that would
+            # have produced its logits never ran. So the last block is always
+            # recomputed. This costs one block of prefill and is why a full-prompt
+            # hit is not a no-op.
+            #
+            # It cannot change the result: recomputing that block reproduces the
+            # cached KV exactly, which is chunk invariance, the same property
+            # that makes the cache sound in the first place.
+            if hit_tokens >= len(request.prompt) and blocks:
+                hit_tokens -= self.pool.block_size
+                blocks = blocks[:-1]
+
+            if hit_tokens and self.policy.honor_cache_hit(state, request.uid, hit_tokens):
+                self.pool.adopt(request.uid, blocks)
+                request.kv_len = hit_tokens
+                request.cache_hit_tokens = hit_tokens
+                if isinstance(self.policy, RecordingPolicy):
+                    self.policy.record(
+                        self.step_index, Event.CACHE_HIT, request.uid, (hit_tokens,)
+                    )
+
+        self._reserve_with_eviction(
+            request.uid, len(request.prompt) + request.max_new_tokens
+        )
+        self.pool.sequences[request.uid].length = request.kv_len
+
+    def _preempt(self, request: Request) -> None:
+        """Recompute preemption: drop the KV, keep the tokens.
+
+        The request goes back to the front of the waiting queue with its
+        generated tokens intact and kv_len reset, so re-admission rebuilds the
+        whole context in one prefill. That is only bitwise sound because
+        decode-produced KV equals prefill-produced KV, which harness/mr/
+        equivalence.py proves at the tensor level.
+        """
+        self.pool.release(request.uid)
+        request.kv_len = 0
+        request.preempt_count += 1
+        self.running.remove(request)
+        self.waiting.insert(0, request)
+        if isinstance(self.policy, RecordingPolicy):
+            self.policy.record(self.step_index, Event.PREEMPT_RC, request.uid)
 
     def step(self) -> bool:
         """Run one scheduler step. Returns False when there is nothing left."""
@@ -110,15 +213,13 @@ class Scheduler:
             return False
 
         state = self._state()
-        admitted: list[Request] = []
         for request in list(self.waiting):
-            if self.policy.admit(state, request.uid, self._blocks_needed(request)):
-                self.waiting.remove(request)
-                self.pool.create(request.uid)
-                self.pool.reserve(request.uid, len(request.prompt) + request.max_new_tokens)
-                self.running.append(request)
-                admitted.append(request)
-                state = self._state()
+            if not self.policy.admit(state, request.uid, self._blocks_needed(request)):
+                continue
+            self.waiting.remove(request)
+            self._admit(request, state)
+            self.running.append(request)
+            state = self._state()
 
         if not self.running:
             # Nothing could be admitted and nothing is running: the pool cannot
@@ -128,37 +229,46 @@ class Scheduler:
                 "and nothing running to free them"
             )
 
-        # Prefill and decode ride in the same packed batch. A request that has
-        # not finished its prompt contributes a chunk of it; one that has
-        # contributes its single most recent token.
+        # Preemption, before any work is packed. A preempted request loses its
+        # blocks and its KV; recompute rebuilds them from the context, which is
+        # sound exactly because decode-produced KV is bit-identical to
+        # prefill-produced KV (architecture doc 4.1).
+        for request in list(self.running):
+            if request.kv_len == 0 or not request.generated:
+                continue
+            if self.policy.should_preempt(state, request.uid):
+                self._preempt(request)
+                state = self._state()
+
+        if not self.running:
+            self.step_index += 1
+            return True
+
+        # Prefill and decode ride in the same packed batch, through one code
+        # path: a decode step is a prefill of one token at the end of the
+        # context, so there is no second path for it to diverge from.
         work: list[tuple[str, list[int], int]] = []
-        chunking: list[str] = []
         for request in self.running:
-            if not request.prefill_complete():
-                remaining = len(request.prompt) - request.prefilled
-                take = self.policy.chunk_boundary(state, request.uid, remaining)
-                if not 1 <= take <= remaining:
-                    raise ValueError(
-                        f"policy {self.policy.name} returned chunk {take} for "
-                        f"{request.uid} with {remaining} remaining; must be in [1, remaining]"
-                    )
-                start = request.prefilled
-                work.append((request.uid, request.prompt[start : start + take], start))
-                if start + take < len(request.prompt):
-                    chunking.append(request.uid)
-            else:
-                work.append((request.uid, [request.generated[-1]], request.total_tokens() - 1))
+            context = request.context()
+            remaining = len(context) - request.kv_len
+            take = self.policy.chunk_boundary(state, request.uid, remaining)
+            if not 1 <= take <= remaining:
+                raise ValueError(
+                    f"policy {self.policy.name} returned chunk {take} for "
+                    f"{request.uid} with {remaining} remaining; must be in [1, remaining]"
+                )
+            start = request.kv_len
+            work.append((request.uid, context[start : start + take], start))
 
         logits = self.model.forward_batch(self.pool, work)
 
         emitted: list[tuple[str, int]] = []
         for request, (_, tokens, start) in zip(self.running, work):
-            if not request.prefill_complete():
-                request.prefilled = start + len(tokens)
-                self.pool.sequences[request.uid].length = request.prefilled
-                if not request.prefill_complete():
-                    # Mid-prompt: no token is emitted from a partial prefill.
-                    continue
+            request.kv_len = start + len(tokens)
+            self.pool.sequences[request.uid].length = request.kv_len
+            if request.kv_len < len(request.context()):
+                # Mid-context: this was a partial chunk, so nothing is emitted.
+                continue
             row = logits[request.uid][-1]
             position = request.total_tokens() - 1
             if request.temperature <= 0:
@@ -174,21 +284,23 @@ class Scheduler:
                 )
             request.generated.append(token)
             emitted.append((request.uid, token))
-            self.pool.sequences[request.uid].length = request.total_tokens()
 
         self.trajectory.observe_step(
             step=self.step_index,
             work=work,
             emitted=emitted,
             logits={uid: rows for uid, rows in logits.items()},
-            pool_state=self.pool.state_digest(),
+            pool_state=(
+                self.pool.state_digest(),
+                self.cache.state_digest() if self.cache else (),
+            ),
         )
 
         if self.audit_enabled:
             self.pool.audit()
 
         for request in list(self.running):
-            done = request.prefill_complete() and request.generated and (
+            done = request.generated and (
                 len(request.generated) >= request.max_new_tokens
                 or request.generated[-1] in self.eos
             )
@@ -196,6 +308,14 @@ class Scheduler:
                 request.finished = True
                 self.running.remove(request)
                 self.done.append(request)
+                if self.cache is not None:
+                    # Index whole blocks before releasing, so the cache takes its
+                    # reference while the blocks are still alive.
+                    self.cache.insert(
+                        request.context()[: request.kv_len],
+                        self.pool.sequences[request.uid].block_ids,
+                        self.pool,
+                    )
                 self.pool.release(request.uid)
                 if isinstance(self.policy, RecordingPolicy):
                     self.policy.record(self.step_index, Event.FINISH, request.uid)
