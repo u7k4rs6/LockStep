@@ -16,14 +16,17 @@ import torch
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engine.kv.paged import (  # noqa: E402
-    BLOCK_SIZE,
+    DEFAULT_BLOCK_SIZE,
+    SUPPORTED_BLOCK_SIZES,
     AuditFailure,
     OutOfBlocks,
     PagedKVCache,
 )
 
+BLOCK_SIZE = DEFAULT_BLOCK_SIZE
 
-def pool(num_blocks=16, layers=2, poison=True):
+
+def pool(num_blocks=16, layers=2, poison=True, block_size=DEFAULT_BLOCK_SIZE):
     return PagedKVCache(
         num_blocks=num_blocks,
         num_layers=layers,
@@ -32,15 +35,37 @@ def pool(num_blocks=16, layers=2, poison=True):
         device="cpu",
         dtype=torch.float16,
         poison_on_free=poison,
+        block_size=block_size,
     )
 
 
-def test_block_size_divides_the_kv_tile():
+@pytest.mark.parametrize("block_size", SUPPORTED_BLOCK_SIZES)
+def test_every_supported_block_size_divides_the_kv_tile(block_size):
     """A tile that straddled a block boundary would make the gather order depend
     on layout rather than on logical position."""
     from engine.kernels import registry
 
-    assert registry.KV_TILE % BLOCK_SIZE == 0
+    assert registry.KV_TILE % block_size == 0
+
+
+def test_an_unsupported_block_size_is_refused():
+    with pytest.raises(ValueError, match="does not divide the KV tile"):
+        pool(block_size=48)
+
+
+@pytest.mark.parametrize("block_size", SUPPORTED_BLOCK_SIZES)
+def test_the_ledger_balances_at_every_block_size(block_size):
+    p = pool(num_blocks=32, block_size=block_size)
+    p.create("a")
+    p.reserve("a", block_size * 3 + 1)
+    assert p.sequences["a"].logical_blocks() == 4
+    p.fork("a", "b")
+    p.ensure_writable("b", 0)
+    p.audit()
+    p.release("a")
+    p.release("b")
+    p.audit()
+    assert p.free_blocks == p.num_blocks
 
 
 def test_allocation_is_lowest_free_first_and_not_lifo():

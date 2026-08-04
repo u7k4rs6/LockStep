@@ -37,13 +37,22 @@ import torch
 
 from engine.kernels import registry
 
-BLOCK_SIZE = 16
+# Block size is configuration, not a constant, and it is parameterized now while
+# the allocator is small rather than after the prefix cache lands. The divergence
+# class this project hunts upstream lives at block boundaries: SGLang's open case
+# is prefix_len == block_size at 64, so a harness that can only ever probe one
+# block size cannot reach the boundary that matters.
+DEFAULT_BLOCK_SIZE = 16
 
-assert registry.KV_TILE % BLOCK_SIZE == 0, (
-    f"KV tile {registry.KV_TILE} must be a whole number of {BLOCK_SIZE}-token "
-    "blocks, or a tile would straddle a block boundary and the gather order "
-    "would stop being a function of logical position alone"
-)
+# Sizes the relations are swept over. Each must divide the KV tile, or a tile
+# would straddle a block boundary and the gather order would stop being a
+# function of logical position alone.
+SUPPORTED_BLOCK_SIZES = (8, 16, 32, 64, 128)
+
+for _size in SUPPORTED_BLOCK_SIZES:
+    assert registry.KV_TILE % _size == 0, (
+        f"KV tile {registry.KV_TILE} is not a whole number of {_size}-token blocks"
+    )
 
 # Written into a block when it is freed, so that any read of reclaimed memory
 # perturbs results deterministically instead of returning whatever the previous
@@ -70,9 +79,6 @@ class Sequence:
     def logical_blocks(self) -> int:
         return len(self.block_ids)
 
-    def capacity(self) -> int:
-        return len(self.block_ids) * BLOCK_SIZE
-
 
 class PagedKVCache:
     """A pool of fixed-size KV blocks shared by every live sequence.
@@ -91,13 +97,20 @@ class PagedKVCache:
         device: torch.device | str = "cuda",
         dtype: torch.dtype = torch.float16,
         poison_on_free: bool = True,
+        block_size: int = DEFAULT_BLOCK_SIZE,
     ):
+        if registry.KV_TILE % block_size != 0:
+            raise ValueError(
+                f"block_size {block_size} does not divide the KV tile "
+                f"{registry.KV_TILE}; a tile would straddle a block boundary"
+            )
+        self.block_size = block_size
         self.num_blocks = num_blocks
         self.num_layers = num_layers
         self.device = torch.device(device)
         self.poison_on_free = poison_on_free
 
-        shape = (num_blocks, BLOCK_SIZE, num_kv_heads, head_dim)
+        shape = (num_blocks, block_size, num_kv_heads, head_dim)
         self.k = [torch.zeros(shape, dtype=dtype, device=self.device) for _ in range(num_layers)]
         self.v = [torch.zeros(shape, dtype=dtype, device=self.device) for _ in range(num_layers)]
 
@@ -152,7 +165,7 @@ class PagedKVCache:
     def reserve(self, uid: str, total_tokens: int) -> None:
         """Grow `uid` so it can hold `total_tokens`. Does not shrink."""
         sequence = self.sequences[uid]
-        needed = -(-total_tokens // BLOCK_SIZE)
+        needed = -(-total_tokens // self.block_size)
         while sequence.logical_blocks() < needed:
             sequence.block_ids.append(self._take_block())
 
@@ -264,4 +277,5 @@ class PagedKVCache:
                 for uid in sorted(self.sequences)
             ),
             tuple(sorted(self.stats.items())),
+            self.block_size,
         )
