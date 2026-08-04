@@ -221,6 +221,34 @@ def stable_softmax_fp64(x: torch.Tensor) -> torch.Tensor:
     return e / e.sum(dim=-1, keepdim=True)
 
 
+
+def page(k, v, shuffle_seed=None):
+    """Lay contiguous [kv_len, heads, dim] K/V into a paged pool.
+
+    Returns (k_cache, v_cache, block_table, kv_len). With `shuffle_seed`, the
+    physical blocks are permuted, which is the realistic state after a pool has
+    been allocated and freed a few times and is what the invariance test needs.
+    """
+    from engine.kv.paged import BLOCK_SIZE
+
+    kv_len, heads, dim = k.shape
+    nblocks = -(-kv_len // BLOCK_SIZE)
+    order = list(range(nblocks))
+    if shuffle_seed is not None:
+        g = torch.Generator().manual_seed(shuffle_seed)
+        order = torch.randperm(nblocks, generator=g).tolist()
+
+    k_cache = torch.zeros((nblocks, BLOCK_SIZE, heads, dim), dtype=k.dtype, device=k.device)
+    v_cache = torch.zeros_like(k_cache)
+    for logical in range(nblocks):
+        lo = logical * BLOCK_SIZE
+        hi = min(lo + BLOCK_SIZE, kv_len)
+        k_cache[order[logical], : hi - lo] = k[lo:hi]
+        v_cache[order[logical], : hi - lo] = v[lo:hi]
+    table = torch.tensor(order, dtype=torch.int32, device=k.device)
+    return k_cache, v_cache, table, kv_len
+
+
 def naive_attention_fp64(q, k, v, q_start, sm_scale):
     q_len, n_heads, head_dim = q.shape
     kv_len, n_kv_heads, _ = k.shape
@@ -248,7 +276,8 @@ def test_attention_matches_fp64_across_split_boundaries(kv_len):
     v = randn(kv_len, n_kv_heads, head_dim)
     q = randn(kv_len, n_heads, head_dim)
 
-    got = attention(q, k, v, q_start=0, sm_scale=sm_scale).to(torch.float64)
+    kc, vc, table, _ = page(k, v)
+    got = attention(q, kc, vc, table, q_start=0, kv_len=kv_len, sm_scale=sm_scale).to(torch.float64)
     want = naive_attention_fp64(q, k, v, 0, sm_scale)
     assert (got - want).abs().max() < 2e-2
 
@@ -262,7 +291,10 @@ def test_attention_decode_step_matches_fp64():
     v = randn(kv_len, n_kv_heads, head_dim)
     q = randn(1, n_heads, head_dim)
 
-    got = attention(q, k, v, q_start=kv_len - 1, sm_scale=sm_scale).to(torch.float64)
+    kc, vc, table, _ = page(k, v)
+    got = attention(
+        q, kc, vc, table, q_start=kv_len - 1, kv_len=kv_len, sm_scale=sm_scale
+    ).to(torch.float64)
     want = naive_attention_fp64(q, k, v, kv_len - 1, sm_scale)
     assert (got - want).abs().max() < 2e-2
 
@@ -282,13 +314,15 @@ def test_attention_query_row_is_independent_of_the_query_tile_it_lands_in():
     v = randn(kv_len, n_kv_heads, head_dim)
     q = randn(kv_len, n_heads, head_dim)
 
-    full = attention(q, k, v, q_start=0, sm_scale=sm_scale)
+    kc, vc, table, _ = page(k, v)
+    full = attention(q, kc, vc, table, q_start=0, kv_len=kv_len, sm_scale=sm_scale)
     for position in (0, 1, 15, 16, 17, 511, 512, 599):
+        kc1, vc1, table1, _ = page(k[: position + 1], v[: position + 1])
         alone = attention(
             q[position : position + 1],
-            k[: position + 1],
-            v[: position + 1],
+            kc1, vc1, table1,
             q_start=position,
+            kv_len=position + 1,
             sm_scale=sm_scale,
         )
         assert torch.equal(alone[0], full[position]), f"query row {position} moved"
@@ -299,5 +333,29 @@ def test_attention_refuses_a_kv_length_past_the_pinned_ceiling():
     kv_len = (ceiling + 1) * registry.SPLIT_SIZE
     q = torch.zeros(1, 16, 128, dtype=torch.float16, device="cuda")
     k = torch.zeros(kv_len, 8, 128, dtype=torch.float16, device="cuda")
+    kc, vc, table, _ = page(k, k)
     with pytest.raises(AssertionError, match="MAX_SPLITS"):
-        attention(q, k, k, q_start=kv_len - 1, sm_scale=1.0)
+        attention(q, kc, vc, table, q_start=kv_len - 1, kv_len=kv_len, sm_scale=1.0)
+
+
+@pytest.mark.parametrize("kv_len", [64, 512, 600, 1024])
+def test_attention_is_bit_identical_under_a_shuffled_block_table(kv_len):
+    """Paging must move bytes, never the order they are combined in.
+
+    The same logical sequence laid out in ascending physical blocks and in a
+    permuted set must produce identical bits. If this fails, the gather has
+    become order-dependent and every downstream invariance claim is void.
+    """
+    n_heads, n_kv_heads, head_dim = 16, 8, 128
+    sm_scale = head_dim**-0.5
+    k = randn(kv_len, n_kv_heads, head_dim)
+    v = randn(kv_len, n_kv_heads, head_dim)
+    q = randn(kv_len, n_heads, head_dim)
+
+    kc_a, vc_a, table_a, _ = page(k, v)
+    kc_b, vc_b, table_b, _ = page(k, v, shuffle_seed=99)
+    assert not torch.equal(table_a, table_b), "the shuffle did not shuffle anything"
+
+    out_a = attention(q, kc_a, vc_a, table_a, q_start=0, kv_len=kv_len, sm_scale=sm_scale)
+    out_b = attention(q, kc_b, vc_b, table_b, q_start=0, kv_len=kv_len, sm_scale=sm_scale)
+    assert torch.equal(out_a, out_b)

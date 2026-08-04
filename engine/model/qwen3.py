@@ -39,6 +39,7 @@ from pathlib import Path
 import torch
 
 from engine.kernels import registry
+from engine.kv import paged
 from engine.kernels.attention import attention
 from engine.kernels.gemm import linear
 from engine.kernels.rmsnorm import rmsnorm
@@ -46,6 +47,34 @@ from engine.kernels.rope import apply_rope
 from engine.kernels.swiglu import swiglu
 
 ENGINE_DTYPE = torch.float16
+
+
+def write_kv(
+    pool: "paged.PagedKVCache",
+    uid: str,
+    layer: int,
+    start_pos: int,
+    k: torch.Tensor,
+    v: torch.Tensor,
+) -> None:
+    """Scatter freshly computed K and V into their paged slots.
+
+    Written position by block rather than as one slice, because a sequence's
+    logical positions are contiguous while its physical blocks are not. The
+    scatter is a pure function of (start_pos, block table), so it carries no
+    batch-derived quantity.
+    """
+    table = pool.sequences[uid].block_ids
+    written = 0
+    total = k.shape[0]
+    while written < total:
+        position = start_pos + written
+        logical, slot = divmod(position, paged.BLOCK_SIZE)
+        take = min(paged.BLOCK_SIZE - slot, total - written)
+        physical = table[logical]
+        pool.k[layer][physical, slot : slot + take] = k[written : written + take]
+        pool.v[layer][physical, slot : slot + take] = v[written : written + take]
+        written += take
 
 
 @dataclass(frozen=True)
@@ -83,25 +112,34 @@ class Qwen3Config:
 
 
 class KVCache:
-    """One contiguous K and V tensor per layer, for one sequence.
+    """A single-sequence view onto a PagedKVCache, for batch-1 paths.
 
-    Week 2 replaces this with a paged block table and refcounts. The interface
-    kept here is deliberately minimal so that replacement is not a rewrite of the
-    forward pass.
+    Week 1's contiguous per-layer tensors are gone; the pool is the storage now.
+    This wrapper exists so that batch-1 callers (bench/fidelity.py, the ablation
+    harness) do not each have to build a pool and a block table by hand, and so
+    that they exercise the same paged read path the scheduler uses rather than a
+    second one kept alive for convenience.
     """
 
     def __init__(self, cfg: Qwen3Config, max_len: int, device: torch.device):
-        shape = (max_len, cfg.num_key_value_heads, cfg.head_dim)
-        self.k = [
-            torch.zeros(shape, dtype=ENGINE_DTYPE, device=device)
-            for _ in range(cfg.num_hidden_layers)
-        ]
-        self.v = [
-            torch.zeros(shape, dtype=ENGINE_DTYPE, device=device)
-            for _ in range(cfg.num_hidden_layers)
-        ]
+        blocks = -(-max_len // paged.BLOCK_SIZE)
+        self.pool = paged.PagedKVCache(
+            num_blocks=blocks,
+            num_layers=cfg.num_hidden_layers,
+            num_kv_heads=cfg.num_key_value_heads,
+            head_dim=cfg.head_dim,
+            device=device,
+            dtype=ENGINE_DTYPE,
+        )
+        self.uid = "seq"
+        self.pool.create(self.uid)
+        self.pool.reserve(self.uid, max_len)
         self.max_len = max_len
         self.length = 0
+
+    @property
+    def block_table(self) -> torch.Tensor:
+        return self.pool.block_table(self.uid)
 
     def reset(self) -> None:
         self.length = 0
@@ -160,11 +198,34 @@ class Qwen3:
         so the cast is exact for every value inside fp16's normal range; values
         below it would flush, and `weight_cast_report` counts them so the number
         is measured rather than asserted.
+
+        Tied embeddings: the config sets `tie_word_embeddings`, and this
+        checkpoint nonetheless ships a separate `lm_head.weight` holding a
+        bitwise-identical copy of `model.embed_tokens.weight`. Materializing both
+        costs 311 MB of fp16 VRAM for a duplicate, which is not affordable next to
+        a paged KV budget on 8 GB. The duplicate is dropped and lm_head is aliased
+        to the embedding, but only after the two are verified identical, because
+        aliasing on the strength of a config flag alone would silently use the
+        wrong weights on any checkpoint where they had diverged.
         """
         from safetensors.torch import load_file
 
         raw = load_file(str(path), device="cpu")
         self.checkpoint_dtype = str(next(iter(raw.values())).dtype)
+
+        tie = (
+            self.cfg.tie_word_embeddings
+            and "lm_head.weight" in raw
+            and "model.embed_tokens.weight" in raw
+        )
+        if tie:
+            if not torch.equal(raw["lm_head.weight"], raw["model.embed_tokens.weight"]):
+                raise ValueError(
+                    "config sets tie_word_embeddings but lm_head.weight and "
+                    "model.embed_tokens.weight differ in this checkpoint; refusing "
+                    "to alias them"
+                )
+            del raw["lm_head.weight"]
 
         # Measured while streaming, one tensor at a time, and the raw checkpoint
         # is released as we go. This machine has ~5 GB of headroom and the
@@ -192,18 +253,21 @@ class Qwen3:
 
             weights[name] = cast.to(self.device).contiguous()
 
+        if self.cfg.tie_word_embeddings and "lm_head.weight" not in weights:
+            weights["lm_head.weight"] = weights["model.embed_tokens.weight"]
+
         self._cast_report = {
             "checkpoint_dtype": self.checkpoint_dtype,
             "engine_dtype": str(ENGINE_DTYPE),
-            "elements": elements,
+            "distinct_elements": elements,
+            "tied_lm_head": tie,
+            "duplicate_elements_dropped": (
+                weights["model.embed_tokens.weight"].numel() if tie else 0
+            ),
             "elements_not_exactly_representable": inexact,
             "max_abs_error": max_abs,
             "max_rel_error": max_rel,
         }
-
-        if self.cfg.tie_word_embeddings and "lm_head.weight" not in weights:
-            weights["lm_head.weight"] = weights["model.embed_tokens.weight"]
-
         return weights
 
     def weight_cast_report(self) -> dict[str, object]:
@@ -263,14 +327,15 @@ class Qwen3:
             q = apply_rope(q.contiguous(), cos, sin)
             k = apply_rope(k.contiguous(), cos, sin)
 
-            cache.k[layer][start_pos:kv_len] = k
-            cache.v[layer][start_pos:kv_len] = v
+            write_kv(cache.pool, cache.uid, layer, start_pos, k, v)
 
             attn = attention(
                 q,
-                cache.k[layer][:kv_len],
-                cache.v[layer][:kv_len],
+                cache.pool.k[layer],
+                cache.pool.v[layer],
+                cache.block_table,
                 q_start=start_pos,
+                kv_len=kv_len,
                 sm_scale=self.sm_scale,
             )
 
@@ -293,6 +358,102 @@ class Qwen3:
 
         h = rmsnorm(h, self._w("model.norm.weight"), cfg.rms_norm_eps, "rmsnorm.hidden")
         return linear(h, self._w("lm_head.weight"), config="gemm.lm_head")
+
+    def forward_batch(
+        self,
+        pool: "paged.PagedKVCache",
+        work: list[tuple[str, list[int], int]],
+    ) -> dict[str, torch.Tensor]:
+        """Run several sequences in one launch. Returns logits per uid.
+
+        `work` is a list of (uid, token_ids, start_pos). Tokens from every
+        sequence are packed into one flat batch, so the GEMMs see an M that
+        depends on what else is resident. That is exactly the dependence I1
+        forbids from reaching a kernel config, and the reason the GEMM looks up
+        its config by name: M changes the grid, never the blocking.
+
+        Attention runs per sequence rather than over the packed batch. That is
+        not a concession: each sequence has its own block table, its own kv_len,
+        and its own causal structure, and a fused kernel would have to take a
+        batch-max sequence length to size anything shared. Looping keeps every
+        reduction a function of one request's own state.
+        """
+        cfg = self.cfg
+        packed = torch.tensor(
+            [t for _, tokens, _ in work for t in tokens], dtype=torch.long, device=self.device
+        )
+        starts = [start for _, _, start in work]
+        lengths = [len(tokens) for _, tokens, _ in work]
+        offsets = [0]
+        for length in lengths:
+            offsets.append(offsets[-1] + length)
+
+        positions = torch.tensor(
+            [start + i for (_, tokens, start) in work for i in range(len(tokens))],
+            dtype=torch.long,
+            device=self.device,
+        )
+        cos = self.cos[positions]
+        sin = self.sin[positions]
+
+        total = packed.shape[0]
+        h = self._w("model.embed_tokens.weight")[packed]
+
+        for layer in range(cfg.num_hidden_layers):
+            p = f"model.layers.{layer}"
+
+            normed = rmsnorm(
+                h, self._w(f"{p}.input_layernorm.weight"), cfg.rms_norm_eps, "rmsnorm.hidden"
+            )
+            q = linear(normed, self._w(f"{p}.self_attn.q_proj.weight")).view(
+                total, cfg.num_attention_heads, cfg.head_dim
+            )
+            k = linear(normed, self._w(f"{p}.self_attn.k_proj.weight")).view(
+                total, cfg.num_key_value_heads, cfg.head_dim
+            )
+            v = linear(normed, self._w(f"{p}.self_attn.v_proj.weight")).view(
+                total, cfg.num_key_value_heads, cfg.head_dim
+            )
+
+            q = rmsnorm(q, self._w(f"{p}.self_attn.q_norm.weight"), cfg.rms_norm_eps, "rmsnorm.head")
+            k = rmsnorm(k, self._w(f"{p}.self_attn.k_norm.weight"), cfg.rms_norm_eps, "rmsnorm.head")
+            q = apply_rope(q.contiguous(), cos, sin)
+            k = apply_rope(k.contiguous(), cos, sin)
+
+            attn = torch.empty_like(q)
+            for index, (uid, tokens, start) in enumerate(work):
+                lo, hi = offsets[index], offsets[index + 1]
+                kv_len = start + len(tokens)
+                write_kv(pool, uid, layer, start, k[lo:hi], v[lo:hi])
+                attn[lo:hi] = attention(
+                    q[lo:hi],
+                    pool.k[layer],
+                    pool.v[layer],
+                    pool.block_table(uid),
+                    q_start=start,
+                    kv_len=kv_len,
+                    sm_scale=self.sm_scale,
+                )
+
+            h = h + linear(
+                attn.reshape(total, cfg.num_attention_heads * cfg.head_dim),
+                self._w(f"{p}.self_attn.o_proj.weight"),
+            )
+            normed = rmsnorm(
+                h, self._w(f"{p}.post_attention_layernorm.weight"), cfg.rms_norm_eps,
+                "rmsnorm.hidden",
+            )
+            gate = linear(normed, self._w(f"{p}.mlp.gate_proj.weight"))
+            up = linear(normed, self._w(f"{p}.mlp.up_proj.weight"))
+            h = h + linear(swiglu(gate, up), self._w(f"{p}.mlp.down_proj.weight"))
+
+        h = rmsnorm(h, self._w("model.norm.weight"), cfg.rms_norm_eps, "rmsnorm.hidden")
+        logits = linear(h, self._w("lm_head.weight"), config="gemm.lm_head")
+
+        return {
+            uid: logits[offsets[i] : offsets[i + 1]]
+            for i, (uid, _, _) in enumerate(work)
+        }
 
     # -- decode ---------------------------------------------------------------
 

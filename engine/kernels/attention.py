@@ -57,6 +57,7 @@ def _attn_split_kernel(
     Q,
     K,
     V,
+    BlockTable,
     Acc,
     MPart,
     LPart,
@@ -67,9 +68,11 @@ def _attn_split_kernel(
     stride_qt,
     stride_qh,
     stride_qd,
+    stride_kb,
     stride_kt,
     stride_kh,
     stride_kd,
+    stride_vb,
     stride_vt,
     stride_vh,
     stride_vd,
@@ -81,6 +84,7 @@ def _attn_split_kernel(
     stride_mh,
     stride_ms,
     GQA_GROUP: tl.constexpr,
+    KV_BLOCK: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_D: tl.constexpr,
@@ -128,8 +132,20 @@ def _attn_split_kernel(
             offs_n = n0 + tl.arange(0, BLOCK_N)
             n_valid = offs_n < split_end
 
+            # Paged gather. The logical position decides both which physical
+            # block to read and where inside it, so the set of (key, value)
+            # pairs this tile sums is a function of logical position alone.
+            # Paging moves where the bytes live, never the order they are
+            # combined in: KV_BLOCK divides BLOCK_N, so a tile is a whole number
+            # of blocks walked in ascending logical order.
+            phys = tl.load(
+                BlockTable + offs_n // KV_BLOCK, mask=n_valid, other=0
+            ).to(tl.int32)
+            slot = offs_n % KV_BLOCK
+            kv_base = phys[:, None] * stride_kb + slot[:, None] * stride_kt
+
             k = tl.load(
-                K + offs_n[:, None] * stride_kt + kv_head * stride_kh + offs_d[None, :] * stride_kd,
+                K + kv_base + kv_head * stride_kh + offs_d[None, :] * stride_kd,
                 mask=n_valid[:, None],
                 other=0.0,
             )
@@ -143,7 +159,8 @@ def _attn_split_kernel(
             p = tl.exp(qk - m_new[:, None])
 
             v = tl.load(
-                V + offs_n[:, None] * stride_vt + kv_head * stride_vh + offs_d[None, :] * stride_vd,
+                V + phys[:, None] * stride_vb + slot[:, None] * stride_vt
+                + kv_head * stride_vh + offs_d[None, :] * stride_vd,
                 mask=n_valid[:, None],
                 other=0.0,
             )
@@ -243,32 +260,44 @@ def _num_splits(kv_len: int) -> int:
 
 def attention(
     q: torch.Tensor,
-    k: torch.Tensor,
-    v: torch.Tensor,
+    k_cache: torch.Tensor,
+    v_cache: torch.Tensor,
+    block_table: torch.Tensor,
     q_start: int,
+    kv_len: int,
     sm_scale: float,
 ) -> torch.Tensor:
-    """Causal attention for one sequence.
+    """Causal attention for one sequence over paged KV.
 
-    q is [q_len, n_heads, head_dim]; k and v are [kv_len, n_kv_heads, head_dim]
-    holding the whole sequence's keys and values. `q_start` is the position of
-    q[0] in the sequence, so prefill passes 0 and a decode step passes
-    kv_len - 1. Chunked prefill will pass an arbitrary interior offset, and the
-    invariant is that doing so changes nothing.
+    q is [q_len, n_heads, head_dim]. k_cache and v_cache are the shared pools,
+    [num_blocks, KV_BLOCK, n_kv_heads, head_dim]. `block_table` maps this
+    sequence's logical blocks to physical ones, and `kv_len` is how many of its
+    logical positions are populated. `q_start` is the position of q[0], so
+    prefill passes 0 and a decode step passes kv_len - 1.
 
-    Multi-sequence dispatch is week 2's paged KV work and is deliberately absent.
+    Paging changes which addresses are read. It does not change the split
+    structure, the tile size, the traversal order, or the fold, so a sequence's
+    output is identical whether its blocks are contiguous or scattered. The test
+    suite asserts exactly that against a deliberately shuffled block table.
     """
     split_cfg = registry.get("attention.split")
     combine_cfg = registry.get("attention.combine")
 
     q_len, n_heads, head_dim = q.shape
-    kv_len, n_kv_heads, head_dim_k = k.shape
+    num_blocks, kv_block, n_kv_heads, head_dim_k = k_cache.shape
     assert head_dim == head_dim_k == split_cfg.constants["BLOCK_D"]
-    assert k.shape == v.shape
+    assert k_cache.shape == v_cache.shape
     assert n_heads % n_kv_heads == 0, "GQA needs the head count to divide evenly"
+    assert split_cfg.constants["BLOCK_N"] % kv_block == 0, (
+        f"KV tile {split_cfg.constants['BLOCK_N']} must be a whole number of "
+        f"{kv_block}-token blocks"
+    )
     assert q_start + q_len == kv_len, (
         f"q_start={q_start} q_len={q_len} does not end at kv_len={kv_len}; "
         "queries must be the tail of the keys they attend to"
+    )
+    assert block_table.numel() * kv_block >= kv_len, (
+        f"block table holds {block_table.numel()} blocks, too few for kv_len={kv_len}"
     )
 
     gqa_group = n_heads // n_kv_heads
@@ -286,14 +315,15 @@ def attention(
     l_part = torch.empty((q_len, n_heads, splits), dtype=torch.float32, device=q.device)
 
     _attn_split_kernel[(triton.cdiv(q_len, block_m), splits, n_heads)](
-        q, k, v, acc, m_part, l_part,
+        q, k_cache, v_cache, block_table, acc, m_part, l_part,
         q_len, kv_len, q_start, sm_scale,
         q.stride(0), q.stride(1), q.stride(2),
-        k.stride(0), k.stride(1), k.stride(2),
-        v.stride(0), v.stride(1), v.stride(2),
+        k_cache.stride(0), k_cache.stride(1), k_cache.stride(2), k_cache.stride(3),
+        v_cache.stride(0), v_cache.stride(1), v_cache.stride(2), v_cache.stride(3),
         acc.stride(0), acc.stride(1), acc.stride(2), acc.stride(3),
         m_part.stride(0), m_part.stride(1), m_part.stride(2),
         GQA_GROUP=gqa_group,
+        KV_BLOCK=kv_block,
         BLOCK_M=block_m,
         BLOCK_N=split_cfg.constants["BLOCK_N"],
         BLOCK_D=head_dim,

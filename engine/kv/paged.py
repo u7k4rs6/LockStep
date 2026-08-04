@@ -1,0 +1,267 @@
+"""Paged KV: block table, refcounted blocks, copy-on-write fork, allocator.
+
+docs/02-technical-architecture.md section 6 puts this under `engine/kv/`. The
+PRD's must-have row: "paged KV with block table and refcounts", and "refcounted
+blocks with copy-on-write".
+
+Determinism requirements this file has to meet, since it sits under the
+invariance claim:
+
+  * **Allocation is a pure function of the request sequence.** The free pool
+    hands out the lowest free block id, always. Not a LIFO stack, whose order
+    depends on free order, and not a set, whose iteration order is an
+    implementation detail. Two runs issuing the same operations get the same
+    physical blocks, which is what makes a trajectory hash over allocator state
+    meaningful rather than noise.
+  * **Which block to *evict* is a policy decision** and lives in
+    `engine/sched/policy.py`. This module never chooses a victim; it only
+    reports what is evictable. Allocation from the free pool is not a scheduler
+    decision and so is settled here.
+  * **Block size divides the attention KV tile.** A 128-token tile spans exactly
+    128/16 = 8 physical blocks, gathered in ascending logical order, so paging
+    changes which addresses are read and never the order they are summed in.
+
+The mutation operators in architecture doc section 10.1 target this file
+directly: refcount incremented twice on fork, decrement missing on free, a block
+freed while the cache index still holds it, COW copying without bumping the
+refcount and bumping without copying. `audit()` is the observer those mutants
+have to survive, so it checks the ledger rather than the happy path.
+"""
+
+from __future__ import annotations
+
+import heapq
+from dataclasses import dataclass, field
+
+import torch
+
+from engine.kernels import registry
+
+BLOCK_SIZE = 16
+
+assert registry.KV_TILE % BLOCK_SIZE == 0, (
+    f"KV tile {registry.KV_TILE} must be a whole number of {BLOCK_SIZE}-token "
+    "blocks, or a tile would straddle a block boundary and the gather order "
+    "would stop being a function of logical position alone"
+)
+
+# Written into a block when it is freed, so that any read of reclaimed memory
+# perturbs results deterministically instead of returning whatever the previous
+# tenant left (architecture doc 10.2, freed-block poisoning).
+POISON = float("nan")
+
+
+class OutOfBlocks(RuntimeError):
+    """The pool is exhausted and the policy did not free anything."""
+
+
+class AuditFailure(AssertionError):
+    """An internal KV invariant broke. Always checked in debug builds."""
+
+
+@dataclass
+class Sequence:
+    """One request's logical-to-physical block mapping."""
+
+    uid: str
+    block_ids: list[int] = field(default_factory=list)
+    length: int = 0
+
+    def logical_blocks(self) -> int:
+        return len(self.block_ids)
+
+    def capacity(self) -> int:
+        return len(self.block_ids) * BLOCK_SIZE
+
+
+class PagedKVCache:
+    """A pool of fixed-size KV blocks shared by every live sequence.
+
+    Storage is one tensor per layer of shape
+    [num_blocks, BLOCK_SIZE, num_kv_heads, head_dim], so a physical block is a
+    contiguous slice and the attention kernel's gather is a single strided read.
+    """
+
+    def __init__(
+        self,
+        num_blocks: int,
+        num_layers: int,
+        num_kv_heads: int,
+        head_dim: int,
+        device: torch.device | str = "cuda",
+        dtype: torch.dtype = torch.float16,
+        poison_on_free: bool = True,
+    ):
+        self.num_blocks = num_blocks
+        self.num_layers = num_layers
+        self.device = torch.device(device)
+        self.poison_on_free = poison_on_free
+
+        shape = (num_blocks, BLOCK_SIZE, num_kv_heads, head_dim)
+        self.k = [torch.zeros(shape, dtype=dtype, device=self.device) for _ in range(num_layers)]
+        self.v = [torch.zeros(shape, dtype=dtype, device=self.device) for _ in range(num_layers)]
+
+        # Lowest-free-first, so allocation order does not depend on free order.
+        self._free: list[int] = list(range(num_blocks))
+        heapq.heapify(self._free)
+        self.refcount: list[int] = [0] * num_blocks
+        self.sequences: dict[str, Sequence] = {}
+
+        # Counters the trajectory hash covers; they make an off-by-one in the
+        # allocator visible even when the output bits happen to survive it.
+        self.stats = {"allocated": 0, "freed": 0, "cow_copies": 0, "forks": 0}
+
+    # -- pool ----------------------------------------------------------------
+
+    @property
+    def free_blocks(self) -> int:
+        return len(self._free)
+
+    def _take_block(self) -> int:
+        if not self._free:
+            raise OutOfBlocks(
+                f"all {self.num_blocks} blocks are held; the policy must evict or "
+                "preempt before asking for more"
+            )
+        block = heapq.heappop(self._free)
+        assert self.refcount[block] == 0, f"block {block} was free with refcount != 0"
+        self.refcount[block] = 1
+        self.stats["allocated"] += 1
+        return block
+
+    def _release_block(self, block: int) -> None:
+        assert self.refcount[block] > 0, f"releasing block {block} at refcount 0"
+        self.refcount[block] -= 1
+        if self.refcount[block] == 0:
+            if self.poison_on_free:
+                for layer in range(self.num_layers):
+                    self.k[layer][block].fill_(POISON)
+                    self.v[layer][block].fill_(POISON)
+            heapq.heappush(self._free, block)
+            self.stats["freed"] += 1
+
+    # -- sequences -----------------------------------------------------------
+
+    def create(self, uid: str) -> Sequence:
+        if uid in self.sequences:
+            raise KeyError(f"sequence {uid!r} already exists")
+        sequence = Sequence(uid=uid)
+        self.sequences[uid] = sequence
+        return sequence
+
+    def reserve(self, uid: str, total_tokens: int) -> None:
+        """Grow `uid` so it can hold `total_tokens`. Does not shrink."""
+        sequence = self.sequences[uid]
+        needed = -(-total_tokens // BLOCK_SIZE)
+        while sequence.logical_blocks() < needed:
+            sequence.block_ids.append(self._take_block())
+
+    def release(self, uid: str) -> None:
+        sequence = self.sequences.pop(uid)
+        for block in sequence.block_ids:
+            self._release_block(block)
+        sequence.block_ids.clear()
+        sequence.length = 0
+
+    def fork(self, parent_uid: str, child_uid: str) -> Sequence:
+        """Share the parent's blocks copy-on-write.
+
+        Both the refcount bump and the shared block list happen here; a mutant
+        that does one without the other is what `audit` is written to catch.
+        """
+        parent = self.sequences[parent_uid]
+        child = self.create(child_uid)
+        child.block_ids = list(parent.block_ids)
+        child.length = parent.length
+        for block in child.block_ids:
+            self.refcount[block] += 1
+        self.stats["forks"] += 1
+        return child
+
+    def ensure_writable(self, uid: str, logical_block: int) -> int:
+        """Copy-on-write. Returns the physical block `uid` may now write.
+
+        A block with refcount 1 is already private. A shared block is copied into
+        a fresh one, the copy takes the sequence's slot, and the original loses
+        one reference. Both halves happen or neither does.
+        """
+        sequence = self.sequences[uid]
+        old = sequence.block_ids[logical_block]
+        if self.refcount[old] == 1:
+            return old
+
+        new = self._take_block()
+        for layer in range(self.num_layers):
+            self.k[layer][new].copy_(self.k[layer][old])
+            self.v[layer][new].copy_(self.v[layer][old])
+        sequence.block_ids[logical_block] = new
+        self.refcount[old] -= 1
+        self.stats["cow_copies"] += 1
+        return new
+
+    # -- views ---------------------------------------------------------------
+
+    def block_table(self, uid: str) -> torch.Tensor:
+        """Logical-to-physical mapping for `uid`, int32, on the pool's device."""
+        return torch.tensor(
+            self.sequences[uid].block_ids, dtype=torch.int32, device=self.device
+        )
+
+    def evictable(self) -> list[int]:
+        """Blocks held by exactly one sequence and by no other holder.
+
+        Reported, never chosen: choosing is `engine/sched/policy.py`'s job. A
+        mutation operator in the architecture doc makes the eligible set include
+        a running sequence, so this deliberately returns candidates rather than a
+        decision.
+        """
+        return sorted(b for b in range(self.num_blocks) if self.refcount[b] == 1)
+
+    # -- audit ---------------------------------------------------------------
+
+    def audit(self) -> None:
+        """Internal invariants, checked every scheduler step in debug builds.
+
+        Architecture doc 10.2: output bits alone leave too many mutants
+        equivalent, so the ledger is checked directly.
+        """
+        expected = [0] * self.num_blocks
+        for sequence in self.sequences.values():
+            seen = set()
+            for block in sequence.block_ids:
+                if block in seen:
+                    raise AuditFailure(
+                        f"sequence {sequence.uid!r} maps two logical blocks to "
+                        f"physical block {block} without a copy-on-write record"
+                    )
+                seen.add(block)
+                expected[block] += 1
+
+        for block in range(self.num_blocks):
+            if self.refcount[block] != expected[block]:
+                raise AuditFailure(
+                    f"refcount ledger does not balance at block {block}: "
+                    f"refcount {self.refcount[block]}, held by {expected[block]} sequences"
+                )
+
+        free = set(self._free)
+        if len(free) != len(self._free):
+            raise AuditFailure("a block appears in the free pool more than once")
+        for block in range(self.num_blocks):
+            if (self.refcount[block] == 0) != (block in free):
+                raise AuditFailure(
+                    f"block {block} has refcount {self.refcount[block]} but is "
+                    f"{'in' if block in free else 'not in'} the free pool"
+                )
+
+    def state_digest(self) -> tuple:
+        """Allocator state, for the trajectory hash. Order-stable by construction."""
+        return (
+            tuple(self.refcount),
+            tuple(sorted(self._free)),
+            tuple(
+                (uid, tuple(self.sequences[uid].block_ids), self.sequences[uid].length)
+                for uid in sorted(self.sequences)
+            ),
+            tuple(sorted(self.stats.items())),
+        )
