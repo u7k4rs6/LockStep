@@ -229,7 +229,7 @@ def page(k, v, shuffle_seed=None):
     physical blocks are permuted, which is the realistic state after a pool has
     been allocated and freed a few times and is what the invariance test needs.
     """
-    from engine.kv.paged import BLOCK_SIZE
+    from engine.kv.paged import DEFAULT_BLOCK_SIZE as BLOCK_SIZE
 
     kv_len, heads, dim = k.shape
     nblocks = -(-kv_len // BLOCK_SIZE)

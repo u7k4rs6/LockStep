@@ -87,8 +87,15 @@ class Policy:
         raise NotImplementedError
 
     def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
-        """How many prompt tokens to prefill in this step. Week 4."""
-        raise NotYetScheduled("chunked prefill is week 4")
+        """How many prompt tokens to prefill in this step.
+
+        Must return at least 1 and at most `remaining`. The engine imposes no
+        alignment: a policy may return any value in that range, including ones
+        that land mid-block and mid-split, because I2 says the bits must not
+        care. A policy that only ever returned multiples of the block size would
+        make the suite green without testing anything.
+        """
+        raise NotImplementedError
 
     def should_preempt(self, state: SchedulerState, uid: str) -> bool:
         """Week 4."""
@@ -120,6 +127,15 @@ class DefaultPolicy(Policy):
         if len(state.running) >= self.max_running:
             return False
         return blocks_needed <= state.free_blocks
+
+    def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
+        """Prefill the whole remainder. The production heuristic does not chunk.
+
+        Chunking exists to bound step latency, which is week 7's concern. The
+        seam is exercised regardless: FixedChunkPolicy and ArbitraryChunkPolicy
+        drive it in the tests, which is the point of the decision living here.
+        """
+        return remaining
 
 
 class RecordingPolicy(Policy):
@@ -162,3 +178,35 @@ class ReplayPolicy(Policy):
 
     def admit(self, state: SchedulerState, uid: str, blocks_needed: int) -> bool:
         return (state.step, uid) in self._admits
+
+
+class FixedChunkPolicy(DefaultPolicy):
+    """Prefill in fixed-size chunks. The configuration shipped engines test."""
+
+    def __init__(self, chunk: int, max_running: int = 32):
+        super().__init__(max_running=max_running)
+        self.chunk = chunk
+        self.name = f"fixed-chunk({chunk})"
+
+    def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
+        return min(self.chunk, remaining)
+
+
+class ScriptedChunkPolicy(DefaultPolicy):
+    """Prefill along an explicitly given partition.
+
+    Used by MR2 to drive partitions that land exactly on, and one either side of,
+    the block size, the split size, and the sequence end. Those boundaries are
+    where a fencepost lives, and a random partition reaches them only by luck.
+    """
+
+    def __init__(self, partitions: dict[str, list[int]], max_running: int = 32):
+        super().__init__(max_running=max_running)
+        self.partitions = {uid: list(sizes) for uid, sizes in partitions.items()}
+        self.name = "scripted-chunk"
+
+    def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
+        queue = self.partitions.get(uid)
+        if not queue:
+            return remaining
+        return min(queue.pop(0), remaining)

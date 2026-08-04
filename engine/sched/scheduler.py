@@ -47,9 +47,13 @@ class Request:
 
     generated: list[int] = field(default_factory=list)
     finished: bool = False
+    prefilled: int = 0  # prompt tokens whose KV is already in the pool
 
     def total_tokens(self) -> int:
         return len(self.prompt) + len(self.generated)
+
+    def prefill_complete(self) -> bool:
+        return self.prefilled >= len(self.prompt)
 
 
 class Scheduler:
@@ -62,6 +66,7 @@ class Scheduler:
         policy: Policy | None = None,
         eos_token_ids: set[int] | None = None,
         audit: bool = True,
+        block_size: int = paged.DEFAULT_BLOCK_SIZE,
     ):
         self.model = model
         self.policy = policy or DefaultPolicy()
@@ -75,6 +80,7 @@ class Scheduler:
             head_dim=model.cfg.head_dim,
             device=model.device,
             dtype=torch.float16,
+            block_size=block_size,
         )
         self.waiting: list[Request] = []
         self.running: list[Request] = []
@@ -96,7 +102,7 @@ class Scheduler:
 
     def _blocks_needed(self, request: Request) -> int:
         total = len(request.prompt) + request.max_new_tokens
-        return -(-total // paged.BLOCK_SIZE)
+        return -(-total // self.pool.block_size)
 
     def step(self) -> bool:
         """Run one scheduler step. Returns False when there is nothing left."""
@@ -122,17 +128,37 @@ class Scheduler:
                 "and nothing running to free them"
             )
 
+        # Prefill and decode ride in the same packed batch. A request that has
+        # not finished its prompt contributes a chunk of it; one that has
+        # contributes its single most recent token.
         work: list[tuple[str, list[int], int]] = []
+        chunking: list[str] = []
         for request in self.running:
-            if request in admitted:
-                work.append((request.uid, list(request.prompt), 0))
+            if not request.prefill_complete():
+                remaining = len(request.prompt) - request.prefilled
+                take = self.policy.chunk_boundary(state, request.uid, remaining)
+                if not 1 <= take <= remaining:
+                    raise ValueError(
+                        f"policy {self.policy.name} returned chunk {take} for "
+                        f"{request.uid} with {remaining} remaining; must be in [1, remaining]"
+                    )
+                start = request.prefilled
+                work.append((request.uid, request.prompt[start : start + take], start))
+                if start + take < len(request.prompt):
+                    chunking.append(request.uid)
             else:
                 work.append((request.uid, [request.generated[-1]], request.total_tokens() - 1))
 
         logits = self.model.forward_batch(self.pool, work)
 
         emitted: list[tuple[str, int]] = []
-        for request in self.running:
+        for request, (_, tokens, start) in zip(self.running, work):
+            if not request.prefill_complete():
+                request.prefilled = start + len(tokens)
+                self.pool.sequences[request.uid].length = request.prefilled
+                if not request.prefill_complete():
+                    # Mid-prompt: no token is emitted from a partial prefill.
+                    continue
             row = logits[request.uid][-1]
             position = request.total_tokens() - 1
             if request.temperature <= 0:
@@ -162,7 +188,7 @@ class Scheduler:
             self.pool.audit()
 
         for request in list(self.running):
-            done = (
+            done = request.prefill_complete() and request.generated and (
                 len(request.generated) >= request.max_new_tokens
                 or request.generated[-1] in self.eos
             )
