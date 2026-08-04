@@ -258,6 +258,31 @@ class PreemptAtStepPolicy(DefaultPolicy):
         return True
 
 
+class PreemptAtStepsPolicy(DefaultPolicy):
+    """Preempt one request at several named steps, for depth sweeps.
+
+    Preemption depth is a coverage dimension in architecture doc 8.2, up to 3.
+    Depth matters because preempt-resume-preempt is where allocator state gets
+    interesting: a block freed by the first preemption can be reallocated to
+    another request and then be needed again by the second.
+    """
+
+    def __init__(self, uid: str, at_steps: tuple[int, ...], max_running: int = 32):
+        super().__init__(max_running=max_running)
+        self.uid = uid
+        self.at_steps = set(at_steps)
+        self.fired_at: list[int] = []
+        self.name = f"preempt({uid}@{sorted(at_steps)})"
+
+    def should_preempt(self, state: SchedulerState, uid: str) -> bool:
+        if uid != self.uid or state.step not in self.at_steps:
+            return False
+        if state.step in self.fired_at:
+            return False
+        self.fired_at.append(state.step)
+        return True
+
+
 class NoCacheHitPolicy(DefaultPolicy):
     """Refuse every prefix hit. The cold half of MR4."""
 

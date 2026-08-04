@@ -35,6 +35,7 @@ from dataclasses import dataclass, field
 
 import torch
 
+from engine.audit.counters import Counters
 from engine.kernels import registry
 
 # Block size is configuration, not a constant, and it is parameterized now while
@@ -98,7 +99,9 @@ class PagedKVCache:
         dtype: torch.dtype = torch.float16,
         poison_on_free: bool = True,
         block_size: int = DEFAULT_BLOCK_SIZE,
+        counters: Counters | None = None,
     ):
+        self.counters = counters if counters is not None else Counters()
         if registry.KV_TILE % block_size != 0:
             raise ValueError(
                 f"block_size {block_size} does not divide the KV tile "
@@ -138,6 +141,7 @@ class PagedKVCache:
 
     def _take_block(self) -> int:
         if not self._free:
+            self.counters.hit("out_of_blocks")
             raise OutOfBlocks(
                 f"all {self.num_blocks} blocks are held; the policy must evict or "
                 "preempt before asking for more"
@@ -158,6 +162,7 @@ class PagedKVCache:
                     self.v[layer][block].fill_(POISON)
             heapq.heappush(self._free, block)
             self.stats["freed"] += 1
+            self.counters.hit("block_reclaimed_at_zero")
 
     # -- sequences -----------------------------------------------------------
 
@@ -246,6 +251,7 @@ class PagedKVCache:
         sequence.block_ids[logical_block] = new
         self.refcount[old] -= 1
         self.stats["cow_copies"] += 1
+        self.counters.hit("cow_performed")
         return new
 
     # -- views ---------------------------------------------------------------

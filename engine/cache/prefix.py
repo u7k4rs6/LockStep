@@ -63,6 +63,7 @@ class PrefixCache:
     """
 
     block_size: int
+    counters: object = None
     entries: dict[bytes, CacheEntry] = field(default_factory=dict)
     stats: dict = field(
         default_factory=lambda: {"lookups": 0, "hit_blocks": 0, "inserts": 0, "evictions": 0}
@@ -102,6 +103,8 @@ class PrefixCache:
             entry.hits += 1
             blocks.append(entry.physical_block)
         self.stats["hit_blocks"] += len(blocks)
+        if self.counters is not None:
+            self.counters.hit("cache_hit" if blocks else "cache_miss")
         return len(blocks) * self.block_size, blocks
 
     def insert(self, tokens: list[int], block_ids: list[int], pool) -> int:
@@ -122,6 +125,8 @@ class PrefixCache:
             pool.pin(physical)
             created += 1
         self.stats["inserts"] += created
+        if created and self.counters is not None:
+            self.counters.hit("cache_insert", created)
         return created
 
     def evictable_blocks(self, pool) -> list[int]:
@@ -145,6 +150,8 @@ class PrefixCache:
                 del self.entries[key]
                 pool.unpin(physical_block)
                 self.stats["evictions"] += 1
+                if self.counters is not None:
+                    self.counters.hit("eviction_taken")
                 return True
         return False
 

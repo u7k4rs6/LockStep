@@ -144,14 +144,14 @@ The alphabet in section 2, constrained by feasibility rules (cannot resume a req
 
 Three components, all reported. Coverage is what proves exploration rather than sampling the easy middle.
 
-1. **Lifecycle n-grams.** All feasible 2-grams and 3-grams of per-request events, reported as a percentage of the feasible set
+1. **Lifecycle n-grams.** All feasible 2-grams and 3-grams of per-request events, reported as a percentage of the feasible set. The feasible set is *derived* in `engine/sched/lifecycle.py` by search over a declared transition relation, never hand-listed: a hand-written set can reach 100 percent by having omitted the hard transitions and nothing in the number would show it. Every n-gram a real run produces is checked against the derived set, so a transition the table forgot fails loudly rather than being silently dropped
 2. **Boundary predicates**, each required at value, value minus 1, and value plus 1:
    - chunk end versus block size
    - cache-hit length versus block size (the live SGLang bug is literally `prefix_len == block_size`; make this the poster child)
    - split boundary versus KV length
    - batch size transitions across {1, 2, 3, 4, 8, 16, 31, 32}
    - free-block count in {0, 1, low}
-3. **Preemption depth** per request, up to 3
+3. **Preemption depth** per request, up to 3. MR3 sweeps the preemption point across every decode step at depth 1, and drives depths 2 and 3 explicitly, because preempt-resume-preempt is where allocator state gets interesting: a block freed by the first preemption can be reallocated to another request and then be needed again by the second
 
 ### 8.3 Generation strategy
 
@@ -173,9 +173,9 @@ ddmin (Zeller and Hildebrandt, IEEE TSE 2002) applied in three staged passes: re
 | MR6 | Replay. Identical inputs twice, identical trajectory hash |
 | MR7 | RNG isolation. Deleting request A leaves request B's tokens unchanged |
 | MR8 | Temperature-0 tie-break. Argmax stable under logit-preserving permutations of the batch |
-| MR9 | Mask no-op, fidelity-side. A fully-masked pad region changes nothing within tolerance |
+| MR9 | ~~Mask no-op, fidelity-side~~. **Retired.** The relation assumes an explicit pad region, and this engine packs sequences rather than padding them, so there is no masked region to be a no-op over. MR5 covers the occupancy intent: a cohabitant that only shifts where the packed token count lands against the GEMM tile must leave other requests bitwise unchanged |
 
-MR1 through MR8 run both in-process and black-box. MR9 is in-process only.
+MR1 through MR8 run both in-process and black-box. MR9 is retired; see its row.
 
 ## 10. Mutation testing
 

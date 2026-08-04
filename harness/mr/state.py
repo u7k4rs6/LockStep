@@ -23,12 +23,15 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import torch  # noqa: E402
 
+from engine.audit.counters import Counters  # noqa: E402
 from engine.kv import paged  # noqa: E402
+from engine.audit.counters import require_fired  # noqa: E402
 from engine.sched.policy import (  # noqa: E402
     DefaultPolicy,
     FixedChunkPolicy,
     NoCacheHitPolicy,
     PreemptAtStepPolicy,
+    PreemptAtStepsPolicy,
 )
 from engine.sched.scheduler import Request, Scheduler  # noqa: E402
 
@@ -73,44 +76,61 @@ def run(model, requests, num_blocks, block_size, policy=None, cache=False, audit
 # ---- MR3: preempt and resume ------------------------------------------------
 
 
-def mr3_preempt_resume(model, prompt, kv_tokens, block_size, new_tokens=8) -> Result:
-    """Preemption at *every* decode step leaves the output bitwise unchanged.
+def mr3_preempt_resume(model, prompt, kv_tokens, block_size, new_tokens=16) -> Result:
+    """Preemption at every decode step, and at depths 1, 2, and 3.
 
-    Swept, not sampled: the relation claims any preemption point is free, and
-    testing one point tests one point. Recompute rebuilds the whole context in a
-    single prefill, so this is decode-versus-prefill equivalence exercised
-    through the scheduler rather than directly.
+    Swept, not sampled, in two dimensions. Depth 1 walks the preemption point
+    across every step. Depths 2 and 3 preempt the same request repeatedly, which
+    is where allocator state gets interesting: a block freed by the first
+    preemption can be handed to another request and then be needed again by the
+    second. Architecture doc 8.2 names preemption depth up to 3 as a coverage
+    dimension for exactly that reason.
     """
-    canonical, _ = run(model, [_request("r0", prompt, new_tokens)], blocks_for(kv_tokens, block_size), block_size)
+    blocks = blocks_for(kv_tokens, block_size)
+    canonical, _ = run(model, [_request("r0", prompt, new_tokens)], blocks, block_size)
     expected = canonical["r0"]
 
     cases = []
     passed = True
-    for step in range(new_tokens + 2):
-        policy = PreemptAtStepPolicy("r0", at_step=step)
+    depth_reached = {0: 0, 1: 0, 2: 0, 3: 0}
+    total = Counters()
+
+    schedules = [((step,), 1) for step in range(new_tokens + 2)]
+    schedules += [((a, b), 2) for a, b in ((1, 3), (2, 5), (4, 9), (1, 8))]
+    schedules += [((a, b, c), 3) for a, b, c in ((1, 3, 5), (2, 5, 9), (1, 6, 12))]
+
+    for steps, intended_depth in schedules:
+        policy = PreemptAtStepsPolicy("r0", at_steps=steps)
         outputs, scheduler = run(
-            model, [_request("r0", prompt, new_tokens)], blocks_for(kv_tokens, block_size), block_size, policy=policy
+            model, [_request("r0", prompt, new_tokens)], blocks, block_size, policy=policy
         )
         identical = outputs.get("r0") == expected
-        fired = policy.fired
+        actual_depth = next(
+            (r.preempt_count for r in scheduler.done if r.uid == "r0"), 0
+        )
+        depth_reached[min(actual_depth, 3)] += 1
+        total.merge(scheduler.counters)
         passed &= identical
         cases.append({
-            "preempt_at_step": step,
-            "preemption_fired": fired,
+            "preempt_at_steps": list(steps),
+            "intended_depth": intended_depth,
+            "depth_reached": actual_depth,
             "identical": identical,
-            "preempt_count": next(
-                (r.preempt_count for r in scheduler.done if r.uid == "r0"), 0
-            ),
         })
 
-    fired_cases = [c for c in cases if c["preemption_fired"]]
+    require_fired(total, "preempt_fired", "resume", what="MR3")
+    if depth_reached[3] == 0:
+        passed = False
     return Result(
         "MR3",
-        "preempt and resume: preemption at any decode step leaves bits unchanged",
+        "preempt and resume: preemption at any depth up to 3 leaves bits unchanged",
         passed,
-        f"{sum(1 for c in cases if c['identical'])}/{len(cases)} preemption points identical "
-        f"to canonical, {len(fired_cases)} of which actually preempted, "
-        f"block_size={block_size}",
+        f"{sum(1 for c in cases if c['identical'])}/{len(cases)} schedules identical to "
+        f"canonical; depth distribution reached "
+        f"{{0: {depth_reached[0]}, 1: {depth_reached[1]}, 2: {depth_reached[2]}, "
+        f"3: {depth_reached[3]}}}"
+        + ("  <- DEPTH 3 NEVER REACHED" if depth_reached[3] == 0 else "")
+        + f", block_size={block_size}",
         cases,
     )
 
@@ -154,6 +174,7 @@ def mr4_cache_cold_vs_warm(model, prompt, kv_tokens, block_size, new_tokens=6) -
 
     cases = []
     passed = True
+    mr4_counters = Counters()
     for write_label, write_policy in writers.items():
         for read_label, read_policy in readers.items():
             scheduler = Scheduler(model, num_blocks=blocks_for(kv_tokens, block_size), policy=write_policy,
@@ -167,6 +188,7 @@ def mr4_cache_cold_vs_warm(model, prompt, kv_tokens, block_size, new_tokens=6) -
             scheduler.run()
             scheduler.pool.audit()
 
+            mr4_counters.merge(scheduler.counters)
             reader = next(r for r in scheduler.done if r.uid == "reader")
             identical = reader.generated == expected
             passed &= identical
@@ -178,6 +200,7 @@ def mr4_cache_cold_vs_warm(model, prompt, kv_tokens, block_size, new_tokens=6) -
             })
 
     hits = sum(1 for c in cases if c["hit_tokens"] > 0)
+    require_fired(mr4_counters, "cache_hit", "cache_insert", what="MR4")
     if hits == 0:
         passed = False
     return Result(
@@ -293,6 +316,7 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
 
     cases = []
     passed = True
+    boundary_counters = Counters()
 
     def record(label, ok, detail=""):
         nonlocal passed
@@ -317,6 +341,7 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
         scheduler.submit(_request("a", second))
         scheduler.run()
         scheduler.pool.audit()
+        boundary_counters.merge(scheduler.counters)
         got = next(r for r in scheduler.done if r.uid == "a")
         expected_hit = (prefix_len // block_size) * block_size
         record(
@@ -381,6 +406,7 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
             scheduler.submit(_request(f"e{index}", tokens(block_size * 2), new_tokens=2))
             scheduler.run()
             scheduler.pool.audit()
+        boundary_counters.merge(scheduler.counters)
     except paged.OutOfBlocks:
         ok = False
     record(
@@ -400,6 +426,7 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
     pool.fork("parent", "child")
     private = pool.ensure_writable("child", 1)
     pool.audit()
+    boundary_counters.merge(pool.counters)
     record(
         "fork with copy-on-write at a block boundary",
         private != pool.sequences["parent"].block_ids[1]
@@ -408,6 +435,8 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
         f"copied logical block 1 into physical {private}",
     )
 
+    require_fired(boundary_counters, "cache_hit", "eviction_taken", "cow_performed",
+                  what="the boundary cases")
     hit_cases = [c for c in cases if "hit" in c["detail"] and "hit 0 " not in c["detail"]]
     if not hit_cases:
         passed = False
