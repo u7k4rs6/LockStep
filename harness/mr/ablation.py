@@ -31,6 +31,8 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import torch  # noqa: E402
 import torch.nn.functional as F  # noqa: E402
+import triton  # noqa: E402
+import triton.language as tl  # noqa: E402
 
 from engine.kv import paged  # noqa: E402
 from engine.model import qwen3  # noqa: E402
@@ -53,11 +55,59 @@ def torch_linear(x, weight, bias=None, config="gemm.default"):
 
 
 def torch_rmsnorm(x, weight, eps, config="rmsnorm.hidden"):
-    """torch's reduction over the last dimension, whose kernel varies with rows."""
+    """torch's reduction over the last dimension.
+
+    Kept in the table but marked not-a-probe: on a 1024-wide row torch uses a
+    single block whatever the batch is, so no batch-derived quantity reaches the
+    reduction and this was never going to go red. See split_reduction_rmsnorm
+    below for the variant that actually breaks.
+    """
     original = x.dtype
     x32 = x.to(torch.float32)
     normed = x32 * torch.rsqrt(x32.pow(2).mean(-1, keepdim=True) + eps)
     return (normed * weight.to(torch.float32)).to(original)
+
+
+@triton.jit
+def _atomic_sumsq_kernel(X, Partial, n_cols, stride_row, SPLIT: tl.constexpr):
+    """Sum of squares accumulated across splits with an atomic add."""
+    row = tl.program_id(0)
+    split = tl.program_id(1)
+    offs = split * SPLIT + tl.arange(0, SPLIT)
+    x = tl.load(X + row * stride_row + offs, mask=offs < n_cols, other=0.0).to(tl.float32)
+    tl.atomic_add(Partial + row, tl.sum(x * x, axis=0))
+
+
+def split_reduction_rmsnorm(x, weight, eps, config="rmsnorm.hidden"):
+    """RMSNorm whose split count is keyed on the batch token count, combined
+    with atomics.
+
+    This is the failure architecture doc section 5 names under "Split-K" and
+    "Fixed split count", applied to a norm rather than a GEMM, and it is the
+    variant the RMSNorm row needed: swapping torch in tested nothing because
+    torch never saw a batch-derived shape.
+
+    Two things are wrong with it at once, and either alone turns I1 red. The
+    split width is read from the batch, so the partition of the reduction
+    changes with cohabitants. And the partials combine through tl.atomic_add,
+    whose summation order is arrival order, so it is not even stable run to run.
+    The static gate in scripts/static_checks.py greps engine/ for tl.atomic_ and
+    would reject this file; it lives under harness/ precisely because it is the
+    thing the gate exists to keep out.
+    """
+    shape = x.shape
+    x2d = x.reshape(-1, shape[-1]).contiguous()
+    rows, cols = x2d.shape
+
+    split = (128, 256, 512, 1024)[_BATCH_TOKENS % 4]
+    partial = torch.zeros(rows, dtype=torch.float32, device=x.device)
+    _atomic_sumsq_kernel[(rows, triton.cdiv(cols, split))](
+        x2d, partial, cols, x2d.stride(0), SPLIT=split, num_warps=4
+    )
+
+    scale = torch.rsqrt(partial / cols + eps)
+    out = x2d.to(torch.float32) * scale[:, None] * weight.to(torch.float32)
+    return out.to(x.dtype).reshape(shape)
 
 
 def torch_attention(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale):
@@ -158,6 +208,12 @@ class Variant:
     attribute: str
     replacement: object
     note: str
+    # A probe tests something only if a batch-derived quantity can reach the op
+    # at all. Where none can, the right answer is a structural argument, not a
+    # green cell: "held" and "no breaking variant exists" are different claims
+    # and a reader cannot tell them apart if both print as held.
+    is_probe: bool = True
+    structural_reason: str = ""
 
 
 VARIANTS = (
@@ -165,14 +221,22 @@ VARIANTS = (
             "torch.matmul / cuBLAS, split-K by shape heuristic"),
     Variant("GEMM (lm_head only)", "linear_lm_head", torch_linear,
             "torch.matmul on the 151936-wide head only"),
-    Variant("RMSNorm", "rmsnorm", torch_rmsnorm,
-            "torch mean reduction over the last dim"),
-    Variant("attention (SDPA)", "attention", torch_attention,
-            "torch scaled_dot_product_attention, backend by shape"),
+    Variant("RMSNorm (split from batch)", "rmsnorm", split_reduction_rmsnorm,
+            "split width from batch token count, partials combined by atomic_add"),
     Variant("attention (split from batch)", "attention", batch_derived_split_attention,
             "split size read from the batch token count, arch doc 5 and 10.1"),
-    Variant("SwiGLU", "swiglu", torch_swiglu,
-            "torch silu/mul, elementwise (expected invariant)"),
+    Variant("RMSNorm (torch)", "rmsnorm", torch_rmsnorm,
+            "torch mean reduction over the last dim", is_probe=False,
+            structural_reason="a 1024-wide row is one block whatever the batch is, "
+                              "so no batch-derived quantity reaches the reduction"),
+    Variant("attention (SDPA)", "attention", torch_attention,
+            "torch scaled_dot_product_attention", is_probe=False,
+            structural_reason="the engine calls attention once per sequence, so SDPA "
+                              "never sees a batch-derived shape"),
+    Variant("SwiGLU (torch)", "swiglu", torch_swiglu,
+            "torch silu/mul", is_probe=False,
+            structural_reason="elementwise: each output reads one gate and one up "
+                              "element, so batching cannot reach it"),
 )
 
 
@@ -291,7 +355,8 @@ def run(weights: Path, num_blocks: int = 512) -> list[dict]:
             "per_profile": results,
         }
 
-    rows = [{**probe_all("none (full invariant set)"), "variant": "-"}]
+    rows = [{**probe_all("none (full invariant set)"), "variant": "-",
+             "is_probe": True, "structural_reason": ""}]
 
     originals = {
         "linear": qwen3.linear,
@@ -319,7 +384,8 @@ def run(weights: Path, num_blocks: int = 512) -> list[dict]:
             for name, function in originals.items():
                 setattr(qwen3, name, function)
 
-        rows.append({**result, "variant": variant.note})
+        rows.append({**result, "variant": variant.note, "is_probe": variant.is_probe,
+                     "structural_reason": variant.structural_reason})
 
     return rows
 
@@ -330,25 +396,40 @@ def format_table(rows: list[dict]) -> str:
         f"batch sizes {list(BATCH_SIZES)}, request r00's logits compared bitwise against its",
         "own batch-1 (canonical) run",
         "",
-        f"{'op swapped':<28} {'I1':<5} {'red in':>13} {'first B':>8} {'first pos':>10} {'max |delta|':>12}",
-        "-" * 80,
+        f"{'op swapped':<28} {'probe?':<8} {'I1':<5} {'red in':>8} {'first B':>8}"
+        f" {'first pos':>10} {'max |delta|':>12}",
+        "-" * 88,
     ]
     for row in rows:
+        if not row.get("is_probe", True):
+            lines.append(f"{row['op']:<28} {'N/A':<8} {'-':<5} {'-':>8} {'-':>8} {'-':>10} {'-':>12}")
+            continue
         verdict = "held" if row["held"] else "RED"
         red_in = "-" if row["held"] else f"{len(row['red_profiles'])}/{len(row['profiles_probed'])}"
         first_b = "-" if row["first_batch_size"] is None else str(row["first_batch_size"])
         first_p = "-" if row["first_position"] is None else str(row["first_position"])
         magnitude = "-" if row["held"] else f"{row['max_abs_divergence']:.4e}"
         lines.append(
-            f"{row['op']:<28} {verdict:<5} {red_in:>13} {first_b:>8} {first_p:>10} {magnitude:>12}"
+            f"{row['op']:<28} {'probe':<8} {verdict:<5} {red_in:>8} {first_b:>8}"
+            f" {first_p:>10} {magnitude:>12}"
         )
     lines.append("")
     lines.append(f"shape profiles probed: {', '.join(PROFILES)} (r00 length differs)")
+    lines.append("")
+    lines.append("probes, one deliberately non-invariant variant each:")
     for row in rows[1:]:
+        if not row.get("is_probe", True):
+            continue
         detail = f"  {row['op']:<28} {row['variant']}"
         if row["red_profiles"] and len(row["red_profiles"]) < len(row["profiles_probed"]):
             detail += f"\n  {'':<28} red only under: {', '.join(row['red_profiles'])}"
         lines.append(detail)
+    lines.append("")
+    lines.append("N/A, no batch-derived quantity can reach the op, so a probe would be theater:")
+    for row in rows[1:]:
+        if row.get("is_probe", True):
+            continue
+        lines.append(f"  {row['op']:<28} {row['structural_reason']}")
     return "\n".join(lines)
 
 
@@ -370,8 +451,10 @@ if __name__ == "__main__":
     print()
     print(f"env  {env.fingerprint()}")
 
-    detected = sum(1 for r in table[1:] if not r["held"])
-    print(f"\nnon-invariant variants detected: {detected}/{len(table) - 1}")
+    probes = [r for r in table[1:] if r.get("is_probe", True)]
+    detected = sum(1 for r in probes if not r["held"])
+    print(f"\nprobes detected: {detected}/{len(probes)}")
+    print(f"not probes (structural argument instead): {len(table) - 1 - len(probes)}")
     print(f"invariant set held: {table[0]['held']}")
 
     if not args.no_artifact:
