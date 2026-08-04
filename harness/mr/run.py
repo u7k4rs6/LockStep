@@ -29,20 +29,33 @@ from harness.mr.relations import (  # noqa: E402
     mr6_cross_process,
     mr6_replay,
     mr7_rng_isolation,
+    replay_workloads,
+)
+from harness.mr.state import (  # noqa: E402
+    boundary_cases,
+    mr3_preempt_resume,
+    mr4_cache_cold_vs_warm,
+    mr5_occupancy,
+    mr8_tiebreak_under_permutation,
 )
 from report.artifact import Artifact, relpath  # noqa: E402
 
 NOT_YET = {
-    "MR3": "preempt and resume; needs recompute preemption (week 4)",
-    "MR4": "cache cold versus warm; needs the prefix cache (week 4)",
-    "MR5": "padding and occupancy; needs the fuzzer (week 5)",
-    "MR8": "temperature-0 tie-break under batch permutation (week 5)",
-    "MR9": "mask no-op, fidelity side (week 4)",
+    "MR9": "mask no-op, fidelity side. Needs an explicit pad region, which this "
+           "engine never materializes: sequences are packed, not padded",
 }
 
 # 600 tokens so that the 512 split boundary is reachable. Below it, every MR2
 # case at split_size is silently skipped and the table looks complete.
 LONG_PROMPT = 600
+
+# Relations are sized by KV tokens, not by block count, so the sweep over block
+# sizes does not also sweep over pool sizes. 4096 tokens is 448 MiB of KV.
+KV_TOKENS = 4096
+
+
+def paged_blocks(kv_tokens: int, block_size: int) -> int:
+    return max(4, -(-kv_tokens // block_size))
 
 
 def workload(vocab: int, count: int = 6, seed: int = 31337) -> list[Request]:
@@ -100,22 +113,44 @@ def main() -> int:
     results = []
     for block_size in args.block_sizes:
         print(f"block_size = {block_size}")
+        short = uneven_prompts(vocab, 5)
         block_results = [
             decode_vs_prefill_kv(model, long_prompt, block_size=block_size),
             mr1_batch_composition(model, uneven_prompts(vocab, 32), block_size=block_size),
             mr2_chunk_partition(model, long_prompt, block_size=block_size),
-            mr6_replay(model, requests, num_blocks=256),
-            mr6_cross_process(model, requests, num_blocks=256, block_size=block_size),
-            mr7_rng_isolation(model, requests, num_blocks=256, extra=extra,
+            mr3_preempt_resume(model, short[0], KV_TOKENS, block_size),
+            mr4_cache_cold_vs_warm(model, short[0], KV_TOKENS, block_size),
+            mr5_occupancy(model, short[0], KV_TOKENS, block_size),
+            mr8_tiebreak_under_permutation(model, short, KV_TOKENS, block_size),
+            mr6_replay(model, requests,
+                       num_blocks=paged_blocks(KV_TOKENS, block_size),
+                       workloads=replay_workloads(vocab)),
+            mr6_cross_process(model, requests,
+                              num_blocks=paged_blocks(KV_TOKENS, block_size),
                               block_size=block_size),
+            mr7_rng_isolation(model, requests,
+                              num_blocks=paged_blocks(KV_TOKENS, block_size),
+                              extra=extra, block_size=block_size),
+            boundary_cases(model, KV_TOKENS, block_size, vocab),
         ]
         for result in block_results:
             mark = "pass" if result.passed else "FAIL"
             print(f"  [{mark}]  {result.relation:<10} {result.detail}")
-            for case in getattr(result, "cases", []) or []:
+            evidence = getattr(result, "cases", None)
+            if evidence is None:
+                evidence = (getattr(result, "evidence", {}) or {}).get("cases", [])
+            for case in evidence or []:
                 if "partition" in case:
                     status = "ok" if case["kv_identical"] and case["logits_identical"] else "DIVERGED"
                     print(f"            {case['partition']:<40} chunks={case['chunks']:<4} {status}")
+                elif "workload" in case:
+                    print(f"            {case['workload']:<40} "
+                          f"{case['requests']:>2} req {case['steps']:>3} steps  "
+                          f"{'ok' if case['identical'] else 'DIVERGED'}")
+                elif "case" in case:
+                    print(f"            {case['case']:<48} "
+                          f"{'ok' if case['ok'] else 'FAIL':<5} {case['detail']}")
+        torch.cuda.empty_cache()
         results.append({"block_size": block_size, "results": block_results})
         print()
 
