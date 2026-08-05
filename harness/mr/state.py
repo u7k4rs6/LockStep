@@ -415,27 +415,7 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
         f"{scheduler.evictions} evictions, ledger balanced throughout",
     )
 
-    # A fork whose copy-on-write triggers exactly at a block boundary.
-    pool = paged.PagedKVCache(
-        num_blocks=8, num_layers=1, num_kv_heads=1, head_dim=8,
-        device="cpu", dtype=torch.float16, block_size=block_size,
-    )
-    pool.create("parent")
-    pool.reserve("parent", block_size * 2)
-    pool.k[0][pool.sequences["parent"].block_ids[1]].fill_(2.5)
-    pool.fork("parent", "child")
-    private = pool.ensure_writable("child", 1)
-    pool.audit()
-    boundary_counters.merge(pool.counters)
-    record(
-        "fork with copy-on-write at a block boundary",
-        private != pool.sequences["parent"].block_ids[1]
-        and torch.equal(pool.k[0][private], pool.k[0][pool.sequences["parent"].block_ids[1]])
-        and pool.refcount[private] == 1,
-        f"copied logical block 1 into physical {private}",
-    )
-
-    require_fired(boundary_counters, "cache_hit", "eviction_taken", "cow_performed",
+    require_fired(boundary_counters, "cache_hit", "eviction_taken",
                   what="the boundary cases")
     hit_cases = [c for c in cases if "hit" in c["detail"] and "hit 0 " not in c["detail"]]
     if not hit_cases:

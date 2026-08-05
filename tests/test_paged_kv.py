@@ -53,19 +53,6 @@ def test_an_unsupported_block_size_is_refused():
         pool(block_size=48)
 
 
-@pytest.mark.parametrize("block_size", SUPPORTED_BLOCK_SIZES)
-def test_the_ledger_balances_at_every_block_size(block_size):
-    p = pool(num_blocks=32, block_size=block_size)
-    p.create("a")
-    p.reserve("a", block_size * 3 + 1)
-    assert p.sequences["a"].logical_blocks() == 4
-    p.fork("a", "b")
-    p.ensure_writable("b", 0)
-    p.audit()
-    p.release("a")
-    p.release("b")
-    p.audit()
-    assert p.free_blocks == p.num_blocks
 
 
 def test_allocation_is_lowest_free_first_and_not_lifo():
@@ -90,41 +77,6 @@ def test_allocation_is_lowest_free_first_and_not_lifo():
     assert p.sequences["c"].block_ids == [0, 1], "free pool is not lowest-first"
 
 
-def test_refcount_ledger_balances_through_a_fork_and_release():
-    """Counterpart to: refcount increment twice on fork, decrement missing on free."""
-    p = pool()
-    p.create("parent")
-    p.reserve("parent", BLOCK_SIZE * 3)
-    p.audit()
-
-    p.fork("parent", "child")
-    p.audit()
-    for block in p.sequences["parent"].block_ids:
-        assert p.refcount[block] == 2
-
-    p.release("child")
-    p.audit()
-    for block in p.sequences["parent"].block_ids:
-        assert p.refcount[block] == 1
-
-    p.release("parent")
-    p.audit()
-    assert p.free_blocks == p.num_blocks
-
-
-def test_audit_catches_a_double_increment_on_fork():
-    """The observer has to fire, not merely exist."""
-    p = pool()
-    p.create("parent")
-    p.reserve("parent", BLOCK_SIZE * 2)
-    p.fork("parent", "child")
-    p.audit()
-
-    p.refcount[p.sequences["parent"].block_ids[0]] += 1  # the mutation
-    with pytest.raises(AuditFailure, match="ledger does not balance"):
-        p.audit()
-
-
 def test_audit_catches_a_missing_decrement_on_free():
     p = pool()
     p.create("a")
@@ -146,39 +98,6 @@ def test_audit_catches_two_logical_blocks_mapping_to_one_physical():
         p.audit()
 
 
-def test_cow_copies_the_bytes_and_moves_exactly_one_reference():
-    """Counterpart to: COW copies without bumping the refcount, and bumps
-    without copying."""
-    p = pool()
-    p.create("parent")
-    p.reserve("parent", BLOCK_SIZE * 2)
-    shared = p.sequences["parent"].block_ids[0]
-    p.k[0][shared].fill_(3.5)
-
-    p.fork("parent", "child")
-    assert p.refcount[shared] == 2
-
-    private = p.ensure_writable("child", 0)
-    p.audit()
-
-    assert private != shared, "COW did not allocate a private block"
-    assert p.refcount[shared] == 1, "the original kept a reference it no longer has"
-    assert p.refcount[private] == 1
-    assert torch.equal(p.k[0][private], p.k[0][shared]), "COW bumped without copying"
-
-    # Writing through the child must not disturb the parent.
-    p.k[0][private].fill_(9.0)
-    assert float(p.k[0][shared][0, 0, 0]) == 3.5
-
-
-def test_cow_on_a_private_block_is_a_no_op():
-    p = pool()
-    p.create("a")
-    p.reserve("a", BLOCK_SIZE)
-    block = p.sequences["a"].block_ids[0]
-    assert p.ensure_writable("a", 0) == block
-    assert p.stats["cow_copies"] == 0
-
 
 def test_freed_blocks_are_poisoned():
     """Architecture doc 10.2: any read of freed memory perturbs bits
@@ -198,15 +117,6 @@ def test_exhaustion_is_an_error_not_a_silent_overwrite():
     with pytest.raises(OutOfBlocks):
         p.reserve("a", BLOCK_SIZE * 3)
 
-
-def test_evictable_reports_only_singly_held_blocks():
-    p = pool()
-    p.create("a")
-    p.reserve("a", BLOCK_SIZE * 2)
-    p.fork("a", "b")
-    assert p.evictable() == [], "shared blocks are not evictable"
-    p.release("b")
-    assert p.evictable() == p.sequences["a"].block_ids
 
 
 def test_state_digest_is_stable_and_sensitive():

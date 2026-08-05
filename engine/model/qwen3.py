@@ -76,6 +76,11 @@ def write_kv(
         logical, slot = divmod(position, pool.block_size)
         take = min(pool.block_size - slot, total - written)
         physical = table[logical]
+        if layer == 0:
+            # Checked once per position rather than once per layer: the block
+            # table is the same for every layer, so checking 28 times would cost
+            # 28x for the same answer.
+            pool.assert_exclusive(uid, physical)
         pool.k[layer][physical, slot : slot + take] = k[written : written + take]
         pool.v[layer][physical, slot : slot + take] = v[written : written + take]
         written += take

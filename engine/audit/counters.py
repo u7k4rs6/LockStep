@@ -56,7 +56,6 @@ PATHS: dict[str, str] = {
     # allocator
     "eviction_taken": "a cached block was reclaimed under pressure",
     "eviction_pass": "one pass of the reserve-with-eviction loop",
-    "cow_performed": "a shared block was copied on write",
     "block_reclaimed_at_zero": "a block's last reference went away and it was freed",
     "out_of_blocks": "the pool could not satisfy a reservation",
 }

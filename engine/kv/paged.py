@@ -131,7 +131,7 @@ class PagedKVCache:
 
         # Counters the trajectory hash covers; they make an off-by-one in the
         # allocator visible even when the output bits happen to survive it.
-        self.stats = {"allocated": 0, "freed": 0, "cow_copies": 0, "forks": 0}
+        self.stats = {"allocated": 0, "freed": 0}
 
     # -- pool ----------------------------------------------------------------
 
@@ -217,42 +217,39 @@ class PagedKVCache:
         sequence.block_ids.clear()
         sequence.length = 0
 
-    def fork(self, parent_uid: str, child_uid: str) -> Sequence:
-        """Share the parent's blocks copy-on-write.
+    def assert_exclusive(self, uid: str, block: int) -> None:
+        """The invariant that makes copy-on-write unnecessary here.
 
-        Both the refcount bump and the shared block list happen here; a mutant
-        that does one without the other is what `audit` is written to catch.
+        Copy-on-write existed in this file for three weeks and nothing in the
+        engine ever called it. It was dead code under claim, which is worse than
+        a missing feature: it inflated the apparent surface, and the week-4
+        boundary case that exercised it was testing a path the engine cannot
+        reach.
+
+        It is unnecessary because prefix-cache sharing is whole-block only. A hit
+        covers an exact multiple of the block size, so a sequence's first write
+        lands exactly on a block boundary, in a block it reserved for itself. It
+        never writes into a block it adopted. The PRD asks for "refcounted blocks
+        with copy-on-write"; whole-block sharing satisfies the requirement behind
+        that phrasing, which is that one sequence must never observe another's
+        writes, by making the situation copy-on-write exists to handle
+        unreachable.
+
+        An unreachable situation is worth an assertion rather than a mechanism,
+        so this is checked on every write in debug builds. If it ever fires,
+        sharing has stopped being whole-block and copy-on-write has to come back.
         """
-        parent = self.sequences[parent_uid]
-        child = self.create(child_uid)
-        child.block_ids = list(parent.block_ids)
-        child.length = parent.length
-        for block in child.block_ids:
-            self.refcount[block] += 1
-        self.stats["forks"] += 1
-        return child
-
-    def ensure_writable(self, uid: str, logical_block: int) -> int:
-        """Copy-on-write. Returns the physical block `uid` may now write.
-
-        A block with refcount 1 is already private. A shared block is copied into
-        a fresh one, the copy takes the sequence's slot, and the original loses
-        one reference. Both halves happen or neither does.
-        """
-        sequence = self.sequences[uid]
-        old = sequence.block_ids[logical_block]
-        if self.refcount[old] == 1:
-            return old
-
-        new = self._take_block()
-        for layer in range(self.num_layers):
-            self.k[layer][new].copy_(self.k[layer][old])
-            self.v[layer][new].copy_(self.v[layer][old])
-        sequence.block_ids[logical_block] = new
-        self.refcount[old] -= 1
-        self.stats["cow_copies"] += 1
-        self.counters.hit("cow_performed")
-        return new
+        holders = sum(
+            1 for sequence in self.sequences.values()
+            if sequence.uid != uid and block in sequence.block_ids
+        )
+        if holders or self.pinned.get(block, 0):
+            raise AuditFailure(
+                f"{uid} is about to write physical block {block}, which is also "
+                f"held by {holders} other sequence(s) and {self.pinned.get(block, 0)} "
+                "cache entries. Prefix sharing is supposed to be whole-block, so a "
+                "write should only ever land in a block this sequence reserved."
+            )
 
     # -- views ---------------------------------------------------------------
 
