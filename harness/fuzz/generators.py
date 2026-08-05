@@ -31,11 +31,15 @@ PROMPT_SHAPES = {
     "around_split": (511, 512, 513),
     "long": (200, 300, 600),
 }
+# "just_below" exists because the below case is what catches a rounding-up bug,
+# and one of the two real bugs found so far was a rounding-up bug. A generator
+# that only produced aligned and over-aligned chunks would never reach it.
 CHUNK_SHAPES = {
     "none": (),
     "one_token": (1,),
     "block_aligned": (16, 32, 64),
-    "misaligned": (7, 13, 37),
+    "just_below": (7, 15, 31, 63),
+    "misaligned": (13, 37),
     "ragged": (1, 5, 17, 3, 64),
 }
 
@@ -78,7 +82,10 @@ def draw_config(seed: int) -> SwarmConfig:
         cache_enabled=rng.random() > 0.25,
         refuse_cache_rate=rng.choice((0.0, 0.0, 0.3, 1.0)),
         pool_pressure=rng.choice(("roomy", "tight", "tight", "starved")),
-        max_requests=rng.choice((1, 2, 4, 8, 12)),
+        # 31 and 32 are in the list because off-by-one against a 32-wide tile is
+        # where tile-boundary bugs live, and co-batching pressure there is a
+        # different thing from MR1's clean sweep.
+        max_requests=rng.choice((1, 2, 4, 8, 16, 31, 32)),
     )
 
 
@@ -92,12 +99,15 @@ def draw_case(config: SwarmConfig, vocab: int, index: int) -> Case:
 
     count = rng.randint(1, config.max_requests)
     shared_prefix = None
+    shared_len = 0
     if config.cache_enabled and rng.random() < 0.6:
         # A shared prefix is what makes a cache hit possible at all; without one
         # a cache-enabled campaign would only ever record misses.
-        shared_length = rng.choice((config.block_size, config.block_size * 2,
-                                    config.block_size + 1, config.block_size - 1))
-        shared_prefix = tuple(rng.randrange(vocab) for _ in range(max(1, shared_length)))
+        # At, one below, and one above the block size: the shape SGLang's open
+        # corruption bug sits at, driven on purpose.
+        shared_len = max(1, rng.choice((config.block_size, config.block_size * 2,
+                                        config.block_size + 1, config.block_size - 1)))
+        shared_prefix = tuple(rng.randrange(vocab) for _ in range(shared_len))
 
     requests = []
     for i in range(count):
@@ -140,6 +150,7 @@ def draw_case(config: SwarmConfig, vocab: int, index: int) -> Case:
         block_size=config.block_size,
         num_blocks=num_blocks,
         enable_cache=config.cache_enabled,
+        shared_prefix_len=shared_len,
         label=f"swarm{config.seed}#{index}",
     )
 

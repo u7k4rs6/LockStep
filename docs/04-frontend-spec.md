@@ -61,6 +61,24 @@ DIVERGENCE  req=r02  position=131  first differing byte=0x1a2e
     lockstep replay results/2026-08-14/case-0031.json
 ```
 
+Not every finding is a divergence. A crash produces no logits, so there are no
+digests to print, and filling those two lines with placeholders in a document
+whose purpose is to be pasted into an issue is the wrong failure. The crash
+variant drops them and carries the exception type instead:
+
+```
+CRASH  req=r00  position=61
+
+  class                  crash, paged.OutOfBlocks
+
+  trigger    request needs 3 blocks, pool holds 2
+  schedule   0 events, minimized from 9
+  env        sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0
+
+  reproduce
+    lockstep replay results/2026-08-04/case-0003.json
+```
+
 The form above is what the terminal prints. The form that goes into an issue is the same block inside a Markdown fence, and that is what `--fenced` emits and what the issue-paste path uses by default:
 
 ````

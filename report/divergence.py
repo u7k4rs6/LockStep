@@ -85,21 +85,38 @@ class Divergence:
 
     request_uid: str
     position: int
-    expected_sha256: str
-    observed_sha256: str
     trigger: str
     schedule_events: int
     env_fingerprint: str
     replay_artifact: str
+    # A bitwise divergence carries two digests. A crash carries neither, because
+    # the run that would have produced logits raised instead. Placeholder digests
+    # in a document whose whole purpose is to be pasted into an issue are worse
+    # than no digests, so the crash form omits the lines rather than filling them.
+    expected_sha256: str | None = None
+    observed_sha256: str | None = None
+    failure_class: str = "divergence"   # divergence | crash
+    exception_type: str | None = None
     first_differing_byte: int | None = None
     schedule_events_before_minimization: int | None = None
     expected_label: str = "canonical"
     observed_label: str = "fuzzed"
     boundary_hit: bool = False
 
+    def __post_init__(self) -> None:
+        if self.failure_class == "divergence" and not (
+            self.expected_sha256 and self.observed_sha256
+        ):
+            raise ValueError(
+                "a divergence must carry both digests; if there are none, this is "
+                "a crash and failure_class should say so"
+            )
+        if self.failure_class == "crash" and not self.exception_type:
+            raise ValueError("a crash must name its exception type")
+
     def _header(self) -> str:
         parts = [
-            "DIVERGENCE",
+            "DIVERGENCE" if self.failure_class == "divergence" else "CRASH",
             f"req={self.request_uid}",
             f"position={self.position}",
         ]
@@ -126,19 +143,27 @@ class Divergence:
         """
         painted = color_enabled() if color is None else color
 
-        lines = [
-            _paint(self._header(), "divergence", painted),
-            "",
-            _row(
-                f"expected ({self.expected_label})",
-                f"logits[{self.position}] sha256:{abbreviate_hash(self.expected_sha256)}",
-                SIDE_LABEL_WIDTH,
-            ),
-            _row(
-                f"observed ({self.observed_label})",
-                f"logits[{self.position}] sha256:{abbreviate_hash(self.observed_sha256)}",
-                SIDE_LABEL_WIDTH,
-            ),
+        lines = [_paint(self._header(), "divergence", painted), ""]
+
+        if self.failure_class == "divergence":
+            lines += [
+                _row(
+                    f"expected ({self.expected_label})",
+                    f"logits[{self.position}] sha256:{abbreviate_hash(self.expected_sha256)}",
+                    SIDE_LABEL_WIDTH,
+                ),
+                _row(
+                    f"observed ({self.observed_label})",
+                    f"logits[{self.position}] sha256:{abbreviate_hash(self.observed_sha256)}",
+                    SIDE_LABEL_WIDTH,
+                ),
+            ]
+        else:
+            # No digests exist: the run raised before producing logits. The
+            # exception type is what a reader needs instead.
+            lines.append(_row("class", f"crash, {self.exception_type}", SIDE_LABEL_WIDTH))
+
+        lines += [
             "",
             _row(
                 "trigger",
@@ -187,14 +212,32 @@ EXAMPLE = Divergence(
 )
 
 
+# The crash variant, for the same reason the divergence example exists: the
+# layout is decided before there is a real one to print.
+EXAMPLE_CRASH = Divergence(
+    request_uid="r00",
+    position=61,
+    failure_class="crash",
+    exception_type="paged.OutOfBlocks",
+    trigger="request needs 3 blocks, pool holds 2",
+    schedule_events=0,
+    schedule_events_before_minimization=9,
+    env_fingerprint="sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    replay_artifact="results/2026-08-04/case-0003.json",
+    boundary_hit=True,
+)
+
+
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="Render the example divergence report.")
+    parser = argparse.ArgumentParser(description="Render the example reports.")
+    parser.add_argument("--crash", action="store_true", help="Render the crash variant.")
     parser.add_argument(
         "--terminal",
         action="store_true",
         help="Print the bare 80-column block instead of the issue-ready fenced form.",
     )
     args = parser.parse_args()
-    print(EXAMPLE.render() if args.terminal else EXAMPLE.for_issue())
+    example = EXAMPLE_CRASH if args.crash else EXAMPLE
+    print(example.render() if args.terminal else example.for_issue())

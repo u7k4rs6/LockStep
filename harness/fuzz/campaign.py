@@ -19,6 +19,7 @@ import torch  # noqa: E402
 
 from engine import envlock  # noqa: E402
 from engine.model.qwen3 import Qwen3  # noqa: E402
+from engine.audit.counters import Counters  # noqa: E402
 from engine.sched.lifecycle import Event  # noqa: E402
 from harness.fuzz.coverage import Coverage  # noqa: E402
 from harness.fuzz.faults import FAULTS  # noqa: E402
@@ -46,20 +47,29 @@ def observe(coverage: Coverage, case: Case, outcome) -> None:
 
     block = case.block_size
     for chunk in case.chunk_plan:
-        if chunk % block == 0:
+        # Where the chunk *ends* relative to a block boundary, which is the
+        # quantity a rounding bug gets wrong.
+        remainder = chunk % block
+        if remainder == 0:
             coverage.observe_boundary("chunk end vs block size", "exact")
-        elif chunk % block == block - 1:
+        elif remainder == block - 1:
             coverage.observe_boundary("chunk end vs block size", "below")
         else:
             coverage.observe_boundary("chunk end vs block size", "above")
 
+    # The predicate is the true common prefix length against the block size,
+    # not the granted hit. Hits are whole blocks by construction, so classifying
+    # the hit itself would report "exact" always and never test anything. This
+    # is SGLang's prefix_len == block_size shape.
+    if case.shared_prefix_len:
+        if case.shared_prefix_len == block:
+            coverage.observe_boundary("cache hit length vs block size", "exact")
+        elif case.shared_prefix_len < block:
+            coverage.observe_boundary("cache hit length vs block size", "below")
+        else:
+            coverage.observe_boundary("cache hit length vs block size", "above")
+
     counters = outcome.counters
-    if counters["cache_hit"]:
-        coverage.observe_boundary("cache hit length vs block size", "exact")
-    if counters["cache_full_prompt_trimmed"]:
-        coverage.observe_boundary("cache hit length vs block size", "below")
-    if counters["cache_miss"]:
-        coverage.observe_boundary("cache hit length vs block size", "above")
 
     if counters["attention_multi_split"]:
         coverage.observe_boundary("split boundary vs kv length", "above")
@@ -130,6 +140,11 @@ def run_campaign(model, seeds, cases_per_seed, coverage, oracle, progress=True):
             if reason:
                 findings.append(Finding(case, reason, config.describe(),
                                         time.monotonic() - started))
+                # Printed as it happens, not held to the end. Frontend spec 1.2:
+                # failures lead. A campaign that only reports at the end makes a
+                # long run opaque and a killed run report nothing at all.
+                print(f"\n  FINDING {len(findings)}: {reason[:110]}")
+                print(f"    config {config.describe()}", flush=True)
             if progress:
                 seen2, total2 = coverage.ngram_fraction(2)
                 hit, total_b = coverage.boundary_fraction()
@@ -145,12 +160,17 @@ def print_repro(model, finding: Finding, minimization, artifact_path: str) -> No
     """The divergence report from frontend spec 1.3, with the minimality proof."""
     case = minimization.case
     print()
+    # A crash carries no digests, so it renders as a crash rather than as a
+    # divergence with placeholder hashes.
+    is_crash = ":" in finding.detail and "diverged from canonical" not in finding.detail
     print(Divergence(
         request_uid=case.requests[0].uid if case.requests else "?",
         position=len(case.requests[0].prompt) if case.requests else 0,
-        expected_sha256="0" * 64,
-        observed_sha256="1" * 64,
-        trigger=finding.detail[:60],
+        failure_class="crash" if is_crash else "divergence",
+        exception_type=finding.detail.split(":", 1)[0] if is_crash else None,
+        expected_sha256=None if is_crash else "0" * 64,
+        observed_sha256=None if is_crash else "1" * 64,
+        trigger=(finding.detail.split(":", 1)[1].strip() if is_crash else finding.detail)[:60],
         schedule_events=minimization.after["events"],
         schedule_events_before_minimization=minimization.before["events"],
         env_fingerprint=envlock.capture().fingerprint(),
@@ -244,30 +264,70 @@ def main() -> int:
         for fault in FAULTS:
             started = time.monotonic()
             detected, detail = None, ""
-            fault_coverage = Coverage()
+            exercised = Counters()
+            found = []
             with fault.apply():
-                found, _ = run_campaign(
-                    model, range(4), 4, fault_coverage,
-                    lambda case: case_fails(model, case), progress=False,
-                )
+                for seed in range(6):
+                    config = draw_config(seed)
+                    for index in range(4):
+                        case = draw_case(config, model.cfg.vocab_size, index)
+                        try:
+                            outcome = run_case(model, case)
+                        except Exception as exc:  # noqa: BLE001
+                            found.append(f"{type(exc).__name__}: {exc}")
+                            continue
+                        exercised.merge(outcome.counters)
+                        if outcome.error:
+                            found.append(outcome.error)
+                            continue
+                        reason = case_fails(model, case)
+                        if reason:
+                            found.append(reason)
+                    if found:
+                        break
             if found:
                 detected = time.monotonic() - started
-                detail = found[0].detail[:70]
+                detail = found[0][:70]
+
+            # Gate: did the mutated path execute at all?
+            missing = exercised.missing(*fault.requires) if fault.requires else []
+            if missing and detected is None:
+                verdict = "not-exercised"
+            elif detected is not None:
+                verdict = "killed"
+            else:
+                verdict = "survived"
+
             fault_results.append({
                 "fault": fault.name,
                 "operator": fault.operator,
-                "detected": detected is not None,
+                "verdict": verdict,
+                "requires": list(fault.requires),
+                "counters_seen": {p: exercised[p] for p in fault.requires},
                 "seconds": round(detected, 1) if detected else None,
                 "detail": detail,
             })
-            mark = f"found in {detected:5.1f}s" if detected else "MISSED     "
+            mark = {"killed": f"killed in {detected:5.1f}s" if detected else "killed",
+                    "survived": "SURVIVED       ",
+                    "not-exercised": "not exercised  "}[verdict]
             print(f"  [{mark}]  {fault.operator}")
-            if detail:
-                print(f"                   {detail}")
+            if verdict == "not-exercised":
+                print(f"                     mutated path never ran: {', '.join(missing)}")
+            elif detail:
+                print(f"                     {detail}")
 
-        caught = sum(1 for r in fault_results if r["detected"])
+        killed = [r for r in fault_results if r["verdict"] == "killed"]
+        survived = [r for r in fault_results if r["verdict"] == "survived"]
+        not_run = [r for r in fault_results if r["verdict"] == "not-exercised"]
+        valid = len(killed) + len(survived)
         print()
-        print(f"  {caught}/{len(FAULTS)} seeded faults detected")
+        print(f"  killed          {len(killed)}/{valid} valid trials")
+        print(f"  survived        {len(survived)}/{valid}")
+        print(f"  not exercised   {len(not_run)}  (discarded, not counted as survivals)")
+        if killed:
+            times = sorted(r["seconds"] for r in killed)
+            median = times[len(times) // 2]
+            print(f"  median time to detection   {median}s")
 
     payload = {
         "cases_executed": executed,

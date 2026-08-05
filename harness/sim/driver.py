@@ -53,6 +53,7 @@ class Case:
     block_size: int = 16
     num_blocks: int = 64
     enable_cache: bool = True
+    shared_prefix_len: int = 0   # true common prefix across requests, before rounding
     label: str = ""
 
     def shrunk(self, **changes) -> "Case":
