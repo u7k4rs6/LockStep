@@ -388,7 +388,16 @@ def build(out: Path) -> Path:
         parts.append(f"""
 <section>
   <h2>Certification findings</h2>
-  <div class="figure">{esc(cp.get('clean'))} of {esc(cp.get('total'))} boundary cases clean</div>
+  <div class="figure">{esc(cp.get('clean'))} of {esc(cp.get('total'))} boundary cases clean,
+       {esc(cp.get('batched_cases', 0))} of {esc(cp.get('total'))} formed a batch</div>
+  <p class="method">Requests are submitted concurrently and batch composition varies across
+     repeats via filler requests, so the cases named co-batched actually cohabit.
+     Co-residency is read from the engine's own num_requests_running gauge rather than
+     assumed; the peak observed here is {esc(cp.get('max_concurrent_running', 0))}. A case
+     whose witness never exceeds one running request is reported as not batched and is not
+     scored clean, because a certification of batch invariance that never formed a batch
+     certifies nothing. An earlier version of this certifier submitted sequentially and did
+     exactly that; its result has been withdrawn.</p>
   <p class="method">engine {esc(cp.get('engine'))}, model {esc(cp.get('model'))},
      block size {esc(cp.get('block_size'))} read from {esc(cp.get('block_size_source'))}.
      {esc(cp.get('observable', ''))}</p>

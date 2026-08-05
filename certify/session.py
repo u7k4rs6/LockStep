@@ -29,7 +29,9 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from certify.observable import TOP_LOGPROBS, describe  # noqa: E402
-from certify.run import EngineInfo, certify, guard  # noqa: E402
+from certify.run import (  # noqa: E402
+    FILLER_WIDTHS, EngineInfo, certify, concurrency_cap, guard,
+)
 from engine import envlock  # noqa: E402
 from report.artifact import Artifact, relpath  # noqa: E402
 
@@ -117,7 +119,8 @@ def main() -> int:
     print(f"lockstep certify  vLLM, {mode}")
     print(f"  endpoint            {BASE_URL}  (local, started by this process)")
     print(f"  block size          {args.block_size}  configured at launch")
-    print(f"  repeats per case    {args.repeats}")
+    print(f"  repeats per case    {args.repeats}, filler widths {list(FILLER_WIDTHS)}")
+    print(f"  submission          concurrent; co-residency measured from vllm:num_requests_running")
     print()
     print(f"  {describe()}")
     print()
@@ -144,16 +147,31 @@ def main() -> int:
 
     clean = sum(1 for r in results if r["clean"])
     print()
-    print(f"  {'boundary case':<52} {'reqs':>5} {'positions':>10}  verdict")
-    print("  " + "-" * 78)
+    print(f"  {'boundary case':<52} {'reqs':>5} {'positions':>10} {'batch':>5}  verdict")
+    print("  " + "-" * 84)
     for row in results:
-        verdict = "clean" if row["clean"] else f"DIVERGED ({len(row['divergences'])})"
-        print(f"  {row['case']:<52} {row['requests']:>5} {row['positions']:>10}  {verdict}")
+        if row.get("vacuous"):
+            verdict = "NOT BATCHED"
+        elif row["clean"]:
+            verdict = "clean"
+        else:
+            verdict = f"DIVERGED ({len(row['divergences'])})"
+        print(f"  {row['case']:<52} {row['requests']:>5} {row['positions']:>10} "
+              f"{row.get('max_concurrent_running', 0):>5}  {verdict}")
         for d in row["divergences"][:3]:
             print(f"      request {d['request']} repeat {d['repeat']}: {d['detail']}")
+        if row.get("vacuous"):
+            print("      never observed more than one request running; this case "
+                  "formed no batch and its verdict is worth nothing")
 
+    vacuous = [r for r in results if r.get("vacuous")]
     print()
     print(f"  {clean}/{len(results)} boundary cases clean at this observable")
+    print(f"  {len(results) - len(vacuous)}/{len(results)} cases actually formed a batch"
+          + ("  <- the rest tested nothing" if vacuous else ""))
+    if vacuous:
+        print("  a case that never cohabited cannot certify batch invariance, so "
+              "these are reported rather than scored")
 
     env = envlock.capture()
     print(f"env  {env.fingerprint()}")

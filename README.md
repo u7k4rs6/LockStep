@@ -5,9 +5,12 @@ deterministic-simulation fuzzing, with the harness's own bug-finding power
 measured by mutation testing, then pointed at **vLLM** and **SGLang** to certify
 their deterministic modes at boundary conditions.
 
-> GRIEF fuzzes live servers with wall-clock traces, so repro is probabilistic;
-> Lockstep's execution is a pure function of (workload, schedule, seeds), so every
-> finding minimizes to an exact replay.
+> GRIEF confirms a finding by replaying a timed request trace against a live
+> server and checking log-probabilities. Lockstep's execution is a pure function
+> of (workload, schedule, seeds) with the schedule supplied rather than observed,
+> so minimization is exact rather than confirmed: ddmin reduces a finding to a
+> case it proves 1-minimal, and the replay is a hash comparison rather than a
+> re-observation.
 
 The engine is a fixture. **The harness is the product.** Batch-invariant kernels
 are already shipped upstream by Thinking Machines, vLLM, and SGLang, so nothing
@@ -261,10 +264,11 @@ actually executes.
 ## Prior art
 
 - [Thinking Machines, *Defeating Nondeterminism in LLM Inference*](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/) and [`batch_invariant_ops`](https://github.com/thinking-machines-lab/batch_invariant_ops), for the diagnosis this project takes as given.
-- [vLLM batch invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/), tracking issue #27433, `tests/v1/determinism/`.
-- [SGLang deterministic inference](https://docs.sglang.ai/advanced_features/deterministic_inference.html) and issue #22819, the open block-boundary corruption in deterministic mode at `prefix_len == block_size`. That shape is a first-class boundary predicate here.
-- GRIEF (arXiv 2605.11202), trace fuzzing of live serving systems. The differentiator sentence above is about this.
-- LLM-42 (arXiv 2601.17768), the argument that batch invariance is over-constrained, which this project must be able to rebut rather than ignore.
+- [vLLM batch invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/), enabled by `VLLM_BATCH_INVARIANT=1`, beta as of July 2026, tracking issue [#27433](https://github.com/vllm-project/vllm/issues/27433). Its attention operators do not support `FULL` or `FULL_DECODE_ONLY` cudagraph modes but do support `PIECEWISE`, which is why the throughput table below measures it both eager and graphed rather than only eager.
+- [SGLang deterministic inference](https://docs.sglang.ai/advanced_features/deterministic_inference.html) and issue [#22819](https://github.com/sgl-project/sglang/issues/22819), KV cache corruption at a radix cache block boundary under `--enable-deterministic-inference`, where the request whose `prefix_len` equals the 64-token block size is corrupted while `prefix_len == 0` requests in the same concurrent batch are not. Reproduced upstream with 11 requests across two burst waves. Both halves of that shape, the boundary predicate and the concurrent burst, are first-class here.
+- [GRIEF](https://arxiv.org/abs/2605.11202) (arXiv 2605.11202), greybox fuzzing of LLM serving systems, whose input is a timed request trace and whose oracle applies controlled replay with log-probability checks. 15 vulnerabilities across vLLM and SGLang, 10 confirmed upstream, 2 CVEs. The differentiator sentence above is about the replay mechanism, not about GRIEF's effectiveness.
+- [LLM-42](https://arxiv.org/abs/2601.17768) (arXiv 2601.17768), the argument that batch invariance is over-constrained: fixing the reduction strategy for every token regardless of batch geometry strips kernels of the parallelism they exist to exploit, and most kernels are not batch-invariant to begin with, so it demands new implementations. Their answer is a nondeterministic fast path with a verify-rollback loop. This project does not rebut that; it concedes it and measures the price, which is what the throughput table is.
+- [MarginGate](https://arxiv.org/abs/2605.30218) (arXiv 2605.30218), sparse margin-triggered verification for batch-invariant inference. Adjacent to F1's near-tie threshold: both key on the top-1-to-top-2 margin as the quantity that decides whether a floating-point perturbation can become an observable token difference.
 - Groce et al., *Swarm Testing* (ISSTA 2012). Zeller and Hildebrandt, ddmin (IEEE TSE 2002). Just et al., *Are Mutants a Valid Substitute for Real Faults?* (FSE 2014).
 
 ## Install
@@ -285,6 +289,27 @@ Reproduce claim 1 from scratch:
 python3 -m harness.mr.run --block-sizes 8 16 32 64 128
 ```
 
+## Withdrawn: the vLLM certification result
+
+The previous version of this README reported vLLM's deterministic mode clean
+across seven boundary cases over 1,776 positions. **That result is withdrawn.**
+An audit found the certifier submitted every request sequentially and blocking,
+so no request ever shared a batch with another. Cases named "co-batched" and
+"batch 31" ran at effective batch 1, and what was actually measured was
+repeat-stability with a warm prefix cache on a single-request server.
+
+There was also no positive control: because batch composition was identical
+across repeats, default-mode vLLM would plausibly have passed the same seven
+cases, and the certifier had never been shown to detect a nondeterministic
+engine at all.
+
+Cohabitation is the entire property this project is about, and the workload
+never produced it. The certifier now submits concurrently, varies batch
+composition across repeats with filler requests, measures co-residency from the
+engine's own `vllm:num_requests_running` gauge, and refuses to score a case whose
+witness never exceeded one running request. A number returns here when it is
+backed by a run that formed a batch and by a default-mode control that fails.
+
 ## Evidence, and replaying it
 
 `evidence/` is committed and holds the artifacts the claims above actually cite,
@@ -299,7 +324,7 @@ Promotion is deliberate, one artifact at a time, with
 | `evidence/fuzz-0003.json` | claim 2, the ten-operator mutation campaign over 192 cases |
 | `evidence/throughput-0002.json` | claim 3, the cost-of-determinism table |
 | `evidence/fidelity-0003.json` | F1, exact KL over the full vocabulary |
-| `evidence/certify-0001.json` | the vLLM certification, 7 of 7 boundary cases clean |
+| `evidence/certify-0001.json` | the vLLM certification, superseded and withdrawn, see below |
 | `evidence/case-0003.json` | the eviction finding the fuzzer found, minimized and 1-minimal |
 | `evidence/case-witness.json` | a replay-determinism witness, see below |
 

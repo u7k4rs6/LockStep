@@ -176,16 +176,45 @@ def chunk_boundary_off_by_one():
 
 @contextlib.contextmanager
 def recompute_off_by_one_token_count():
+    """Architecture doc 10.1: "recompute re-prefills with an off-by-one token count".
+
+    The first version of this operator patched `_preempt` and set `kv_len = 1`
+    after it. That was a **dead store**, and it was published for weeks as a
+    proven-equivalent mutant with an equivalence argument describing a mechanism
+    that does not exist. `_preempt` sets `kv_len = 0` and moves the request to
+    the waiting queue; the next read of `kv_len` is in `_admit`, which
+    unconditionally resets it to 0 before anything else looks at it. Nothing in
+    between reads the field. So the fault never reached engine state, no observer
+    could have seen it, and calling that an equivalent mutant confused "cannot be
+    distinguished" with "was never injected".
+
+    The methodological point generalizes, and is why this comment is long. The
+    sentinel fired 16 times on the dead version: the *patch* executed. The
+    *fault* was clobbered one line later. Patch-executed is not fault-injected,
+    exactly as counter-fired is not patch-executed. Each check catches the layer
+    below it and is blind to the layer above.
+
+    So the injection point is now where the value survives: after `_admit` has
+    finished setting up a resumed request, so the re-prefill genuinely starts one
+    token in and position `kv_len` never gets its KV written. Attention then
+    reads whatever occupies that slot, which under `poison_on_free` is NaN and
+    otherwise is a stale block.
+    """
     from engine.sched import scheduler as sched
 
-    original = sched.Scheduler._preempt
+    original = sched.Scheduler._admit
 
-    def mutant(self, request):
-        trip("recompute_off_by_one_token_count")
-        original(self, request)
-        request.kv_len = 1  # recompute starts one token in
+    def mutant(self, request, state):
+        original(self, request, state)
+        # Only on the resume path: this operator models recompute, and a fresh
+        # admission is not a recompute. `preempt_count` is what distinguishes
+        # them, and it is the same predicate `step` uses to emit RESUME.
+        if request.preempt_count:
+            trip("recompute_off_by_one_token_count")
+            request.kv_len += 1
+            self.pool.sequences[request.uid].length = request.kv_len
 
-    with _patch(sched.Scheduler, "_preempt", mutant):
+    with _patch(sched.Scheduler, "_admit", mutant):
         yield
 
 
