@@ -404,8 +404,11 @@ repeat 0, one unchanged server process, five repeats:
 | 32 requests + 13 fillers | 45 | **2 of 5** | 3.906e-02 | none |
 
 The differing repeat pairs are later-versus-later, so this is not a first-batch
-effect. It is intermittent: the same configuration in another server lifetime was
-fully reproducible.
+effect. It is intermittent: **1 lifetime in 3 exhibits it**, measured twice
+independently, once before the code was committed and once after at a clean
+revision. `evidence/certify-clean-revision.json` carries the reproduction at
+`engine_revision b5ca308415c9` with no dirty marker, so the finding does not
+depend on an artifact produced by an uncommitted tree.
 
 **One knob changes it.** Setting `--max-num-seqs 8` makes the identical workload
 fully reproducible, with the client completely unchanged and only the server flag
@@ -470,6 +473,7 @@ Promotion is deliberate, one artifact at a time, with
 | `evidence/case-witness.json` | a replay-determinism witness, see below |
 | `evidence/upstream-finding.json` | provenance for [vllm#51187](https://github.com/vllm-project/vllm/issues/51187): the issue URL, the artifacts backing every number in it, and why their `engine_revision` reads dirty |
 | `evidence/certify-pairs-{a,b,mns8}.json` | the three runs the filed issue rests on. `b` is the one exhibiting the divergence; `mns8` is the controlled variable |
+| `evidence/certify-clean-revision.json` | the same finding reproduced at a clean committed revision, no dirty marker |
 
 The differentiator sentence at the top of this file claims every finding
 minimizes to an exact replay. That is checkable rather than asserted:

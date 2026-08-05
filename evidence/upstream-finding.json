@@ -49,5 +49,14 @@
   "known_gaps": {
     "lifetime_1_server_log_lost": "Lifetimes 1 and 2 wrote to the same log filename and lifetime 1's vLLM server log was overwritten. Nothing in the issue or in this record depends on it: lifetime 1's RESULTS are in evidence/certify-pairs-a.json, which is intact, and the issue cites lifetime 1 only for the intermittency claim, which the artifact supports on its own. Server-side diagnosis of that specific lifetime is no longer possible. The filename now carries the run label.",
     "kv_cache_figure_varies": "The issue quotes 'GPU KV cache size: 27,744 tokens'. That figure is from one server log; across runs it ranges 26,928 to 27,744, because --gpu-memory-utilization 0.55 resolves against whatever else is resident at launch. The argument it supports, roughly 2,700 tokens needed against about 27,000 available, holds at every observed value."
+  },
+  "clean_revision_rerun": {
+    "why": "Added alongside the original artifacts rather than replacing them. Replacing would have risked destroying the only artifact exhibiting the divergence, since the effect is intermittent; adding costs nothing and either outcome improves the record.",
+    "artifact": "evidence/certify-clean-revision.json",
+    "engine_revision": "b5ca308415c9",
+    "env_fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    "result": "Reproduced. Three lifetimes at a clean revision: 7/7, 5/7, 7/7. The 5/7 lifetime shows both large workloads at 2 distinct outputs of 5 with later_repeats_agree false, which is the filed finding, now backed by an artifact whose engine_revision is a real committed SHA with no dirty marker.",
+    "intermittency": "1 of 3 lifetimes exhibited it here, matching the rate observed before the commit. That is now two independent estimates of the same rate rather than an anecdote.",
+    "code_delta_from_the_original_runs": "certify/session.py differs from 328a066 by 5 lines that add the run label to the vLLM log filename. Nothing in the server command, the workload, or the comparison changed. Stated as 'differs only in the log filename' rather than 'identical', because an earlier draft of this record said 'unchanged' and that was an overstatement of exactly the kind this file exists to avoid."
   }
 }
