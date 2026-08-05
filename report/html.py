@@ -23,9 +23,28 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from report.fonts import css as font_css, embedded_bytes  # noqa: E402
+
 RESULTS = REPO_ROOT / "results"
 
-CSS = """
+# Inlined ahead of the rest of the stylesheet so the first paint already has the
+# faces and nothing reflows partway down a numeric table.
+FONT_CSS = font_css()
+
+# The boundary predicates `certify.run.boundary_workloads` generates, named
+# symbolically rather than at a concrete page size, since the whole point is that
+# they are generated against the engine's own.
+SGLANG_CASES = (
+    "prefix_len == page_size - 1",
+    "prefix_len == page_size",
+    "prefix_len == page_size + 1",
+    "zero-prefix request co-batched with a nonzero-prefix request",
+    "cache hit covering the full prompt",
+    "batch 31, shared prefix of one page",
+    "batch 32, shared prefix of one page",
+)
+
+CSS = FONT_CSS + """
 :root {
   --paper: #EDF0F3;
   --paper-deep: #DDE3E9;
@@ -97,6 +116,8 @@ td.mono { font-family: var(--mono); overflow-wrap: anywhere; }
 .legend .d::before { background: var(--divergence); }
 
 .check { font-family: var(--mono); font-size: 13px; }
+pre.mono { background: var(--paper-deep); padding: 12px 14px; border-radius: 4px;
+  font-size: 13px; overflow-x: auto; }
 .check li { list-style: none; margin: 3px 0; }
 .check ul { padding: 0; margin: 8px 0; }
 .hit { color: var(--signal); }
@@ -374,6 +395,50 @@ def build(out: Path) -> Path:
      plus the chosen-token logprob and its top alternatives identical as doubles, at every
      emitted position, greedy only. It has not been pointed at an external engine yet, so
      there is nothing to report rather than nothing found.</p>
+</section>
+""")
+
+    # SGLang. Written as the template it would be filled into, with the reason
+    # every cell is empty stated above it rather than left as an absence.
+    parts.append(f"""
+<section>
+  <h2>SGLang: not certified, and why</h2>
+  <div class="figure">0 of {len(SGLANG_CASES)} cases run</div>
+  <p><strong>SGLang's deterministic mode does not start on this GPU.</strong> Not a
+     configuration this project got wrong, and not a finding about SGLang's determinism:
+     the batch-invariant path requests more shared memory per CTA than consumer Ada has.
+     <span class="mono">matmul_persistent</span> in
+     <span class="mono">sglang/srt/layers/batch_invariant_ops.py</span> raises
+     <span class="mono">triton.runtime.errors.OutOfResources</span> at import-time
+     warmup:</p>
+  <pre class="mono">Required: 106496 bytes    Hardware limit: 101376 bytes    sm_89, RTX 4060 Laptop</pre>
+  <p class="method">The FlashInfer path is not an escape: it asks for a 2 GiB workspace on
+     an 8 GiB card that is already holding weights and KV. Both failures are environmental
+     and neither says anything about whether SGLang's deterministic mode is deterministic.
+     Reported upstream on
+     <a href="https://github.com/sgl-project/sglang/issues/29149">sgl-project/sglang#29149</a>,
+     which is open and describes the same shared-memory ceiling.</p>
+  <p>The table below is the shape this section takes when it runs, on a card with at least
+     the 227 KB of shared memory per SM that Hopper and Blackwell provide. Nothing else
+     changes: the same certifier, the same observable, the same boundary predicates
+     generated against <em>SGLang's</em> page size rather than this project's block size.
+     <span class="mono">certify/run.py</span> reads that from
+     <span class="mono">/get_server_info</span> and refuses to run if it can neither read
+     nor be told it, because probing block boundaries at the wrong block size runs a
+     campaign and tests nothing.</p>
+  <table>
+    <thead><tr><th>boundary case</th><th class="num">requests</th><th class="num">positions</th><th>verdict</th></tr></thead>
+    <tbody>{"".join(
+        f"<tr><td>{esc(c)}</td><td class='num'>&mdash;</td>"
+        f"<td class='num'>&mdash;</td><td class='soft'>not run</td></tr>"
+        for c in SGLANG_CASES)}</tbody>
+  </table>
+  <p class="method">environment tuple: to be captured on the host that runs it, as a
+     separate <span class="mono">env.lock</span>. A result carried over from this machine
+     would be invalid by construction, which is the same rule every other number here
+     obeys. The first case is the one worth watching:
+     <span class="mono">prefix_len == page_size</span> is the shape of open issue
+     <a href="https://github.com/sgl-project/sglang/issues/22819">#22819</a>.</p>
 </section>
 """)
 
