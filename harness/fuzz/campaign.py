@@ -22,6 +22,7 @@ from engine.model.qwen3 import Qwen3  # noqa: E402
 from engine.audit.counters import Counters  # noqa: E402
 from engine.sched.lifecycle import Event  # noqa: E402
 from harness.fuzz.coverage import Coverage  # noqa: E402
+from harness.fuzz import faults as faults_module  # noqa: E402
 from harness.fuzz.faults import FAULTS  # noqa: E402
 from harness.fuzz.generators import draw_case, draw_config, eviction_cases  # noqa: E402
 from harness.minimize.ddmin import minimize  # noqa: E402
@@ -270,6 +271,7 @@ def main() -> int:
             exercised = Counters()
             found = []
             fault_coverage = Coverage()
+            faults_module.SENTINELS.pop(fault.name, None)
 
             # Generic swarm cases plus the eviction-targeted ones. A fault whose
             # path is eviction barely executes under a uniform campaign: the
@@ -309,6 +311,33 @@ def main() -> int:
             if found:
                 detected = time.monotonic() - started
                 detail = found[0][:70]
+
+            # Third observer: exact comparison against the committed baseline.
+            # It answers a question neither of the others can: I1 to I4 compare
+            # the engine against itself, so a perturbation uniform across
+            # schedules is invisible, and F1 compares within a tolerance wide
+            # enough to absorb one step of fold-order reassociation.
+            #
+            # Order matters for attribution, not for the verdict: whichever
+            # observer runs first gets credit for the kill. Golden bytes run
+            # ahead of F1 because they are cheap, so a mutant catchable by both
+            # is reported here. For the one operator where that could mislead,
+            # the reversed split-combine fold, F1 was measured separately and
+            # does not move at all: 6.669992e-02 clean against 6.669992e-02
+            # mutated, identical to every digit. The attribution is not an
+            # artifact of this ordering.
+            if not found:
+                from harness.fuzz import golden
+
+                with fault.apply():
+                    matches, differing = golden.compare(model)
+                if not matches:
+                    found.append(
+                        f"golden bytes differ from the committed baseline at "
+                        f"{', '.join(differing)}"
+                    )
+                    detected = time.monotonic() - started
+                    detail = found[0][:70]
 
             # If no invariance observer saw it, and the operator is one F1 can
             # see, run fidelity against fp64 before calling it a survivor.
@@ -354,6 +383,8 @@ def main() -> int:
                 mechanism = "undeclared transition"
             elif "diverged from canonical" in detail:
                 mechanism = "bitwise divergence"
+            elif detail.startswith("golden bytes differ"):
+                mechanism = "golden bytes"
             elif detail.startswith("F1 bound exceeded"):
                 mechanism = "fidelity vs fp64"
             elif detail.startswith("AssertionError"):
@@ -361,10 +392,17 @@ def main() -> int:
             else:
                 mechanism = "crash"
 
+            took_effect = faults_module.SENTINELS.get(fault.name, 0)
+            if not took_effect:
+                # The patch never ran. Distinct from the path never running, and
+                # the execution counters cannot tell the difference.
+                verdict = "not-exercised"
+
             fault_results.append({
                 "fault": fault.name,
                 "operator": fault.operator,
                 "verdict": verdict,
+                "mutation_took_effect": took_effect,
                 "mechanism": mechanism,
                 "requires": list(fault.requires),
                 "counters_seen": {p: exercised[p] for p in fault.requires},
@@ -378,8 +416,11 @@ def main() -> int:
             if verdict == "killed":
                 print(f"                     mechanism: {mechanism}")
             if verdict == "not-exercised":
-                print(f"                     mutated path never ran: {', '.join(missing)}")
-            elif detail:
+                reason = ("the patch never executed (sentinel 0)" if not took_effect
+                          else f"mutated path never ran: {', '.join(missing)}")
+                print(f"                     {reason}")
+            print(f"                     mutation took effect {took_effect} times")
+            if detail:
                 print(f"                     {detail}")
 
         killed = [r for r in fault_results if r["verdict"] == "killed"]

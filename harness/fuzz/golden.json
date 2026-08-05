@@ -1,0 +1,17 @@
+{
+  "note": "Committed baseline for the golden-bytes observer. Regenerating this is a claims-affecting change: it asserts that a numerics difference is intended.",
+  "env_fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+  "corpus_lengths": [
+    600,
+    520,
+    48,
+    17
+  ],
+  "corpus_seed": 90210,
+  "digests": {
+    "prompt_600": "b55d0c541ab794f9232d67a54b824462e53bef25022a560fd3824d668c4cde86",
+    "prompt_520": "4dfed26730d4dd4295fa5343e5e52a007e1495f959265f223864fafcf04ae809",
+    "prompt_48": "2420e4dc08a062697257a7ee8d38e1c06af7932561a1089ab46478ace14b4dd7",
+    "prompt_17": "ce5eb3b2fd881bde7201c7901872081e8fa1cb13b68472930381520515454b01"
+  }
+}
