@@ -1,0 +1,185 @@
+{
+  "schema_version": 1,
+  "kind": "fidelity",
+  "created_utc": "2026-08-04T01:54:52Z",
+  "env": {
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "gpu_arch": "sm_89",
+    "gpu_memory_bytes": 8177975296,
+    "driver_version": "595.84",
+    "cuda_version": "12.4",
+    "torch_version": "2.6.0+cu124",
+    "triton_version": "3.2.0",
+    "numpy_version": "2.1.3",
+    "python_version": "3.12.13",
+    "os_kernel": "Linux 7.0.0-28-generic x86_64",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i5-12450HX",
+    "omp_num_threads": "8",
+    "mkl_num_threads": "8",
+    "torch_intraop_threads": 8,
+    "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
+    "corpus_sha256": "59759d5b266cd314dd82635a1cafa7ce7f48f832276229843e7a9f8469d7ef58",
+    "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    "digest": "a52f9a72c1209b9b58243bd16c566a8fb765fef1a35bf689583ac92832630fa2"
+  },
+  "payload": {
+    "corpus_sha256": "59759d5b266cd314dd82635a1cafa7ce7f48f832276229843e7a9f8469d7ef58",
+    "positions": 2756,
+    "threads": {
+      "omp_num_threads": 8,
+      "mkl_num_threads": 8,
+      "torch_intraop_threads": 8
+    },
+    "weight_cast": {
+      "checkpoint_dtype": "torch.bfloat16",
+      "engine_dtype": "torch.float16",
+      "distinct_elements": 596049920,
+      "tied_lm_head": true,
+      "duplicate_elements_dropped": 155582464,
+      "elements_not_exactly_representable": 98215,
+      "max_abs_error": 2.9802322387695312e-08,
+      "max_rel_error": 1.0
+    },
+    "max_attention_splits": 2,
+    "prompts_with_multiple_splits": 2,
+    "fp64_reproduced_cached_top2": true,
+    "logit_abs_error": {
+      "max": 0.1316463395005094,
+      "mean": 0.005376137035130746
+    },
+    "logit_rel_error": {
+      "max": 0.08778985332295494,
+      "floor": 1.0,
+      "values_counted": 329751792
+    },
+    "abs_error_histogram": [
+      {
+        "bin": "[0, 1e-06)",
+        "count": 56310
+      },
+      {
+        "bin": "[1e-06, 1e-05)",
+        "count": 507582
+      },
+      {
+        "bin": "[1e-05, 0.0001)",
+        "count": 5085049
+      },
+      {
+        "bin": "[0.0001, 0.001)",
+        "count": 50525124
+      },
+      {
+        "bin": "[0.001, 0.01)",
+        "count": 305747437
+      },
+      {
+        "bin": "[0.01, 0.1)",
+        "count": 56813970
+      },
+      {
+        "bin": "[0.1, 1)",
+        "count": 144
+      },
+      {
+        "bin": "[1, inf)",
+        "count": 0
+      }
+    ],
+    "kl_exact_full_vocab": {
+      "mean": 1.685105358515847e-05,
+      "median": 9.9215925130295e-06,
+      "p99": 0.00014229712631147994,
+      "max": 0.0005186931990846053
+    },
+    "top2_difference_error": {
+      "mean": 0.008000610745548607,
+      "median": 0.006143334228854158,
+      "p99": 0.033890245186203316,
+      "max": 0.08395612091515758
+    },
+    "near_tie_rule": "p99.9 of the top1-top2 difference error",
+    "near_tie_threshold": 0.055888133882934454,
+    "match_above_threshold": {
+      "matched": 2622,
+      "total": 2622
+    },
+    "match_near_ties_only": {
+      "matched": 129,
+      "total": 134
+    },
+    "mismatches_that_are_top1_top2_swaps": {
+      "swaps": 5,
+      "total": 5
+    },
+    "largest_gap_among_mismatches": 0.012831338853256824,
+    "threshold_sensitivity": [
+      {
+        "threshold": 0.0,
+        "match": 2751,
+        "total": 2756
+      },
+      {
+        "threshold": 0.001,
+        "match": 2749,
+        "total": 2752
+      },
+      {
+        "threshold": 0.01,
+        "match": 2728,
+        "total": 2730
+      },
+      {
+        "threshold": 0.055888133882934454,
+        "match": 2622,
+        "total": 2622
+      },
+      {
+        "threshold": 0.1,
+        "match": 2533,
+        "total": 2533
+      }
+    ],
+    "f1_checks": [
+      {
+        "check": "no mismatch above the derived threshold",
+        "pass": true
+      },
+      {
+        "check": "every mismatch is a top1/top2 swap",
+        "pass": true
+      },
+      {
+        "check": "mean exact KL <= 1e-4 nats",
+        "pass": true
+      },
+      {
+        "check": "max exact KL <= 1e-3 nats",
+        "pass": true
+      },
+      {
+        "check": "max absolute logit error <= 0.5",
+        "pass": true
+      },
+      {
+        "check": "corpus reaches two attention splits",
+        "pass": true
+      },
+      {
+        "check": "fp64 reference reproduced its cached top-2",
+        "pass": true
+      }
+    ],
+    "f1_pass": true,
+    "hf_sanity_check": {
+      "new_tokens": 32,
+      "identical_sequences": 39,
+      "prompts": 40,
+      "identical_tokens": 1257,
+      "total_tokens": 1280,
+      "first_divergence_positions": [
+        9
+      ]
+    }
+  }
+}

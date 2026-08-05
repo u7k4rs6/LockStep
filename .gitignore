@@ -6,9 +6,16 @@ weights/
 # single-digit minutes; a few MB compressed, multi-GB in --exact mode.
 reference/
 
-# Result artifacts. Published numbers are committed deliberately, one at a time,
-# after review. Nothing lands here by default.
+# Bulk campaign output. Kilobytes each but hundreds of them, superseded on every
+# run, and no published claim points at one. Nothing lands here by default.
 results/
+
+# `evidence/` is deliberately NOT ignored. It holds the artifacts the README and
+# the report actually cite, promoted from results/ one at a time by
+# `python3 -m report.publish`. The rule this enforces: a published number ships
+# with the artifact that produced it, and `lockstep replay` works from a fresh
+# clone. Weights and fp64 tensors are ignored because they are large and
+# regenerable; these are kilobytes of JSON and are neither.
 
 .env
 

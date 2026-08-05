@@ -1,0 +1,583 @@
+{
+  "schema_version": 1,
+  "kind": "fuzz",
+  "created_utc": "2026-08-05T11:35:22Z",
+  "env": {
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "gpu_arch": "sm_89",
+    "gpu_memory_bytes": 8177975296,
+    "driver_version": "595.84",
+    "cuda_version": "12.4",
+    "torch_version": "2.6.0+cu124",
+    "triton_version": "3.2.0",
+    "numpy_version": "2.1.3",
+    "python_version": "3.12.13",
+    "os_kernel": "Linux 7.0.0-28-generic x86_64",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i5-12450HX",
+    "omp_num_threads": "8",
+    "mkl_num_threads": "8",
+    "torch_intraop_threads": 8,
+    "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
+    "corpus_sha256": null,
+    "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    "digest": "3ae469a63dae49844948c3812976b88dcf7ac20e94e82422ffefdc215462bf9d"
+  },
+  "payload": {
+    "cases_executed": 72,
+    "coverage": {
+      "denominator_derivation": "derived from 14 declared transitions over 6 reachable states; 8 events in the alphabet, 48 (state, event) pairs considered, 14 legal",
+      "ngrams": {
+        "2": {
+          "observed": 15,
+          "feasible": 27,
+          "missing": [
+            [
+              "admit",
+              "preempt_rc"
+            ],
+            [
+              "cache_hit",
+              "chunk"
+            ],
+            [
+              "cache_hit",
+              "evict"
+            ],
+            [
+              "cache_hit",
+              "preempt_rc"
+            ],
+            [
+              "chunk",
+              "evict"
+            ],
+            [
+              "chunk",
+              "preempt_rc"
+            ],
+            [
+              "evict",
+              "cache_hit"
+            ],
+            [
+              "evict",
+              "chunk"
+            ],
+            [
+              "evict",
+              "preempt_rc"
+            ],
+            [
+              "resume",
+              "cache_hit"
+            ],
+            [
+              "resume",
+              "evict"
+            ],
+            [
+              "resume",
+              "preempt_rc"
+            ]
+          ]
+        },
+        "3": {
+          "observed": 28,
+          "feasible": 84,
+          "missing": [
+            [
+              "admit",
+              "cache_hit",
+              "chunk"
+            ],
+            [
+              "admit",
+              "cache_hit",
+              "evict"
+            ],
+            [
+              "admit",
+              "cache_hit",
+              "preempt_rc"
+            ],
+            [
+              "admit",
+              "chunk",
+              "evict"
+            ],
+            [
+              "admit",
+              "chunk",
+              "preempt_rc"
+            ],
+            [
+              "admit",
+              "evict",
+              "cache_hit"
+            ],
+            [
+              "admit",
+              "evict",
+              "chunk"
+            ],
+            [
+              "admit",
+              "evict",
+              "preempt_rc"
+            ],
+            [
+              "admit",
+              "preempt_rc",
+              "resume"
+            ],
+            [
+              "cache_hit",
+              "chunk",
+              "chunk"
+            ],
+            [
+              "cache_hit",
+              "chunk",
+              "decode"
+            ],
+            [
+              "cache_hit",
+              "chunk",
+              "evict"
+            ],
+            [
+              "cache_hit",
+              "chunk",
+              "preempt_rc"
+            ],
+            [
+              "cache_hit",
+              "decode",
+              "decode"
+            ],
+            [
+              "cache_hit",
+              "decode",
+              "preempt_rc"
+            ],
+            [
+              "cache_hit",
+              "evict",
+              "chunk"
+            ],
+            [
+              "cache_hit",
+              "evict",
+              "decode"
+            ],
+            [
+              "cache_hit",
+              "evict",
+              "evict"
+            ],
+            [
+              "cache_hit",
+              "evict",
+              "preempt_rc"
+            ],
+            [
+              "cache_hit",
+              "preempt_rc",
+              "resume"
+            ],
+            [
+              "chunk",
+              "chunk",
+              "evict"
+            ],
+            [
+              "chunk",
+              "chunk",
+              "preempt_rc"
+            ],
+            [
+              "chunk",
+              "evict",
+              "chunk"
+            ],
+            [
+              "chunk",
+              "evict",
+              "decode"
+            ],
+            [
+              "chunk",
+              "evict",
+              "evict"
+            ],
+            [
+              "chunk",
+              "evict",
+              "preempt_rc"
+            ],
+            [
+              "chunk",
+              "preempt_rc",
+              "resume"
+            ],
+            [
+              "evict",
+              "cache_hit",
+              "chunk"
+            ],
+            [
+              "evict",
+              "cache_hit",
+              "decode"
+            ],
+            [
+              "evict",
+              "cache_hit",
+              "evict"
+            ],
+            [
+              "evict",
+              "cache_hit",
+              "preempt_rc"
+            ],
+            [
+              "evict",
+              "chunk",
+              "chunk"
+            ],
+            [
+              "evict",
+              "chunk",
+              "decode"
+            ],
+            [
+              "evict",
+              "chunk",
+              "evict"
+            ],
+            [
+              "evict",
+              "chunk",
+              "preempt_rc"
+            ],
+            [
+              "evict",
+              "decode",
+              "preempt_rc"
+            ],
+            [
+              "evict",
+              "evict",
+              "cache_hit"
+            ],
+            [
+              "evict",
+              "evict",
+              "chunk"
+            ],
+            [
+              "evict",
+              "evict",
+              "evict"
+            ],
+            [
+              "evict",
+              "evict",
+              "preempt_rc"
+            ],
+            [
+              "evict",
+              "preempt_rc",
+              "resume"
+            ],
+            [
+              "preempt_rc",
+              "resume",
+              "cache_hit"
+            ],
+            [
+              "preempt_rc",
+              "resume",
+              "evict"
+            ],
+            [
+              "preempt_rc",
+              "resume",
+              "preempt_rc"
+            ],
+            [
+              "resume",
+              "cache_hit",
+              "chunk"
+            ],
+            [
+              "resume",
+              "cache_hit",
+              "decode"
+            ],
+            [
+              "resume",
+              "cache_hit",
+              "evict"
+            ],
+            [
+              "resume",
+              "cache_hit",
+              "preempt_rc"
+            ],
+            [
+              "resume",
+              "chunk",
+              "evict"
+            ],
+            [
+              "resume",
+              "chunk",
+              "preempt_rc"
+            ],
+            [
+              "resume",
+              "evict",
+              "cache_hit"
+            ],
+            [
+              "resume",
+              "evict",
+              "chunk"
+            ],
+            [
+              "resume",
+              "evict",
+              "decode"
+            ],
+            [
+              "resume",
+              "evict",
+              "evict"
+            ],
+            [
+              "resume",
+              "evict",
+              "preempt_rc"
+            ],
+            [
+              "resume",
+              "preempt_rc",
+              "resume"
+            ]
+          ]
+        }
+      },
+      "boundary_predicates": {
+        "chunk end vs block size": [
+          "above",
+          "exact"
+        ],
+        "cache hit length vs block size": [
+          "above",
+          "below",
+          "exact"
+        ],
+        "split boundary vs kv length": [
+          "above",
+          "below",
+          "exact"
+        ],
+        "free block count": [
+          "low",
+          "one",
+          "zero"
+        ],
+        "batch size transition": [
+          "1",
+          "2",
+          "3",
+          "31",
+          "4",
+          "8"
+        ]
+      },
+      "boundary_fraction": [
+        17,
+        20
+      ],
+      "preemption_depth": {
+        "0": 323,
+        "1": 9,
+        "2": 1
+      },
+      "event_counts": {
+        "admit": 333,
+        "cache_hit": 1,
+        "chunk": 3438,
+        "decode": 636,
+        "evict": 3,
+        "finish": 332,
+        "preempt_rc": 11,
+        "resume": 11
+      }
+    },
+    "findings": [],
+    "seeded_faults": [
+      {
+        "fault": "refcount_decrement_missing_on_free",
+        "operator": "refcount decrement missing on free",
+        "verdict": "killed",
+        "mutation_took_effect": 1,
+        "mechanism": "internal audit",
+        "requires": [
+          "finish"
+        ],
+        "counters_seen": {
+          "finish": 0
+        },
+        "seconds": 0.1,
+        "detail": "AuditFailure: refcount ledger does not balance at block 1: refcount 1,"
+      },
+      {
+        "fault": "free_block_still_in_cache_index",
+        "operator": "free a block still referenced by the cache index",
+        "verdict": "killed",
+        "mutation_took_effect": 2,
+        "mechanism": "engine assertion",
+        "requires": [
+          "eviction_taken"
+        ],
+        "counters_seen": {
+          "eviction_taken": 0
+        },
+        "seconds": 25.2,
+        "detail": "AssertionError: unpinning block 0, which the cache does not hold"
+      },
+      {
+        "fault": "stale_block_table_read_after_reclamation",
+        "operator": "stale block-table read after reclamation",
+        "verdict": "killed",
+        "mutation_took_effect": 4,
+        "mechanism": "internal audit",
+        "requires": [
+          "admit"
+        ],
+        "counters_seen": {
+          "admit": 4
+        },
+        "seconds": 0.0,
+        "detail": "AuditFailure: r00 is about to write physical block 0, which is also he"
+      },
+      {
+        "fault": "eviction_set_includes_a_running_sequence",
+        "operator": "eviction eligible-set includes a running sequence",
+        "verdict": "killed",
+        "mutation_took_effect": 3235,
+        "mechanism": "crash",
+        "requires": [
+          "eviction_taken"
+        ],
+        "counters_seen": {
+          "eviction_taken": 31
+        },
+        "seconds": 178.7,
+        "detail": "OutOfBlocks: all 4 blocks are held; the policy must evict or preempt b"
+      },
+      {
+        "fault": "cache_match_length_rounded_up_past_a_block",
+        "operator": "cache match length rounded up past a block boundary",
+        "verdict": "killed",
+        "mutation_took_effect": 24,
+        "mechanism": "bitwise divergence",
+        "requires": [
+          "cache_hit"
+        ],
+        "counters_seen": {
+          "cache_hit": 1
+        },
+        "seconds": 10.4,
+        "detail": "r01 diverged from canonical: [36089] != [32995]"
+      },
+      {
+        "fault": "chunk_boundary_off_by_one",
+        "operator": "chunk boundary uses < where <= is correct",
+        "verdict": "killed",
+        "mutation_took_effect": 4802,
+        "mechanism": "undeclared transition",
+        "requires": [
+          "prefill_chunk"
+        ],
+        "counters_seen": {
+          "prefill_chunk": 2570
+        },
+        "seconds": 196.3,
+        "detail": "UndeclaredTransition: observed the 2-gram ['decode', 'chunk'], which t"
+      },
+      {
+        "fault": "recompute_off_by_one_token_count",
+        "operator": "recompute re-prefills with an off-by-one token count",
+        "verdict": "survived",
+        "mutation_took_effect": 16,
+        "mechanism": "-",
+        "requires": [
+          "preempt_fired",
+          "resume"
+        ],
+        "counters_seen": {
+          "preempt_fired": 8,
+          "resume": 8
+        },
+        "seconds": null,
+        "detail": ""
+      },
+      {
+        "fault": "rng_keyed_on_global_step",
+        "operator": "RNG keyed on global step instead of (uid, position)",
+        "verdict": "killed",
+        "mutation_took_effect": 3,
+        "mechanism": "bitwise divergence",
+        "requires": [
+          "decode_step"
+        ],
+        "counters_seen": {
+          "decode_step": 9
+        },
+        "seconds": 2.6,
+        "detail": "r00 diverged from canonical: [2548] != [67308]"
+      },
+      {
+        "fault": "split_combine_reduction_reversed",
+        "operator": "reduction order reversed in the split-combine CTA",
+        "verdict": "killed",
+        "mutation_took_effect": 147084,
+        "mechanism": "golden bytes",
+        "requires": [
+          "attention_multi_split"
+        ],
+        "counters_seen": {
+          "attention_multi_split": 23
+        },
+        "seconds": 182.7,
+        "detail": "golden bytes differ from the committed baseline at prompt_600, prompt_"
+      },
+      {
+        "fault": "split_size_read_from_batch",
+        "operator": "one code path reads split size from batch size",
+        "verdict": "killed",
+        "mutation_took_effect": 86,
+        "mechanism": "bitwise divergence",
+        "requires": [
+          "admit"
+        ],
+        "counters_seen": {
+          "admit": 10
+        },
+        "seconds": 9.9,
+        "detail": "r00 diverged from canonical: [74866, 106, 30844, 136933] != [5858, 13,"
+      }
+    ],
+    "eviction_campaign": {
+      "cases": 120,
+      "eviction_passes_total": 64,
+      "eviction_passes_max_in_one_case": 3,
+      "pass_count_assertion_fired": 0,
+      "findings": []
+    }
+  }
+}

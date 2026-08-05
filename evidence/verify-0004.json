@@ -1,0 +1,2762 @@
+{
+  "schema_version": 1,
+  "kind": "verify",
+  "created_utc": "2026-08-04T05:11:21Z",
+  "env": {
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "gpu_arch": "sm_89",
+    "gpu_memory_bytes": 8177975296,
+    "driver_version": "595.84",
+    "cuda_version": "12.4",
+    "torch_version": "2.6.0+cu124",
+    "triton_version": "3.2.0",
+    "numpy_version": "2.1.3",
+    "python_version": "3.12.13",
+    "os_kernel": "Linux 7.0.0-28-generic x86_64",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i5-12450HX",
+    "omp_num_threads": null,
+    "mkl_num_threads": null,
+    "torch_intraop_threads": 8,
+    "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
+    "corpus_sha256": null,
+    "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    "digest": "955eca114b02c51bcf1b631519bb7a5d8689c1649251358f284346f9db455d09"
+  },
+  "payload": {
+    "block_sizes": [
+      8,
+      16,
+      32,
+      64,
+      128
+    ],
+    "long_prompt_tokens": 600,
+    "runs": [
+      {
+        "block_size": 8,
+        "relations": [
+          {
+            "id": "KV-EQ",
+            "statement": "decode-produced KV is bit-identical to prefill-produced KV",
+            "passed": true,
+            "detail": "33600 tensor rows over 28 layers, 600 positions, bitwise",
+            "cases": null
+          },
+          {
+            "id": "MR1",
+            "statement": "batch composition: cohabitants leave r00's logit bytes unchanged",
+            "passed": true,
+            "detail": "8/8 batch sizes bitwise identical to C(r) over sizes [1, 2, 3, 4, 8, 16, 31, 32]",
+            "cases": [
+              {
+                "batch_size": 1,
+                "identical": true,
+                "note": "canonical C(r)"
+              },
+              {
+                "batch_size": 2,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 3,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 4,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 8,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 16,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 31,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 32,
+                "identical": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          {
+            "id": "MR2",
+            "statement": "chunk partition: any prefill partition leaves KV and logits unchanged",
+            "passed": true,
+            "detail": "11/11 partitions bitwise identical, block_size=8",
+            "cases": [
+              {
+                "partition": "first chunk = block_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = length - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "single uninterrupted prefill",
+                "chunks": 1,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "token at a time",
+                "chunks": 600,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "ragged, misaligned to block and split",
+                "chunks": 6,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              }
+            ]
+          },
+          {
+            "id": "MR3",
+            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "passed": true,
+            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=8",
+            "cases": [
+              {
+                "preempt_at_step": 0,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 1,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 2,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 3,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 4,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 5,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 6,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 7,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 8,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 9,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              }
+            ]
+          },
+          {
+            "id": "MR4",
+            "statement": "cache cold versus warm: a hit produces the bits a miss would, at any chunking",
+            "passed": true,
+            "detail": "12/12 write/read chunking pairs identical to cold, 12 of which actually hit the cache, prompt 96 tokens, block_size=8",
+            "cases": [
+              {
+                "write": "unchunked write",
+                "read": "unchunked read",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "unchunked read",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "unchunked read",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "unchunked read",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 88,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 88,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR5",
+            "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
+            "passed": true,
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=8",
+            "cases": [
+              {
+                "filler_tokens": 1,
+                "packed_tokens": 97,
+                "identical": true
+              },
+              {
+                "filler_tokens": 15,
+                "packed_tokens": 111,
+                "identical": true
+              },
+              {
+                "filler_tokens": 16,
+                "packed_tokens": 112,
+                "identical": true
+              },
+              {
+                "filler_tokens": 17,
+                "packed_tokens": 113,
+                "identical": true
+              },
+              {
+                "filler_tokens": 35,
+                "packed_tokens": 131,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR8",
+            "statement": "temperature-0 tie-break: argmax is stable under batch permutation",
+            "passed": true,
+            "detail": "3/3 permutations left every request bitwise unchanged, block_size=8",
+            "cases": [
+              {
+                "permutation": "reversed",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "rotated by one",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "interleaved",
+                "moved": [],
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR6",
+            "statement": "replay: identical inputs twice, identical trajectory hash",
+            "passed": true,
+            "detail": "8/8 workload shapes replay identically, 72 steps total",
+            "cases": {
+              "cases": [
+                {
+                  "workload": "short greedy, 3 requests",
+                  "requests": 3,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "ee648b5e8226"
+                },
+                {
+                  "workload": "short sampled, 6 requests",
+                  "requests": 6,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "89e8cf11f37b"
+                },
+                {
+                  "workload": "long decode, 2 requests x 24 tokens",
+                  "requests": 2,
+                  "steps": 24,
+                  "identical": true,
+                  "trajectory": "b984a5974de7"
+                },
+                {
+                  "workload": "wide batch, 16 requests",
+                  "requests": 16,
+                  "steps": 5,
+                  "identical": true,
+                  "trajectory": "dd2212aac18f"
+                },
+                {
+                  "workload": "crosses the 512 split, 2 requests",
+                  "requests": 2,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "946c9fa0b022"
+                },
+                {
+                  "workload": "chunked prefill",
+                  "requests": 4,
+                  "steps": 14,
+                  "identical": true,
+                  "trajectory": "d924a1d4e892"
+                },
+                {
+                  "workload": "preemption mid-decode",
+                  "requests": 3,
+                  "steps": 9,
+                  "identical": true,
+                  "trajectory": "d1cabf68aee1"
+                },
+                {
+                  "workload": "eviction pressure, cache on",
+                  "requests": 6,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "a2ad1131fc3b"
+                }
+              ]
+            }
+          },
+          {
+            "id": "MR6-xproc",
+            "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
+            "passed": true,
+            "detail": "6 steps, sha256:18bd4fe76caf, PYTHONHASHSEED 1 vs 999",
+            "cases": {
+              "trajectory_sha256": "18bd4fe76caf5b6a5ac098aa85554852fd50f7bdbf0719423dbd9311cded156d",
+              "steps": 6
+            }
+          },
+          {
+            "id": "MR7",
+            "statement": "RNG isolation: a request's tokens depend only on (seed, uid, position)",
+            "passed": true,
+            "detail": "11/11 perturbations left every survivor bitwise unchanged",
+            "cases": {
+              "cases": [
+                {
+                  "perturbation": "removed r00",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r01",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r02",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r03",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r04",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r05",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "added rXX",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "submission order reversed",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r00 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r01 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r02 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "BOUNDARY",
+            "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
+            "passed": true,
+            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=8",
+            "cases": [
+              {
+                "case": "prefix_len == block_size - 1 (7)",
+                "ok": true,
+                "detail": "hit 0 tokens, expected 0"
+              },
+              {
+                "case": "prefix_len == block_size (8)",
+                "ok": true,
+                "detail": "hit 8 tokens, expected 8"
+              },
+              {
+                "case": "prefix_len == block_size + 1 (9)",
+                "ok": true,
+                "detail": "hit 8 tokens, expected 8"
+              },
+              {
+                "case": "prefix_len == 0 batched with a nonzero-prefix request",
+                "ok": true,
+                "detail": "zero-prefix hit 0, cohabitant hit 16"
+              },
+              {
+                "case": "cache hit covering the whole prompt",
+                "ok": true,
+                "detail": "hit 16/24 tokens, last block recomputed so the request has logits to sample"
+              },
+              {
+                "case": "eviction under pressure, ledger audited every step",
+                "ok": true,
+                "detail": "3 evictions, ledger balanced throughout"
+              },
+              {
+                "case": "fork with copy-on-write at a block boundary",
+                "ok": true,
+                "detail": "copied logical block 1 into physical 2"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "block_size": 16,
+        "relations": [
+          {
+            "id": "KV-EQ",
+            "statement": "decode-produced KV is bit-identical to prefill-produced KV",
+            "passed": true,
+            "detail": "33600 tensor rows over 28 layers, 600 positions, bitwise",
+            "cases": null
+          },
+          {
+            "id": "MR1",
+            "statement": "batch composition: cohabitants leave r00's logit bytes unchanged",
+            "passed": true,
+            "detail": "8/8 batch sizes bitwise identical to C(r) over sizes [1, 2, 3, 4, 8, 16, 31, 32]",
+            "cases": [
+              {
+                "batch_size": 1,
+                "identical": true,
+                "note": "canonical C(r)"
+              },
+              {
+                "batch_size": 2,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 3,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 4,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 8,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 16,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 31,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 32,
+                "identical": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          {
+            "id": "MR2",
+            "statement": "chunk partition: any prefill partition leaves KV and logits unchanged",
+            "passed": true,
+            "detail": "11/11 partitions bitwise identical, block_size=16",
+            "cases": [
+              {
+                "partition": "first chunk = block_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = length - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "single uninterrupted prefill",
+                "chunks": 1,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "token at a time",
+                "chunks": 600,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "ragged, misaligned to block and split",
+                "chunks": 6,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              }
+            ]
+          },
+          {
+            "id": "MR3",
+            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "passed": true,
+            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=16",
+            "cases": [
+              {
+                "preempt_at_step": 0,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 1,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 2,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 3,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 4,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 5,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 6,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 7,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 8,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 9,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              }
+            ]
+          },
+          {
+            "id": "MR4",
+            "statement": "cache cold versus warm: a hit produces the bits a miss would, at any chunking",
+            "passed": true,
+            "detail": "12/12 write/read chunking pairs identical to cold, 12 of which actually hit the cache, prompt 96 tokens, block_size=16",
+            "cases": [
+              {
+                "write": "unchunked write",
+                "read": "unchunked read",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "unchunked read",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "unchunked read",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "unchunked read",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 80,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 80,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR5",
+            "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
+            "passed": true,
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=16",
+            "cases": [
+              {
+                "filler_tokens": 1,
+                "packed_tokens": 97,
+                "identical": true
+              },
+              {
+                "filler_tokens": 15,
+                "packed_tokens": 111,
+                "identical": true
+              },
+              {
+                "filler_tokens": 16,
+                "packed_tokens": 112,
+                "identical": true
+              },
+              {
+                "filler_tokens": 17,
+                "packed_tokens": 113,
+                "identical": true
+              },
+              {
+                "filler_tokens": 35,
+                "packed_tokens": 131,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR8",
+            "statement": "temperature-0 tie-break: argmax is stable under batch permutation",
+            "passed": true,
+            "detail": "3/3 permutations left every request bitwise unchanged, block_size=16",
+            "cases": [
+              {
+                "permutation": "reversed",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "rotated by one",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "interleaved",
+                "moved": [],
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR6",
+            "statement": "replay: identical inputs twice, identical trajectory hash",
+            "passed": true,
+            "detail": "8/8 workload shapes replay identically, 72 steps total",
+            "cases": {
+              "cases": [
+                {
+                  "workload": "short greedy, 3 requests",
+                  "requests": 3,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "69eb2488dbc0"
+                },
+                {
+                  "workload": "short sampled, 6 requests",
+                  "requests": 6,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "b4ee0a6a0a0b"
+                },
+                {
+                  "workload": "long decode, 2 requests x 24 tokens",
+                  "requests": 2,
+                  "steps": 24,
+                  "identical": true,
+                  "trajectory": "ccc6d4c5d0e8"
+                },
+                {
+                  "workload": "wide batch, 16 requests",
+                  "requests": 16,
+                  "steps": 5,
+                  "identical": true,
+                  "trajectory": "e4a0e6e81be6"
+                },
+                {
+                  "workload": "crosses the 512 split, 2 requests",
+                  "requests": 2,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "946c9fa0b022"
+                },
+                {
+                  "workload": "chunked prefill",
+                  "requests": 4,
+                  "steps": 14,
+                  "identical": true,
+                  "trajectory": "b568605d45f6"
+                },
+                {
+                  "workload": "preemption mid-decode",
+                  "requests": 3,
+                  "steps": 9,
+                  "identical": true,
+                  "trajectory": "7b9f6af0001e"
+                },
+                {
+                  "workload": "eviction pressure, cache on",
+                  "requests": 6,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "a2ad1131fc3b"
+                }
+              ]
+            }
+          },
+          {
+            "id": "MR6-xproc",
+            "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
+            "passed": true,
+            "detail": "6 steps, sha256:43cf9f909657, PYTHONHASHSEED 1 vs 999",
+            "cases": {
+              "trajectory_sha256": "43cf9f909657fb34f98769be253f921e44d57dc2b3e0c1cf607d636fabb8afbc",
+              "steps": 6
+            }
+          },
+          {
+            "id": "MR7",
+            "statement": "RNG isolation: a request's tokens depend only on (seed, uid, position)",
+            "passed": true,
+            "detail": "11/11 perturbations left every survivor bitwise unchanged",
+            "cases": {
+              "cases": [
+                {
+                  "perturbation": "removed r00",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r01",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r02",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r03",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r04",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r05",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "added rXX",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "submission order reversed",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r00 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r01 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r02 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "BOUNDARY",
+            "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
+            "passed": true,
+            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=16",
+            "cases": [
+              {
+                "case": "prefix_len == block_size - 1 (15)",
+                "ok": true,
+                "detail": "hit 0 tokens, expected 0"
+              },
+              {
+                "case": "prefix_len == block_size (16)",
+                "ok": true,
+                "detail": "hit 16 tokens, expected 16"
+              },
+              {
+                "case": "prefix_len == block_size + 1 (17)",
+                "ok": true,
+                "detail": "hit 16 tokens, expected 16"
+              },
+              {
+                "case": "prefix_len == 0 batched with a nonzero-prefix request",
+                "ok": true,
+                "detail": "zero-prefix hit 0, cohabitant hit 32"
+              },
+              {
+                "case": "cache hit covering the whole prompt",
+                "ok": true,
+                "detail": "hit 32/48 tokens, last block recomputed so the request has logits to sample"
+              },
+              {
+                "case": "eviction under pressure, ledger audited every step",
+                "ok": true,
+                "detail": "3 evictions, ledger balanced throughout"
+              },
+              {
+                "case": "fork with copy-on-write at a block boundary",
+                "ok": true,
+                "detail": "copied logical block 1 into physical 2"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "block_size": 32,
+        "relations": [
+          {
+            "id": "KV-EQ",
+            "statement": "decode-produced KV is bit-identical to prefill-produced KV",
+            "passed": true,
+            "detail": "33600 tensor rows over 28 layers, 600 positions, bitwise",
+            "cases": null
+          },
+          {
+            "id": "MR1",
+            "statement": "batch composition: cohabitants leave r00's logit bytes unchanged",
+            "passed": true,
+            "detail": "8/8 batch sizes bitwise identical to C(r) over sizes [1, 2, 3, 4, 8, 16, 31, 32]",
+            "cases": [
+              {
+                "batch_size": 1,
+                "identical": true,
+                "note": "canonical C(r)"
+              },
+              {
+                "batch_size": 2,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 3,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 4,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 8,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 16,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 31,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 32,
+                "identical": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          {
+            "id": "MR2",
+            "statement": "chunk partition: any prefill partition leaves KV and logits unchanged",
+            "passed": true,
+            "detail": "11/11 partitions bitwise identical, block_size=32",
+            "cases": [
+              {
+                "partition": "first chunk = block_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = length - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "single uninterrupted prefill",
+                "chunks": 1,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "token at a time",
+                "chunks": 600,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "ragged, misaligned to block and split",
+                "chunks": 6,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              }
+            ]
+          },
+          {
+            "id": "MR3",
+            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "passed": true,
+            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=32",
+            "cases": [
+              {
+                "preempt_at_step": 0,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 1,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 2,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 3,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 4,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 5,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 6,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 7,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 8,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 9,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              }
+            ]
+          },
+          {
+            "id": "MR4",
+            "statement": "cache cold versus warm: a hit produces the bits a miss would, at any chunking",
+            "passed": true,
+            "detail": "12/12 write/read chunking pairs identical to cold, 12 of which actually hit the cache, prompt 96 tokens, block_size=32",
+            "cases": [
+              {
+                "write": "unchunked write",
+                "read": "unchunked read",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "unchunked read",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "unchunked read",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "unchunked read",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 64,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 64,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR5",
+            "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
+            "passed": true,
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=32",
+            "cases": [
+              {
+                "filler_tokens": 1,
+                "packed_tokens": 97,
+                "identical": true
+              },
+              {
+                "filler_tokens": 15,
+                "packed_tokens": 111,
+                "identical": true
+              },
+              {
+                "filler_tokens": 16,
+                "packed_tokens": 112,
+                "identical": true
+              },
+              {
+                "filler_tokens": 17,
+                "packed_tokens": 113,
+                "identical": true
+              },
+              {
+                "filler_tokens": 35,
+                "packed_tokens": 131,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR8",
+            "statement": "temperature-0 tie-break: argmax is stable under batch permutation",
+            "passed": true,
+            "detail": "3/3 permutations left every request bitwise unchanged, block_size=32",
+            "cases": [
+              {
+                "permutation": "reversed",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "rotated by one",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "interleaved",
+                "moved": [],
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR6",
+            "statement": "replay: identical inputs twice, identical trajectory hash",
+            "passed": true,
+            "detail": "8/8 workload shapes replay identically, 72 steps total",
+            "cases": {
+              "cases": [
+                {
+                  "workload": "short greedy, 3 requests",
+                  "requests": 3,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "8e316c820b19"
+                },
+                {
+                  "workload": "short sampled, 6 requests",
+                  "requests": 6,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "6c970dd61827"
+                },
+                {
+                  "workload": "long decode, 2 requests x 24 tokens",
+                  "requests": 2,
+                  "steps": 24,
+                  "identical": true,
+                  "trajectory": "b892b53e686b"
+                },
+                {
+                  "workload": "wide batch, 16 requests",
+                  "requests": 16,
+                  "steps": 5,
+                  "identical": true,
+                  "trajectory": "a8c4f16b7f36"
+                },
+                {
+                  "workload": "crosses the 512 split, 2 requests",
+                  "requests": 2,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "946c9fa0b022"
+                },
+                {
+                  "workload": "chunked prefill",
+                  "requests": 4,
+                  "steps": 14,
+                  "identical": true,
+                  "trajectory": "a97154800a02"
+                },
+                {
+                  "workload": "preemption mid-decode",
+                  "requests": 3,
+                  "steps": 9,
+                  "identical": true,
+                  "trajectory": "815ebff577b0"
+                },
+                {
+                  "workload": "eviction pressure, cache on",
+                  "requests": 6,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "a2ad1131fc3b"
+                }
+              ]
+            }
+          },
+          {
+            "id": "MR6-xproc",
+            "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
+            "passed": true,
+            "detail": "6 steps, sha256:cafa164edeb6, PYTHONHASHSEED 1 vs 999",
+            "cases": {
+              "trajectory_sha256": "cafa164edeb6974a2e4be3bd290c23cdd19591edc1a5ab7ab1fb979ce3b72dd8",
+              "steps": 6
+            }
+          },
+          {
+            "id": "MR7",
+            "statement": "RNG isolation: a request's tokens depend only on (seed, uid, position)",
+            "passed": true,
+            "detail": "11/11 perturbations left every survivor bitwise unchanged",
+            "cases": {
+              "cases": [
+                {
+                  "perturbation": "removed r00",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r01",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r02",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r03",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r04",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r05",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "added rXX",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "submission order reversed",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r00 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r01 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r02 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "BOUNDARY",
+            "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
+            "passed": true,
+            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=32",
+            "cases": [
+              {
+                "case": "prefix_len == block_size - 1 (31)",
+                "ok": true,
+                "detail": "hit 0 tokens, expected 0"
+              },
+              {
+                "case": "prefix_len == block_size (32)",
+                "ok": true,
+                "detail": "hit 32 tokens, expected 32"
+              },
+              {
+                "case": "prefix_len == block_size + 1 (33)",
+                "ok": true,
+                "detail": "hit 32 tokens, expected 32"
+              },
+              {
+                "case": "prefix_len == 0 batched with a nonzero-prefix request",
+                "ok": true,
+                "detail": "zero-prefix hit 0, cohabitant hit 64"
+              },
+              {
+                "case": "cache hit covering the whole prompt",
+                "ok": true,
+                "detail": "hit 64/96 tokens, last block recomputed so the request has logits to sample"
+              },
+              {
+                "case": "eviction under pressure, ledger audited every step",
+                "ok": true,
+                "detail": "3 evictions, ledger balanced throughout"
+              },
+              {
+                "case": "fork with copy-on-write at a block boundary",
+                "ok": true,
+                "detail": "copied logical block 1 into physical 2"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "block_size": 64,
+        "relations": [
+          {
+            "id": "KV-EQ",
+            "statement": "decode-produced KV is bit-identical to prefill-produced KV",
+            "passed": true,
+            "detail": "33600 tensor rows over 28 layers, 600 positions, bitwise",
+            "cases": null
+          },
+          {
+            "id": "MR1",
+            "statement": "batch composition: cohabitants leave r00's logit bytes unchanged",
+            "passed": true,
+            "detail": "8/8 batch sizes bitwise identical to C(r) over sizes [1, 2, 3, 4, 8, 16, 31, 32]",
+            "cases": [
+              {
+                "batch_size": 1,
+                "identical": true,
+                "note": "canonical C(r)"
+              },
+              {
+                "batch_size": 2,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 3,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 4,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 8,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 16,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 31,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 32,
+                "identical": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          {
+            "id": "MR2",
+            "statement": "chunk partition: any prefill partition leaves KV and logits unchanged",
+            "passed": true,
+            "detail": "11/11 partitions bitwise identical, block_size=64",
+            "cases": [
+              {
+                "partition": "first chunk = block_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = length - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "single uninterrupted prefill",
+                "chunks": 1,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "token at a time",
+                "chunks": 600,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "ragged, misaligned to block and split",
+                "chunks": 6,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              }
+            ]
+          },
+          {
+            "id": "MR3",
+            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "passed": true,
+            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=64",
+            "cases": [
+              {
+                "preempt_at_step": 0,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 1,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 2,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 3,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 4,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 5,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 6,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 7,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 8,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 9,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              }
+            ]
+          },
+          {
+            "id": "MR4",
+            "statement": "cache cold versus warm: a hit produces the bits a miss would, at any chunking",
+            "passed": true,
+            "detail": "12/12 write/read chunking pairs identical to cold, 12 of which actually hit the cache, prompt 192 tokens, block_size=64",
+            "cases": [
+              {
+                "write": "unchunked write",
+                "read": "unchunked read",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "unchunked read",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "unchunked read",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "unchunked read",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 128,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 128,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR5",
+            "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
+            "passed": true,
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=64",
+            "cases": [
+              {
+                "filler_tokens": 1,
+                "packed_tokens": 97,
+                "identical": true
+              },
+              {
+                "filler_tokens": 15,
+                "packed_tokens": 111,
+                "identical": true
+              },
+              {
+                "filler_tokens": 16,
+                "packed_tokens": 112,
+                "identical": true
+              },
+              {
+                "filler_tokens": 17,
+                "packed_tokens": 113,
+                "identical": true
+              },
+              {
+                "filler_tokens": 35,
+                "packed_tokens": 131,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR8",
+            "statement": "temperature-0 tie-break: argmax is stable under batch permutation",
+            "passed": true,
+            "detail": "3/3 permutations left every request bitwise unchanged, block_size=64",
+            "cases": [
+              {
+                "permutation": "reversed",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "rotated by one",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "interleaved",
+                "moved": [],
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR6",
+            "statement": "replay: identical inputs twice, identical trajectory hash",
+            "passed": true,
+            "detail": "8/8 workload shapes replay identically, 72 steps total",
+            "cases": {
+              "cases": [
+                {
+                  "workload": "short greedy, 3 requests",
+                  "requests": 3,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "5eff272e7a21"
+                },
+                {
+                  "workload": "short sampled, 6 requests",
+                  "requests": 6,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "d591b38ee0ea"
+                },
+                {
+                  "workload": "long decode, 2 requests x 24 tokens",
+                  "requests": 2,
+                  "steps": 24,
+                  "identical": true,
+                  "trajectory": "77a12146d12f"
+                },
+                {
+                  "workload": "wide batch, 16 requests",
+                  "requests": 16,
+                  "steps": 5,
+                  "identical": true,
+                  "trajectory": "3a9abae6e543"
+                },
+                {
+                  "workload": "crosses the 512 split, 2 requests",
+                  "requests": 2,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "946c9fa0b022"
+                },
+                {
+                  "workload": "chunked prefill",
+                  "requests": 4,
+                  "steps": 14,
+                  "identical": true,
+                  "trajectory": "69ff64a893de"
+                },
+                {
+                  "workload": "preemption mid-decode",
+                  "requests": 3,
+                  "steps": 9,
+                  "identical": true,
+                  "trajectory": "0a2846107ec2"
+                },
+                {
+                  "workload": "eviction pressure, cache on",
+                  "requests": 6,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "a2ad1131fc3b"
+                }
+              ]
+            }
+          },
+          {
+            "id": "MR6-xproc",
+            "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
+            "passed": true,
+            "detail": "6 steps, sha256:c127041ea9b0, PYTHONHASHSEED 1 vs 999",
+            "cases": {
+              "trajectory_sha256": "c127041ea9b00d913ba590795928dab72e6e5b43940a4741a5dacc8f9cb071b8",
+              "steps": 6
+            }
+          },
+          {
+            "id": "MR7",
+            "statement": "RNG isolation: a request's tokens depend only on (seed, uid, position)",
+            "passed": true,
+            "detail": "11/11 perturbations left every survivor bitwise unchanged",
+            "cases": {
+              "cases": [
+                {
+                  "perturbation": "removed r00",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r01",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r02",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r03",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r04",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r05",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "added rXX",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "submission order reversed",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r00 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r01 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r02 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "BOUNDARY",
+            "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
+            "passed": true,
+            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=64",
+            "cases": [
+              {
+                "case": "prefix_len == block_size - 1 (63)",
+                "ok": true,
+                "detail": "hit 0 tokens, expected 0"
+              },
+              {
+                "case": "prefix_len == block_size (64)",
+                "ok": true,
+                "detail": "hit 64 tokens, expected 64"
+              },
+              {
+                "case": "prefix_len == block_size + 1 (65)",
+                "ok": true,
+                "detail": "hit 64 tokens, expected 64"
+              },
+              {
+                "case": "prefix_len == 0 batched with a nonzero-prefix request",
+                "ok": true,
+                "detail": "zero-prefix hit 0, cohabitant hit 128"
+              },
+              {
+                "case": "cache hit covering the whole prompt",
+                "ok": true,
+                "detail": "hit 128/192 tokens, last block recomputed so the request has logits to sample"
+              },
+              {
+                "case": "eviction under pressure, ledger audited every step",
+                "ok": true,
+                "detail": "3 evictions, ledger balanced throughout"
+              },
+              {
+                "case": "fork with copy-on-write at a block boundary",
+                "ok": true,
+                "detail": "copied logical block 1 into physical 2"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "block_size": 128,
+        "relations": [
+          {
+            "id": "KV-EQ",
+            "statement": "decode-produced KV is bit-identical to prefill-produced KV",
+            "passed": true,
+            "detail": "33600 tensor rows over 28 layers, 600 positions, bitwise",
+            "cases": null
+          },
+          {
+            "id": "MR1",
+            "statement": "batch composition: cohabitants leave r00's logit bytes unchanged",
+            "passed": true,
+            "detail": "8/8 batch sizes bitwise identical to C(r) over sizes [1, 2, 3, 4, 8, 16, 31, 32]",
+            "cases": [
+              {
+                "batch_size": 1,
+                "identical": true,
+                "note": "canonical C(r)"
+              },
+              {
+                "batch_size": 2,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 3,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 4,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 8,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 16,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 31,
+                "identical": true,
+                "max_abs": 0.0
+              },
+              {
+                "batch_size": 32,
+                "identical": true,
+                "max_abs": 0.0
+              }
+            ]
+          },
+          {
+            "id": "MR2",
+            "statement": "chunk partition: any prefill partition leaves KV and logits unchanged",
+            "passed": true,
+            "detail": "11/11 partitions bitwise identical, block_size=128",
+            "cases": [
+              {
+                "partition": "first chunk = block_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = block_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = split_size + 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "first chunk = length - 1",
+                "chunks": 2,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "single uninterrupted prefill",
+                "chunks": 1,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "token at a time",
+                "chunks": 600,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              },
+              {
+                "partition": "ragged, misaligned to block and split",
+                "chunks": 6,
+                "kv_identical": true,
+                "logits_identical": true,
+                "first_divergence": null
+              }
+            ]
+          },
+          {
+            "id": "MR3",
+            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "passed": true,
+            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=128",
+            "cases": [
+              {
+                "preempt_at_step": 0,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 1,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 2,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 3,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 4,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 5,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 6,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 7,
+                "preemption_fired": true,
+                "identical": true,
+                "preempt_count": 1
+              },
+              {
+                "preempt_at_step": 8,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              },
+              {
+                "preempt_at_step": 9,
+                "preemption_fired": false,
+                "identical": true,
+                "preempt_count": 0
+              }
+            ]
+          },
+          {
+            "id": "MR4",
+            "statement": "cache cold versus warm: a hit produces the bits a miss would, at any chunking",
+            "passed": true,
+            "detail": "12/12 write/read chunking pairs identical to cold, 12 of which actually hit the cache, prompt 384 tokens, block_size=128",
+            "cases": [
+              {
+                "write": "unchunked write",
+                "read": "unchunked read",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "unchunked write",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "unchunked read",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "unchunked read",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (block_size + 1)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "unchunked read",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (block_size)",
+                "hit_tokens": 256,
+                "identical": true
+              },
+              {
+                "write": "chunked write (7, misaligned)",
+                "read": "chunked read (13, misaligned)",
+                "hit_tokens": 256,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR5",
+            "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
+            "passed": true,
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=128",
+            "cases": [
+              {
+                "filler_tokens": 1,
+                "packed_tokens": 97,
+                "identical": true
+              },
+              {
+                "filler_tokens": 15,
+                "packed_tokens": 111,
+                "identical": true
+              },
+              {
+                "filler_tokens": 16,
+                "packed_tokens": 112,
+                "identical": true
+              },
+              {
+                "filler_tokens": 17,
+                "packed_tokens": 113,
+                "identical": true
+              },
+              {
+                "filler_tokens": 35,
+                "packed_tokens": 131,
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR8",
+            "statement": "temperature-0 tie-break: argmax is stable under batch permutation",
+            "passed": true,
+            "detail": "3/3 permutations left every request bitwise unchanged, block_size=128",
+            "cases": [
+              {
+                "permutation": "reversed",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "rotated by one",
+                "moved": [],
+                "identical": true
+              },
+              {
+                "permutation": "interleaved",
+                "moved": [],
+                "identical": true
+              }
+            ]
+          },
+          {
+            "id": "MR6",
+            "statement": "replay: identical inputs twice, identical trajectory hash",
+            "passed": true,
+            "detail": "8/8 workload shapes replay identically, 72 steps total",
+            "cases": {
+              "cases": [
+                {
+                  "workload": "short greedy, 3 requests",
+                  "requests": 3,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "b664a70908ae"
+                },
+                {
+                  "workload": "short sampled, 6 requests",
+                  "requests": 6,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "b33a4e09fd65"
+                },
+                {
+                  "workload": "long decode, 2 requests x 24 tokens",
+                  "requests": 2,
+                  "steps": 24,
+                  "identical": true,
+                  "trajectory": "be12ff0b07a8"
+                },
+                {
+                  "workload": "wide batch, 16 requests",
+                  "requests": 16,
+                  "steps": 5,
+                  "identical": true,
+                  "trajectory": "053f74c6234a"
+                },
+                {
+                  "workload": "crosses the 512 split, 2 requests",
+                  "requests": 2,
+                  "steps": 6,
+                  "identical": true,
+                  "trajectory": "946c9fa0b022"
+                },
+                {
+                  "workload": "chunked prefill",
+                  "requests": 4,
+                  "steps": 14,
+                  "identical": true,
+                  "trajectory": "4e76e90e1701"
+                },
+                {
+                  "workload": "preemption mid-decode",
+                  "requests": 3,
+                  "steps": 9,
+                  "identical": true,
+                  "trajectory": "b8e7d27b67be"
+                },
+                {
+                  "workload": "eviction pressure, cache on",
+                  "requests": 6,
+                  "steps": 4,
+                  "identical": true,
+                  "trajectory": "a2ad1131fc3b"
+                }
+              ]
+            }
+          },
+          {
+            "id": "MR6-xproc",
+            "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
+            "passed": true,
+            "detail": "6 steps, sha256:ca31336366ba, PYTHONHASHSEED 1 vs 999",
+            "cases": {
+              "trajectory_sha256": "ca31336366ba3e9b8c4efb41fec25efa8ce37981e3ea604f351761c89c578e06",
+              "steps": 6
+            }
+          },
+          {
+            "id": "MR7",
+            "statement": "RNG isolation: a request's tokens depend only on (seed, uid, position)",
+            "passed": true,
+            "detail": "11/11 perturbations left every survivor bitwise unchanged",
+            "cases": {
+              "cases": [
+                {
+                  "perturbation": "removed r00",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r01",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r02",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r03",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r04",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "removed r05",
+                  "survivors": 5,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "added rXX",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "submission order reversed",
+                  "survivors": 6,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r00 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r01 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                },
+                {
+                  "perturbation": "r02 alone in a later session",
+                  "survivors": 1,
+                  "unchanged": true,
+                  "moved": []
+                }
+              ]
+            }
+          },
+          {
+            "id": "BOUNDARY",
+            "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
+            "passed": true,
+            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=128",
+            "cases": [
+              {
+                "case": "prefix_len == block_size - 1 (127)",
+                "ok": true,
+                "detail": "hit 0 tokens, expected 0"
+              },
+              {
+                "case": "prefix_len == block_size (128)",
+                "ok": true,
+                "detail": "hit 128 tokens, expected 128"
+              },
+              {
+                "case": "prefix_len == block_size + 1 (129)",
+                "ok": true,
+                "detail": "hit 128 tokens, expected 128"
+              },
+              {
+                "case": "prefix_len == 0 batched with a nonzero-prefix request",
+                "ok": true,
+                "detail": "zero-prefix hit 0, cohabitant hit 256"
+              },
+              {
+                "case": "cache hit covering the whole prompt",
+                "ok": true,
+                "detail": "hit 256/384 tokens, last block recomputed so the request has logits to sample"
+              },
+              {
+                "case": "eviction under pressure, ledger audited every step",
+                "ok": true,
+                "detail": "3 evictions, ledger balanced throughout"
+              },
+              {
+                "case": "fork with copy-on-write at a block boundary",
+                "ok": true,
+                "detail": "copied logical block 1 into physical 2"
+              }
+            ]
+          }
+        ]
+      }
+    ],
+    "not_yet_runnable": {
+      "MR9": "mask no-op, fidelity side. Needs an explicit pad region, which this engine never materializes: sequences are packed, not padded"
+    },
+    "passed": 55,
+    "total": 55
+  }
+}
