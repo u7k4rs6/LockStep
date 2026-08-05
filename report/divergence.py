@@ -207,7 +207,7 @@ EXAMPLE = Divergence(
     schedule_events=12,
     schedule_events_before_minimization=847,
     env_fingerprint="sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    replay_artifact="results/2026-08-14/case-0031.json",
+    replay_artifact="evidence/case-0031.json",
     boundary_hit=True,
 )
 
@@ -223,7 +223,7 @@ EXAMPLE_CRASH = Divergence(
     schedule_events=0,
     schedule_events_before_minimization=9,
     env_fingerprint="sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    replay_artifact="results/2026-08-04/case-0003.json",
+    replay_artifact="evidence/case-0003.json",
     boundary_hit=True,
 )
 

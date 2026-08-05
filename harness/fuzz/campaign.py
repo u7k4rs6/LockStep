@@ -160,7 +160,7 @@ def run_campaign(model, seeds, cases_per_seed, coverage, oracle, progress=True):
     return findings, executed
 
 
-def print_repro(model, finding: Finding, minimization, artifact_path: str) -> None:
+def print_repro(finding: Finding, minimization, artifact_path: str) -> None:
     """The divergence report from frontend spec 1.3, with the minimality proof."""
     case = minimization.case
     print()
@@ -221,6 +221,25 @@ def main() -> int:
     print(coverage.report())
     print()
     print(f"  clean campaign: {len(findings)} findings over {executed} cases")
+
+    # Minimize, write the case artifact, print the repro. This was three imports
+    # and a function nothing called: `minimize` and `print_repro` existed, the
+    # divergence report named an artifact path, and no code path produced one.
+    # A reproduce line is only true if something writes what it points at.
+    for finding in findings:
+        minimization = minimize(finding.case, lambda c: case_fails(model, c) is not None)
+        artifact = Artifact(kind="case", env=envlock.capture(), payload={
+            "reason": finding.detail,
+            "config": finding.config,
+            "minimized": minimization.case.to_dict(),
+            "before": minimization.before,
+            "after": minimization.after,
+            "reproduces": minimization.reproduces,
+            "one_minimal": minimization.one_minimal,
+            "checks_run": minimization.checks_run,
+        }).write()
+        print_repro(finding, minimization, relpath(artifact))
+        print(f"    promote with: python3 -m report.publish {relpath(artifact)}")
 
     eviction_summary = None
     if args.eviction_campaign:
@@ -322,10 +341,13 @@ def main() -> int:
             # observer runs first gets credit for the kill. Golden bytes run
             # ahead of F1 because they are cheap, so a mutant catchable by both
             # is reported here. For the one operator where that could mislead,
-            # the reversed split-combine fold, F1 was measured separately and
-            # does not move at all: 6.669992e-02 clean against 6.669992e-02
-            # mutated, identical to every digit. The attribution is not an
-            # artifact of this ordering.
+            # the reversed split-combine fold, F1 was measured separately:
+            # 6.669992e-02 clean against 6.669992e-02 mutated, so its statistic
+            # is identical and no threshold on it separates the two. The
+            # underlying logits do differ, by about 2.5 fp16 ulp and only at
+            # multi-split positions, which is below the quantization error F1
+            # already absorbs by design. The attribution is not an artifact of
+            # this ordering.
             if not found:
                 from harness.fuzz import golden
 

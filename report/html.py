@@ -26,6 +26,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from report.fonts import css as font_css, embedded_bytes  # noqa: E402
 
 RESULTS = REPO_ROOT / "results"
+EVIDENCE = REPO_ROOT / "evidence"
 
 # Inlined ahead of the rest of the stylesheet so the first paint already has the
 # faces and nothing reflows partway down a numeric table.
@@ -172,6 +173,17 @@ document.querySelectorAll('.tick').forEach(function (tick) {
 
 
 def latest(kind: str) -> dict | None:
+    """Prefer committed evidence over local results.
+
+    The report is the published artifact, so it reads the published inputs. A
+    number that appears here and cannot be traced to a file in `evidence/` is a
+    number a reader cannot check, which is the gap this ordering closes.
+    `results/` remains the fallback so the report still builds mid-iteration,
+    before an artifact has been promoted.
+    """
+    published = sorted(EVIDENCE.glob(f"{kind}-*.json"))
+    if published:
+        return json.loads(published[-1].read_text())
     files = sorted(RESULTS.glob(f"*/{kind}-*.json"))
     if not files:
         return None
@@ -439,6 +451,32 @@ def build(out: Path) -> Path:
      obeys. The first case is the one worth watching:
      <span class="mono">prefix_len == page_size</span> is the shape of open issue
      <a href="https://github.com/sgl-project/sglang/issues/22819">#22819</a>.</p>
+</section>
+""")
+
+    parts.append(f"""
+<section>
+  <h2>Evidence, and replaying it</h2>
+  <p>Every number on this page comes from an artifact in
+     <span class="mono">evidence/</span>, committed to the repository with its
+     <span class="mono">env.lock</span>. This page is generated from those files and
+     nothing else, so it can be rebuilt from a fresh clone with
+     <span class="mono">python3 -m report.html</span> and any number here traced to the
+     file that produced it. Bulk campaign output stays out of the repository; only the
+     artifacts that back a published claim are promoted into it.</p>
+  <p>The claim that every finding minimizes to an exact replay is checkable rather than
+     asserted:</p>
+  <pre class="mono">lockstep replay evidence/case-witness.json</pre>
+  <p class="method">The witness is a clean case carrying its trajectory hash over emitted
+     tokens, raw fp16 logit bytes, the packed work list, the allocator ledger, and the
+     prefix cache index. Replaying it in a fresh process re-runs the exact
+     (W, sigma, seeds) triple and compares. It crosses the 512-token split boundary,
+     chunks prefill, preempts mid-decode, and shares a 544-token prefix, because a
+     witness that exercised none of the machinery would pass whatever the engine did.
+     <span class="mono">evidence/case-0003.json</span> is the other kind: a real finding,
+     minimized to one request and proven 1-minimal in 788 checks. It no longer
+     reproduces, and the replay attributes that to the engine revision rather than
+     reporting a failure, because the bug was fixed.</p>
 </section>
 """)
 

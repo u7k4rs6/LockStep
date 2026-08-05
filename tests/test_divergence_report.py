@@ -26,7 +26,7 @@ SYNTHETIC = Divergence(
     schedule_events=12,
     schedule_events_before_minimization=847,
     env_fingerprint="sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    replay_artifact="results/2026-08-14/case-0031.json",
+    replay_artifact="evidence/case-0031.json",
     boundary_hit=True,
 )
 
@@ -43,7 +43,7 @@ def test_matches_the_spec_layout():
         "  env        sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
         "",
         "  reproduce",
-        "    lockstep replay results/2026-08-14/case-0031.json",
+        "    lockstep replay evidence/case-0031.json",
     ]
 
 

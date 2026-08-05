@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""The command surface from docs/04-frontend-spec.md section 1.1.
+
+The spec declared nine commands. None of them existed: every entry point in this
+repository has been `python3 -m something.else` since the first week, and the
+divergence report told readers to run `lockstep replay <artifact>`, which was not
+a command anyone could run. That is the eighth instance of this project's own
+thesis, found while fixing the seventh.
+
+This is a dispatcher rather than a re-implementation. Each subcommand forwards to
+the module that already does the work, so there is exactly one implementation of
+each behaviour and this file cannot drift away from it. `[tool.uv] package =
+false` means there is no installed console script to hang this on, so it lives at
+the repository root and runs as `./lockstep <command>`.
+
+Commands the spec names but this project never built are listed by `--help` as
+not implemented, rather than omitted. An absent command reads as an oversight; a
+command that says "not built" is a statement.
+"""
+
+from __future__ import annotations
+
+import runpy
+import subprocess
+import sys
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent
+
+# Spec name to the module that implements it. A value of None means the spec
+# names it and this project does not have it.
+COMMANDS: dict[str, str | None] = {
+    "run": None,
+    "verify": "harness.mr.run",
+    "fuzz": "harness.fuzz.campaign",
+    "replay": "harness.replay",
+    "minimize": None,
+    "mutate": "harness.fuzz.campaign",
+    "certify": "certify.session",
+    "bench": "bench.throughput",
+    "report": "report.html",
+    # Not in the spec, added because the evidence rule needs them.
+    "publish": "report.publish",
+    "witness": "harness.witness",
+}
+
+# Subcommands that are a flag on another module rather than a module of their own.
+EXTRA_ARGS: dict[str, list[str]] = {
+    "mutate": ["--seeded-faults"],
+}
+
+NOT_BUILT = {
+    "run": "no standalone runner; workloads are driven through the harness",
+    "minimize": "minimization runs inside `fuzz`, which writes the minimized case "
+                "artifact and prints the repro",
+}
+
+
+def usage() -> int:
+    print("lockstep <command> [args]")
+    print()
+    width = max(len(name) for name in COMMANDS)
+    for name, module in COMMANDS.items():
+        if module is None:
+            print(f"  {name:<{width}}  not built: {NOT_BUILT[name]}")
+        else:
+            extra = " ".join(EXTRA_ARGS.get(name, []))
+            print(f"  {name:<{width}}  python3 -m {module} {extra}".rstrip())
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if not argv or argv[0] in ("-h", "--help", "help"):
+        return usage()
+
+    command, rest = argv[0], argv[1:]
+    if command not in COMMANDS:
+        print(f"unknown command {command!r}. Try --help.")
+        return 2
+
+    module = COMMANDS[command]
+    if module is None:
+        print(f"lockstep {command} is not built: {NOT_BUILT[command]}")
+        return 2
+
+    args = EXTRA_ARGS.get(command, []) + rest
+    # Forwarded through the same interpreter so the environment, the pinned
+    # thread counts, and sys.path all match a direct `python3 -m` invocation.
+    sys.argv = [f"lockstep {command}", *args]
+    sys.path.insert(0, str(REPO_ROOT))
+    try:
+        runpy.run_module(module, run_name="__main__", alter_sys=True)
+    except SystemExit as exit_code:
+        return int(exit_code.code or 0)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
