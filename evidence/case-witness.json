@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "case",
-  "created_utc": "2026-08-05T12:34:28Z",
+  "created_utc": "2026-08-05T12:44:02Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -19,9 +19,9 @@
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": null,
-    "engine_revision": "972ac822f9d2-dirty",
+    "engine_revision": "c835a7361031",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "920586fc56eaffc6037b8d303667f96d266ea3716385d3b89b74c744678d9685"
+    "digest": "5021426978fb0a7fd38b5efdadda38fad1b161f46bb9ba417be2efb08dd52c69"
   },
   "payload": {
     "reason": "",
