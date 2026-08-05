@@ -53,21 +53,41 @@ same partials in the same reversed order as the same position reached in one
 pass. The engine agrees with itself perfectly, and I1 to I4 only ever ask whether
 it agrees with itself.
 
-F1 does not catch it either, and should not. Measured rather than predicted:
+F1 does not catch it either, and the precise reason matters more than the blunt
+one. F1's headline statistic is the maximum absolute logit error against fp64,
+and that statistic does not move:
 
 | engine | max abs logit error vs fp64 | within the 0.5 bound |
 |---|---|---|
 | clean | 6.669992e-02 | yes, 7.5x headroom |
 | reversed fold | 6.669992e-02 | yes |
 
-600-token prompt, batch 1, two splits.
+600-token prompt, batch 1, two splits, sentinel confirming the patched kernel ran
+28 times during the measurement. The two are the same number to every digit, so
+**no threshold on that statistic separates the two engines**. Not "the bound is
+too loose": no setting of the bound distinguishes them, because the quantity
+being thresholded is identical.
 
-The two are not merely both inside the bound, they are the same number to every
-digit printed, with the mutant's sentinel confirming the patched kernel ran 28
-times during the measurement. No tightening of F1's bound would catch this fault,
-because there is no gap to tighten: the maximum error against fp64 is attained at
-a large-magnitude logit whose fp16 quantization error dominates, and one step of
-reassociation inside an fp32 accumulation does not move it.
+That is not the same as saying the engines are indistinguishable. A per-position
+comparison restricted to the positions the fault can reach does separate them,
+and it was measured:
+
+| positions | splits | max abs logit delta | positions changed |
+|---|---|---|---|
+| 0 to 511 | one | exactly 0 | 0 of 512 |
+| 512 to 599 | two | 3.906250e-02 | 85 of 88 |
+
+The difference is real, it is confined exactly to the multi-split positions, and
+it is about 2.5 fp16 ulp at these logit magnitudes, smaller than the 6.669992e-02
+quantization error F1 is already measuring. F1 is tolerance-based by design and
+compares against a reference rather than against a prior run, so a perturbation
+this size is inside what it is built to absorb. Tightening it until this fired
+would make it fire on legitimate rebuilds, trading a working detector for a
+false one.
+
+So the gap is not that F1 is badly calibrated. It is that "differs from fp64 by
+more than t" and "differs from what this engine produced yesterday" are different
+questions, and only the second one has an exact answer.
 
 So the mutant survives both, and both are behaving correctly. What was missing
 was an observer that compares against something outside the running process:
@@ -195,8 +215,9 @@ execute.
 
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
-five times in this repository, and every instance was caught by a run
-contradicting a declaration rather than by review:
+eight times in this repository. Seven were caught by a run contradicting a
+declaration rather than by review. The seventh was not, and could not have been,
+for reasons worth stating:
 
 | # | Declared | Actually |
 |---|---|---|
@@ -206,6 +227,24 @@ contradicting a declaration rather than by review:
 | 4 | A copy-on-write boundary case passing | Nothing in the engine called `fork`; the test exercised dead code |
 | 5 | A coverage denominator derived from the lifecycle | The transition table was wrong four times, in both directions, inflating and deflating the denominator |
 | 6 | A mutation trial gated on the mutated path executing | The gate passed and the patch never ran; the fault rebound a name in the module that defined it while the caller held its own import, and the trial was scored as a survivor |
+| 7 | A mutant killed, counted toward the score | The path ran, the observer fired, and the kill was still wrong: the operator was a proxy whose firing condition varied with the schedule, so the relations caught the proxy rather than the fault it modelled |
+| 8 | A nine-command CLI, and a reproduce line naming one of them | No `lockstep` executable existed. Every entry point was `python3 -m`, the reproduce line named a command nobody could run and a file under a gitignored directory, and the tests asserted the string rather than the thing it named |
+
+The eighth was found while fixing the seventh, and it is the most literal
+instance of the sentence this project opens with. A declared surface wider than
+the tested one is exactly what Lockstep exists to find in other people's engines,
+and the CLI section of the frontend spec had been declaring nine commands at a
+repository that shipped none of them. The tests covering it checked that the
+divergence report printed the right string, which it did, correctly, for a
+command that did not exist.
+
+The seventh is the one that took longest to see, because it looked like success.
+A kill is normally self-justifying: the observer fired, so the harness works. But
+the operator scaled the output whenever the split count was at least two, and the
+split count varies with the schedule, so the relations were detecting the
+operator rather than the fault. Path executed, observer fired, measurement still
+wrong. A gate cannot catch that; only reading the operator against the fault it
+claims to model can.
 
 Each was found the same way: an execution counter, an assertion, or an
 observed-versus-feasible check contradicted something that had been written down
@@ -245,3 +284,43 @@ Reproduce claim 1 from scratch:
 ```sh
 python3 -m harness.mr.run --block-sizes 8 16 32 64 128
 ```
+
+## Evidence, and replaying it
+
+`evidence/` is committed and holds the artifacts the claims above actually cite,
+each with its `env.lock`. `results/` stays gitignored: it is bulk campaign output,
+hundreds of files superseded on every run, and no published number points at one.
+Promotion is deliberate, one artifact at a time, with
+`python3 -m report.publish results/<date>/<artifact>.json`.
+
+| file | backs |
+|---|---|
+| `evidence/verify-0004.json` | claim 1, 55 of 55 relation runs across 5 block sizes |
+| `evidence/fuzz-0003.json` | claim 2, the ten-operator mutation campaign over 192 cases |
+| `evidence/throughput-0002.json` | claim 3, the cost-of-determinism table |
+| `evidence/fidelity-0003.json` | F1, exact KL over the full vocabulary |
+| `evidence/certify-0001.json` | the vLLM certification, 7 of 7 boundary cases clean |
+| `evidence/case-0003.json` | the eviction finding the fuzzer found, minimized and 1-minimal |
+| `evidence/case-witness.json` | a replay-determinism witness, see below |
+
+The differentiator sentence at the top of this file claims every finding
+minimizes to an exact replay. That is checkable rather than asserted:
+
+```sh
+python3 -m harness.replay evidence/case-witness.json
+```
+
+The witness is a clean case, not a bug repro, carrying the trajectory hash over
+emitted tokens, raw fp16 logit bytes, the packed work list, the allocator ledger,
+and the prefix cache index. Replaying it in a fresh process re-runs the exact
+`(W, sigma, seeds)` triple and compares hashes. It is deliberately not trivial:
+two prompts cross the 512-token split boundary, prefill is chunked, one request
+is preempted mid-decode, and a 544-token prefix is shared, because a witness that
+exercised none of the machinery would pass whatever the engine did.
+
+`evidence/case-0003.json` is the other kind: a real finding, minimized to one
+request and proven 1-minimal in 788 checks. Replaying it today reports that it no
+longer reproduces, and attributes that to the engine revision rather than calling
+it a failure, because the bug it found was fixed. Artifacts record
+`engine_revision` so that "did not reproduce" and "was fixed" are distinguishable
+rather than the same output.

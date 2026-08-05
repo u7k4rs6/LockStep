@@ -5,18 +5,22 @@ The other two cannot see everything, and the gap between them is precise:
   * **I1 to I4** compare the engine against *itself* across schedules. A
     perturbation that is uniform across schedules is invisible by construction,
     because both sides of every comparison move together.
-  * **F1** compares against fp64 within a tolerance. The bound carries about
-    sevenfold headroom over the clean engine's own error, which is enough to
-    absorb the roughly one unit in the last place that a changed reduction order
-    moves results by.
+  * **F1** compares against fp64 within a tolerance. Against the reversed fold
+    its statistic, the maximum absolute logit error, is identical to every digit
+    (6.669992e-02 either way), so no threshold on it separates the two. The
+    logits themselves do differ: measured per position, exactly 0 across the 512
+    single-split positions and up to 3.906250e-02 across the multi-split ones,
+    about 2.5 fp16 ulp, which is below the quantization error F1 already absorbs.
+    That is F1 working as designed, not F1 miscalibrated.
   * **Golden bytes**, here, compare against a committed baseline exactly. This is
     the observer that distinguishes "the engine changed" from "the engine is
     inconsistent" and from "the engine is inaccurate".
 
 The reversed split-combine mutant survived the first two and is what this file
-was built for. It is not a redundant check: the three answer different questions,
-and only this one answers "is this the same engine that produced the published
-numbers".
+was built for. It is not a redundant check: the three answer different questions.
+"Does the engine agree with itself across schedules" and "is the engine within t
+of fp64" both have correct negative answers here. Only "is this the same engine
+that produced the published numbers" has an exact one.
 
 Measured against that mutant, the corpus behaves the way the corpus was designed
 to: the 600 and 520 token digests change and the 48 and 17 token digests do not.
