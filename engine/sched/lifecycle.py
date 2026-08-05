@@ -55,20 +55,43 @@ class State(str, Enum):
 # reach 100 percent for reasons unrelated to exploration.
 TRANSITIONS: dict[tuple[State, Event], State] = {
     (State.WAITING, Event.ADMIT): State.ADMITTED,
+    (State.ADMITTED, Event.EVICT): State.ADMITTED,
     (State.ADMITTED, Event.CACHE_HIT): State.PREFILLING,
     (State.ADMITTED, Event.CHUNK): State.PREFILLING,
     (State.ADMITTED, Event.DECODE): State.DECODING,
-    (State.ADMITTED, Event.EVICT): State.ADMITTED,
-    (State.ADMITTED, Event.PREEMPT_RC): State.PREEMPTED,
     (State.PREFILLING, Event.CHUNK): State.PREFILLING,
     (State.PREFILLING, Event.DECODE): State.DECODING,
-    (State.PREFILLING, Event.EVICT): State.PREFILLING,
-    (State.PREFILLING, Event.PREEMPT_RC): State.PREEMPTED,
     (State.DECODING, Event.DECODE): State.DECODING,
-    (State.DECODING, Event.EVICT): State.DECODING,
     (State.DECODING, Event.PREEMPT_RC): State.PREEMPTED,
     (State.DECODING, Event.FINISH): State.DONE,
     (State.PREEMPTED, Event.RESUME): State.ADMITTED,
+}
+
+# Four transitions were removed after auditing this table against the engine
+# rather than against intuition, and each removal names the rule that forbids it.
+# The denominator shrank as a result, which is the direction that flatters a
+# coverage number, so the reasoning is written down rather than asserted:
+#
+#   (PREFILLING, EVICT) and (DECODING, EVICT)
+#     Blocks are reserved once, at admission, for the whole of
+#     len(prompt) + max_new_tokens. Eviction only ever runs inside
+#     _reserve_with_eviction, which only _admit calls, so a running request can
+#     never observe an eviction. If allocation ever becomes incremental, which
+#     is the more realistic design and where more interesting bugs live, these
+#     come back and the denominator grows again.
+#
+#   (ADMITTED, PREEMPT_RC) and (PREFILLING, PREEMPT_RC)
+#     The scheduler skips preemption for any request with no generated tokens,
+#     so a request can only be preempted once it is decoding. Preempting
+#     mid-prefill would discard work with nothing to show for it.
+#
+# tests/test_lifecycle_coverage.py asserts these four stay unreachable, so the
+# removal cannot silently become wrong if the scheduler changes.
+UNREACHABLE_BY_DESIGN: dict[tuple[State, Event], str] = {
+    (State.PREFILLING, Event.EVICT): "blocks are reserved once, at admission",
+    (State.DECODING, Event.EVICT): "blocks are reserved once, at admission",
+    (State.ADMITTED, Event.PREEMPT_RC): "preemption requires a generated token",
+    (State.PREFILLING, Event.PREEMPT_RC): "preemption requires a generated token",
 }
 
 INITIAL = State.WAITING

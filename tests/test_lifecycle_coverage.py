@@ -74,3 +74,31 @@ def test_cache_hit_happens_once_immediately_after_admission():
 
 def test_terminal_state_has_no_outgoing_transitions():
     assert not [key for key in TRANSITIONS if key[0] is State.DONE]
+
+
+def test_transitions_removed_by_design_are_really_unreachable():
+    """The denominator shrank when these were removed, which is the direction
+    that flatters a coverage number, so the engine rules behind each removal are
+    asserted here rather than trusted."""
+    import inspect
+
+    from engine.sched.lifecycle import UNREACHABLE_BY_DESIGN
+    from engine.sched.scheduler import Scheduler
+
+    for key in UNREACHABLE_BY_DESIGN:
+        assert key not in TRANSITIONS
+
+    source = inspect.getsource(Scheduler)
+
+    # Eviction runs only inside _reserve_with_eviction, and only _admit calls it.
+    assert source.count("_reserve_with_eviction(") == 2, (
+        "reserve-with-eviction is called from somewhere new; a running request "
+        "may now be able to observe an eviction, and (PREFILLING, EVICT) and "
+        "(DECODING, EVICT) belong back in the transition table"
+    )
+
+    # Preemption is skipped for a request with no generated token.
+    assert "if request.kv_len == 0 or not request.generated:" in source, (
+        "the guard that keeps preemption to decoding requests has changed; "
+        "(ADMITTED, PREEMPT_RC) and (PREFILLING, PREEMPT_RC) may now be reachable"
+    )
