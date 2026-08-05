@@ -30,7 +30,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from certify.observable import TOP_LOGPROBS, describe  # noqa: E402
 from certify.run import (  # noqa: E402
-    FILLER_WIDTHS, EngineInfo, certify, concurrency_cap, guard,
+    FILLER_WIDTHS, RELATIONS, EngineInfo, certify, concurrency_cap, guard,
 )
 from engine import envlock  # noqa: E402
 from report.artifact import Artifact, relpath  # noqa: E402
@@ -40,10 +40,22 @@ PORT = 30011
 BASE_URL = f"http://127.0.0.1:{PORT}"
 
 
-def launch_vllm(python: Path, block_size: int, invariant: bool, log: Path):
+def launch_vllm(python: Path, block_size: int, invariant: bool, log: Path,
+                prefix_caching: bool = True, dev_endpoints: bool = False,
+                max_num_batched_tokens: int | None = None,
+                max_num_seqs: int | None = None):
     """vLLM's OpenAI-compatible server, batch-invariant mode optional."""
     env = dict(os.environ)
     env["PATH"] = f"{python.parent}:{env.get('PATH', '')}"
+    if dev_endpoints:
+        # POST /reset_prefix_cache lives behind VLLM_SERVER_DEV_MODE in this
+        # build, and without it every cold cell in the factorial would have
+        # scored vacuous. Set only for the cold cells, which are the only ones
+        # that need to drop the cache between repeats, and only ever on a
+        # 127.0.0.1 server this process started and tears down in a finally.
+        # vLLM logs a security warning when these routes are enabled and it is
+        # right to: they are not something to leave on.
+        env["VLLM_SERVER_DEV_MODE"] = "1"
     if invariant:
         env["VLLM_BATCH_INVARIANT"] = "1"
     else:
@@ -60,6 +72,25 @@ def launch_vllm(python: Path, block_size: int, invariant: bool, log: Path):
         "--block-size", str(block_size),
         "--enforce-eager",
     ]
+    if max_num_batched_tokens is not None:
+        # D1, the chunked-prefill diagnostic. vLLM runs with
+        # enable_chunked_prefill=True by default and the token budget is shared
+        # across the batch, so a prompt is split at boundaries that depend on
+        # what else is in flight. Raising the budget above the whole workload
+        # means no prompt can be chunked, which is the one lever a black-box
+        # client has on chunk boundaries. If divergence vanishes here, the
+        # mechanism is chunk invariance rather than batch invariance, and those
+        # are different properties: this project spent week 3 proving chunk
+        # invariance in its own engine at the KV tensor level precisely because
+        # it does not follow from batch invariance.
+        command += ["--max-num-batched-tokens", str(max_num_batched_tokens)]
+    if max_num_seqs is not None:
+        command += ["--max-num-seqs", str(max_num_seqs)]
+    if not prefix_caching:
+        # The cleanest cell in the factorial: if a divergence survives with the
+        # cache switched off at the server, the cache cannot be the cause and the
+        # remaining variable is batch composition.
+        command.append("--no-enable-prefix-caching")
     handle = log.open("w")
     return subprocess.Popen(
         command, env=env, stdout=handle, stderr=subprocess.STDOUT,
@@ -105,6 +136,35 @@ def main() -> int:
     parser.add_argument("--max-tokens", type=int, default=24)
     parser.add_argument("--startup-timeout", type=int, default=420)
     parser.add_argument("--config", type=Path, default=REPO_ROOT / "certify" / "config.json")
+    parser.add_argument("--cache-mode", choices=("cold", "warm", "disabled"),
+                        default="cold",
+                        help="cold resets the prefix cache between repeats, warm "
+                             "primes once and never resets, disabled turns prefix "
+                             "caching off at the server")
+    parser.add_argument("--filler-mode", choices=("fixed", "varying"),
+                        default="varying",
+                        help="fixed holds batch geometry constant across repeats; "
+                             "varying changes the cohabitant count")
+    parser.add_argument("--fixed-width", type=int, default=13,
+                        help="cohabitant count when --filler-mode fixed; the "
+                             "rung of the concurrency ladder")
+    parser.add_argument("--sequential", action="store_true",
+                        help="submit one request at a time; the negative control "
+                             "that reproduces effective batch 1 on this code path")
+    parser.add_argument("--max-num-batched-tokens", type=int, default=None,
+                        help="D1: raise above the whole workload so no prompt is "
+                             "chunked, isolating chunk invariance from batch "
+                             "invariance")
+    parser.add_argument("--max-num-seqs", type=int, default=None,
+                        help="D3: scheduler width, varied at fixed request count "
+                             "to separate scheduler geometry from batch size")
+    parser.add_argument("--order-mode", choices=("stable", "identical", "permuted"),
+                        default="stable",
+                        help="permuted keeps the request multiset byte-identical "
+                             "across repeats and changes only submission order, "
+                             "which is the perturbation vLLM's guarantee names")
+    parser.add_argument("--label", default="",
+                        help="a name for this cell, recorded in the artifact")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
 
@@ -113,20 +173,36 @@ def main() -> int:
 
     invariant = not args.no_invariant
     mode = "VLLM_BATCH_INVARIANT=1" if invariant else "default"
-    log = Path.home() / "lockstep-extenv" / "logs" / f"vllm-certify-{int(invariant)}.log"
+    log = (Path.home() / "lockstep-extenv" / "logs" /
+           f"vllm-certify-{int(invariant)}-{args.cache_mode}-{args.filler_mode}"
+           f"-w{args.fixed_width}{'-seq' if args.sequential else ''}"
+           f"{f'-mnbt{args.max_num_batched_tokens}' if args.max_num_batched_tokens else ''}"
+           f"{f'-mns{args.max_num_seqs}' if args.max_num_seqs else ''}.log")
     log.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"lockstep certify  vLLM, {mode}")
     print(f"  endpoint            {BASE_URL}  (local, started by this process)")
     print(f"  block size          {args.block_size}  configured at launch")
-    print(f"  repeats per case    {args.repeats}, filler widths {list(FILLER_WIDTHS)}")
-    print(f"  submission          concurrent; co-residency measured from vllm:num_requests_running")
+    relation = RELATIONS.get((args.cache_mode, args.filler_mode), "unclassified")
+    print(f"  cell                cache={args.cache_mode} filler={args.filler_mode}"
+          + (f"  [{args.label}]" if args.label else ""))
+    print(f"  relation under test {relation}")
+    print(f"  repeats per case    {args.repeats}, filler widths "
+          f"{list(FILLER_WIDTHS) if args.filler_mode == 'varying' else f'fixed at {args.fixed_width}'}")
+    print(f"  submission          "
+          + ("SEQUENTIAL, one request in flight: the negative control"
+             if args.sequential
+             else "concurrent; co-residency measured from vllm:num_requests_running"))
     print()
     print(f"  {describe()}")
     print()
     print(f"  starting server, up to {args.startup_timeout}s ...", flush=True)
 
-    process, handle = launch_vllm(args.python, args.block_size, invariant, log)
+    process, handle = launch_vllm(args.python, args.block_size, invariant, log,
+                                  prefix_caching=args.cache_mode != "disabled",
+                                  dev_endpoints=args.cache_mode in ("cold", "warm"),
+                                  max_num_batched_tokens=args.max_num_batched_tokens,
+                                  max_num_seqs=args.max_num_seqs)
     try:
         if not wait_ready(process, args.startup_timeout, log):
             tail = log.read_text().splitlines()[-6:]
@@ -141,7 +217,11 @@ def main() -> int:
             block_size=args.block_size,
             discovered_from="configured at launch; vLLM exposes no endpoint reporting it",
         )
-        results = certify(BASE_URL, info, args.block_size, args.repeats, args.max_tokens)
+        results = certify(BASE_URL, info, args.block_size, args.repeats,
+                          args.max_tokens, concurrency_cap(config),
+                          cache_mode=args.cache_mode, filler_mode=args.filler_mode,
+                          fixed_width=args.fixed_width, sequential=args.sequential,
+                          order_mode=args.order_mode)
     finally:
         teardown(process, handle)
 
@@ -167,8 +247,15 @@ def main() -> int:
     vacuous = [r for r in results if r.get("vacuous")]
     print()
     print(f"  {clean}/{len(results)} boundary cases clean at this observable")
-    print(f"  {len(results) - len(vacuous)}/{len(results)} cases actually formed a batch"
-          + ("  <- the rest tested nothing" if vacuous else ""))
+    # Count real batching, not the absence of a vacuity flag. A sequential
+    # control is deliberately not vacuous while also forming no batch, so
+    # deriving this from the vacuity count printed "7/7 formed a batch" for a
+    # run whose whole point was one request in flight.
+    formed = sum(1 for r in results if r.get("max_concurrent_running", 0) > 1)
+    print(f"  {formed}/{len(results)} cases actually formed a batch"
+          + ("  <- the rest tested nothing" if vacuous else "")
+          + ("  (sequential control: forming no batch is the point)"
+             if formed == 0 and not vacuous else ""))
     if vacuous:
         print("  a case that never cohabited cannot certify batch invariance, so "
               "these are reported rather than scored")
@@ -183,6 +270,16 @@ def main() -> int:
             "observable": describe(), "top_logprobs": TOP_LOGPROBS,
             "repeats": args.repeats, "results": results,
             "clean": clean, "total": len(results),
+            "batched_cases": sum(1 for r in results if r.get("batched")),
+            "cache_mode": args.cache_mode, "filler_mode": args.filler_mode,
+            "cell_label": args.label, "relation": relation,
+            "fixed_width": args.fixed_width, "sequential": args.sequential,
+            "order_mode": args.order_mode,
+            "max_num_batched_tokens": args.max_num_batched_tokens,
+            "max_num_seqs": args.max_num_seqs,
+            "max_concurrent_running": max(
+                (r.get("max_concurrent_running", 0) for r in results), default=0),
+            "filler_widths": list(FILLER_WIDTHS),
         }).write()
         print(f"artifact  {relpath(path)}")
     return 0

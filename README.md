@@ -126,7 +126,7 @@ repair, it is a new claim.
 | # | Claim | Value | Reproduce |
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | see `harness/mr/run.py`; 55 of 55 relation runs bitwise identical across 5 block sizes | `python3 -m harness.mr.run` |
-| 2 | Harness power | 9 of 10 seeded faults killed, 1 proven-equivalent, 0 not-exercised; median time to detection 10.4 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
+| 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 17.9 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
 | 3 | Cost of determinism | 1.06x within lockstep, against vLLM's own 1.45x; lockstep invariant is 3.3x vLLM batch-invariant wall time | `python3 -m bench.throughput` |
 
 Claim 3, in full, on a committed 8-request 1232-token trace, median of 5:
@@ -161,16 +161,45 @@ campaign are otherwise identical, and the difference is one mutant:
 
 | | killed | survived | not exercised |
 |---|---|---|---|
-| invariance relations and F1 only | 8 of 10 | 2 | 0 |
-| with golden bytes | **9 of 10** | 1 | 0 |
+| invariance relations and F1 only | 9 of 10 | 1 | 0 |
+| with golden bytes | **10 of 10** | 0 | 0 |
 
-The two survivors in the first row are the reversed split-combine fold, which is
-a real fault no observer then present could see, and the recompute off-by-one,
-which is a proven-equivalent mutant: it re-prefills a token that is immediately
-overwritten with the identical value, so no observer can distinguish it and none
-should. The second row has only the equivalent mutant left. Every one of the ten
-reports a nonzero sentinel, so no trial in either row is a mutant that failed to
-execute.
+The one mutant golden bytes adds is the reversed split-combine fold, which is a
+real fault that neither the invariance relations nor F1 can see, for the reasons
+in the observer section above. Every operator reports a nonzero sentinel, so no
+trial in either row is a mutant that failed to execute.
+
+**There are no equivalent mutants, and the previous claim that there was one was
+wrong in the flattering direction.** The published score read "9 of 10 killed, 1
+proven-equivalent" for weeks, with a written argument that the recompute
+off-by-one operator re-prefilled a token immediately overwritten with an
+identical value. That argument described a mechanism that is not in the code. The
+operator set `kv_len` after `_preempt`; `_admit` resets `kv_len` to 0 on
+re-admission, and nothing reads the field in between. It was a dead store. The
+fault never reached engine state, so no observer could have distinguished it, and
+calling that equivalence confused "cannot be distinguished" with "was never
+injected".
+
+Injected where the value survives, after `_admit` on the resume path, the same
+operator dies in 1.3 seconds by bitwise divergence with the sentinel confirming
+six executions. The engine skips position 0 of the recompute, its KV is never
+written, and the emitted tokens diverge from canonical exactly as the
+architecture doc predicts.
+
+That correction is why the sentinel discipline has a second layer now. The dead
+version's sentinel fired 16 times, so the *patch* executed; the *fault* was
+clobbered one line later. Patch-executed is not fault-injected, exactly as
+counter-fired is not patch-executed. Each check catches the layer below it and is
+blind to the layer above, and the only thing that caught this one was reading the
+operator against the code it patches.
+
+A caveat on the time figure, because it is the one number here that measures the
+machine rather than the harness. Median time to detection moved from 10.4 s to
+17.9 s between two runs of identical code on identical inputs; individual faults
+roughly doubled, 196 s to 419 s for the chunk-boundary operator. That is thermal
+behaviour on a laptop GPU, not a change in detection power. Time to detection is
+reported because the architecture doc asks for it, and it should be read as an
+order of magnitude rather than a measurement.
 
 ## What this does not claim
 
@@ -218,9 +247,10 @@ execute.
 
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
-eight times in this repository. Seven were caught by a run contradicting a
-declaration rather than by review. The seventh was not, and could not have been,
-for reasons worth stating:
+thirteen times in this repository, and the last five were found by an outside
+audit rather than by the project's own machinery, which is the most useful thing
+in this table. Most were caught by a run contradicting a declaration. Several
+were not, and the reason each escaped is worth more than the fix:
 
 | # | Declared | Actually |
 |---|---|---|
@@ -232,6 +262,33 @@ for reasons worth stating:
 | 6 | A mutation trial gated on the mutated path executing | The gate passed and the patch never ran; the fault rebound a name in the module that defined it while the caller held its own import, and the trial was scored as a survivor |
 | 7 | A mutant killed, counted toward the score | The path ran, the observer fired, and the kill was still wrong: the operator was a proxy whose firing condition varied with the schedule, so the relations caught the proxy rather than the fault it modelled |
 | 8 | A nine-command CLI, and a reproduce line naming one of them | No `lockstep` executable existed. Every entry point was `python3 -m`, the reproduce line named a command nobody could run and a file under a gitignored directory, and the tests asserted the string rather than the thing it named |
+| 9 | vLLM's deterministic mode certified across seven boundary cases, two of them named for co-batching | Every request was submitted sequentially and blocking, so nothing ever cohabited. The cases ran at effective batch 1 and the result measured single-request repeat stability. There was no positive control either, so the certifier had never been shown able to fail |
+| 10 | A proven-equivalent mutant, with a written equivalence argument | A dead store. The operator set `kv_len` after `_preempt`, `_admit` reset it before any read, and the published proof described a mechanism absent from the code. The fault the architecture doc names was never injected at all |
+| 11 | A concurrency cap in the security config | `max_concurrency: 1` sat in `certify/config.json` from week 8 and no code path read it. Enforcing it later revealed it also made batching impossible, so the one setting that would have prevented finding 9 was both unenforced and wrong |
+| 12 | One edit applied to two files | It matched in one and silently no-op'd in the other, so an artifact shipped without the fields that prove its own batch witness fired. Caught by reading the artifact back, not by the edit reporting success |
+| 13 | An observable comparing repeated runs for identical output | Every comparison was repeat 0 against a later repeat, so "the engine is nondeterministic" and "the first batch differs and everything after it agrees" were indistinguishable. Structurally the same error as comparing a mutant only against canonical, in the file written to certify determinism |
+
+The thirteenth is the one worth reading last, because it was invisible to
+everyone. `certify/run.py` compared repeat 0 against each later repeat and never
+compared later repeats to each other, which cannot distinguish run-to-run
+nondeterminism from a first batch that differs while everything after it agrees.
+That is the same shape as comparing a mutant only against canonical, and it sat
+in the file whose entire job is certifying determinism. Neither the author nor
+the reviewer noticed it across eleven server lifetimes of results. What made it
+visible was not a check but an anomaly: divergence magnitudes reproducing to four
+significant figures across independent processes, which is not what
+nondeterminism looks like. An all-pairs comparison then showed that the small
+workloads had been a first-batch artifact all along, and that the large ones were
+genuinely nondeterministic. The finding survived; roughly half of what had been
+attributed to it did not.
+
+Three of these could not have been caught by any check this repository had.
+Number 9 was invisible because the certifier's own passes were the evidence it
+was working, and a green result is the hardest thing to doubt: it took an outside
+reader asking what the workload actually did. Number 11 is the same shape one
+layer down, in the file that exists to constrain the certifier. Number 12 is the
+tooling itself lying about its own success, which no test can catch because the
+test would have to distrust the edit that wrote it.
 
 The eighth was found while fixing the seventh, and it is the most literal
 instance of the sentence this project opens with. A declared surface wider than
@@ -289,26 +346,94 @@ Reproduce claim 1 from scratch:
 python3 -m harness.mr.run --block-sizes 8 16 32 64 128
 ```
 
-## Withdrawn: the vLLM certification result
+## Certification: vLLM, and one filed finding
 
-The previous version of this README reported vLLM's deterministic mode clean
-across seven boundary cases over 1,776 positions. **That result is withdrawn.**
-An audit found the certifier submitted every request sequentially and blocking,
-so no request ever shared a batch with another. Cases named "co-batched" and
-"batch 31" ran at effective batch 1, and what was actually measured was
-repeat-stability with a warm prefix cache on a single-request server.
+Filed upstream as
+[vllm-project/vllm#51187](https://github.com/vllm-project/vllm/issues/51187),
+cross-referenced on the batch-invariance tracker
+[#27433](https://github.com/vllm-project/vllm/issues/27433#issuecomment-5195555951).
+**Everything below is scoped exactly as that issue is scoped.** If this section
+ever says more than the issue does, the issue is right and this is wrong.
 
-There was also no positive control: because batch composition was identical
-across repeats, default-mode vLLM would plausibly have passed the same seven
-cases, and the certifier had never been shown to detect a nondeterministic
-engine at all.
+### The first result was withdrawn, and why
 
-Cohabitation is the entire property this project is about, and the workload
-never produced it. The certifier now submits concurrently, varies batch
-composition across repeats with filler requests, measures co-residency from the
-engine's own `vllm:num_requests_running` gauge, and refuses to score a case whose
-witness never exceeded one running request. A number returns here when it is
-backed by a run that formed a batch and by a default-mode control that fails.
+An earlier version reported vLLM's deterministic mode clean across seven boundary
+cases. That was withdrawn: the certifier submitted every request sequentially and
+blocking, so nothing ever cohabited, cases named "co-batched" and "batch 31" ran
+at effective batch 1, and there was no positive control, so the certifier had
+never been shown able to fail.
+
+It now submits concurrently, measures co-residency from the engine's own
+`vllm:num_requests_running` gauge rather than assuming it, refuses to score a
+case whose witness never exceeded one running request, and compares **every pair**
+of repeats rather than repeat 0 against the rest.
+
+### What vLLM guarantees
+
+The [documentation](https://docs.vllm.ai/en/latest/features/batch_invariance/)
+says batch invariance "ensures that the output of a model is **deterministic** and
+independent of the batch size or the order of requests in a batch." The clause at
+issue is `deterministic`.
+
+### The finding
+
+**Two workloads, both large.** 31 and 32 requests sharing a 16-token prefix, plus
+13 unrelated fillers, so 44 and 45 sequences co-resident. Byte-identical requests,
+byte-identical submission order, warm cache, identical-workload priming before
+repeat 0, one unchanged server process, five repeats:
+
+| workload | co-resident | distinct outputs / 5 | max logprob delta | token divergence |
+|---|---|---|---|---|
+| 31 requests + 13 fillers | 44 | **3 of 5** | 4.685e-02 | none |
+| 32 requests + 13 fillers | 45 | **2 of 5** | 3.906e-02 | none |
+
+The differing repeat pairs are later-versus-later, so this is not a first-batch
+effect. It is intermittent: the same configuration in another server lifetime was
+fully reproducible.
+
+**One knob changes it.** Setting `--max-num-seqs 8` makes the identical workload
+fully reproducible, with the client completely unchanged and only the server flag
+differing between the clean and non-clean runs:
+
+| `--max-num-seqs` | co-resident | distinct outputs / 5 |
+|---|---|---|
+| 8 | 8 | 1 of 5, reproducible |
+| 64 | 45 | not reproducible |
+| 128, the default | 45 | not reproducible, intermittently |
+
+**Negative controls.** Sequential submission clean 7 of 7. Default mode fails the
+same observable 7 of 7 including a first-token divergence at position 23, so the
+client demonstrably detects nondeterminism. 4 fillers (36 co-resident) clean
+across 3 lifetimes, 21 of 21.
+
+**Ruled out.** CUDA graphs (`cudagraph_mode=NONE` throughout), prefix caching
+(divergence persists with it disabled), KV pressure (roughly 2,700 tokens of
+27,744), chunked prefill by budget (default 2048, workload 994, and raising it to
+16384 changes nothing across two lifetimes), request order (rotating submission
+order behaves the same as not rotating it), and warmup.
+
+### Retracted
+
+**The small-workload divergences reported earlier are withdrawn.** The factorial
+and the concurrency ladder recorded cases at 15 to 16 co-resident diverging, and
+those numbers appeared in earlier drafts of this section. Priming with
+byte-identical traffic before repeat 0 eliminates them: they were substantially a
+first-batch artifact, not nondeterminism. Only the two large workloads carry a
+finding, and only those are in the filed issue.
+
+### Not determined
+
+The **mechanism**, which cannot be seen from outside the engine and is not
+guessed at here or in the issue.
+
+Whether there is a **threshold or a probability rising with resident batch size**.
+Divergence was never observed at or below 36 co-resident and was observed at 44
+to 45, but intermediate widths were sampled one lifetime per point, which is too
+few given the intermittency. Three readings of those rungs were proposed during
+the investigation and two were wrong.
+
+**Only the `--max-num-seqs` comparison is a controlled single-variable result.**
+Everything else in this section is observational.
 
 ## Evidence, and replaying it
 

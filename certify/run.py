@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import argparse
 import concurrent.futures
+import hashlib
 import json
 import os
 import sys
@@ -289,10 +290,82 @@ def boundary_workloads(block_size: int, vocab: int = 100000, seed: int = 424242)
     return cases
 
 
+# The certifier tests two properties that the first concurrent version ran
+# together and could not tell apart. This engine's own harness has separated them
+# since week 4, as MR1 (batch composition) and MR4 (cache cold versus warm),
+# precisely because they are different properties with different failure modes.
+# The certifier collapsed them into one run and then could not say which had
+# failed. These are the cells of that 2x2, named so a result says which relation
+# failed rather than that something did.
+RELATIONS = {
+    ("warm", "fixed"): (
+        "baseline: neither factor varies, so a divergence here is neither "
+        "property and indicts the measurement itself"
+    ),
+    ("warm", "varying"): (
+        "batch composition alone (MR1 analog): cache is warm for every repeat, "
+        "only the cohabitants change"
+    ),
+    ("cold", "fixed"): (
+        "cache cold versus warm alone (MR4 analog): batch geometry is fixed, "
+        "only cache state changes"
+    ),
+    ("cold", "varying"): (
+        "both factors, confounded: the configuration the first concurrent run "
+        "used, kept for comparability"
+    ),
+    ("disabled", "varying"): (
+        "batch composition with prefix caching off: the cleanest single test, "
+        "because the cache cannot contribute at all"
+    ),
+    ("disabled", "fixed"): (
+        "neither factor varies and caching is off: the strictest baseline"
+    ),
+}
+
+
+def reset_prefix_cache(base_url: str) -> bool:
+    """Ask the engine to drop its prefix cache. Returns whether it worked.
+
+    Cold mode is only cold if this succeeds. If the endpoint is absent the run
+    refuses to score rather than silently measuring a warm cache and labelling it
+    cold, which would be a vacuous cell in the factorial and worse than a missing
+    one.
+    """
+    request = urllib.request.Request(f"{base_url}/reset_prefix_cache", data=b"",
+                                     method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return response.status in (200, 204)
+    except (urllib.error.URLError, TimeoutError, OSError):
+        return False
+
+
 # How many extra requests ride alongside the case's own, per repeat. Different
 # widths across repeats is what makes this a batch-composition perturbation
 # rather than three identical passes.
 FILLER_WIDTHS = (0, 5, 13)
+
+# Fixed mode holds the batch geometry constant across repeats. 13 rather than 0
+# so that the fixed cell still forms a real batch: a "fixed" cell at width 0
+# would test cache state at effective batch 2 and prove nothing about a server
+# under load.
+FIXED_FILLER_WIDTH = 13
+
+
+def permute(items: list, repeat: int) -> list:
+    """A deterministic, repeat-dependent permutation of the submission order.
+
+    Rotation rather than a shuffle so the multiset is provably identical across
+    repeats: the same requests, the same contents, the same count, submitted in a
+    different order. That is the one thing vLLM's guarantee names outright,
+    "independent of the batch size or the order of requests in a batch", so a
+    divergence under this perturbation needs no mechanism to be a violation.
+    """
+    if not items or repeat == 0:
+        return list(items)
+    cut = repeat % len(items)
+    return list(items[cut:]) + list(items[:cut])
 
 
 def filler_requests(count: int, block_size: int, salt: int, vocab: int = 100000):
@@ -312,7 +385,8 @@ def filler_requests(count: int, block_size: int, salt: int, vocab: int = 100000)
     ]
 
 
-def submit_concurrently(base_url, model, requests, fillers, max_tokens, cap):
+def submit_concurrently(base_url, model, requests, fillers, max_tokens, cap,
+                        order_seed: int = 0):
     """All requests in flight at once. Returns the case's completions, in order.
 
     A thread pool rather than asyncio because `complete` is a blocking urllib
@@ -320,6 +394,11 @@ def submit_concurrently(base_url, model, requests, fillers, max_tokens, cap):
     local server, so the GIL is not in the way.
     """
     everything = list(requests) + list(fillers)
+    # The submission order is what is being perturbed; the returned completions
+    # are re-indexed below so the caller still gets the case's own requests in
+    # their original order and compares like with like.
+    index = permute(list(range(len(everything))), order_seed)
+    everything = [everything[i] for i in index]
     if len(everything) > cap:
         raise RefusedToRun(
             f"this case needs {len(everything)} requests in flight but "
@@ -336,11 +415,16 @@ def submit_concurrently(base_url, model, requests, fillers, max_tokens, cap):
         # observation start while the previous batch is still draining, which
         # would make the witness a measurement of the wrong thing.
         settled = [f.result() for f in futures]
-    return settled[: len(requests)]
+    restored = [None] * len(settled)
+    for position, original in enumerate(index):
+        restored[original] = settled[position]
+    return restored[: len(requests)]
 
 
 def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
-            max_tokens: int, cap: int = 48) -> list[dict]:
+            max_tokens: int, cap: int = 48, cache_mode: str = "cold",
+            filler_mode: str = "varying", fixed_width: int = FIXED_FILLER_WIDTH,
+            sequential: bool = False, order_mode: str = "stable") -> list[dict]:
     """Run each boundary case under varying batch composition and compare.
 
     **Every request in a case is submitted concurrently.** vLLM and SGLang batch
@@ -371,43 +455,131 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
     for case in boundary_workloads(block_size):
         observations = []
         witnesses = []
+        digests: list[str] = []
+
+        if cache_mode == "warm":
+            # A discarded priming pass. It primed with *different* filler content
+            # (salt 999) than the repeats use, so it warmed the shapes but not
+            # the workload, and could not answer whether output depends on the
+            # server having served this exact traffic before. It now primes with
+            # byte-identical traffic to what repeat 0 sends.
+            prime_width = (fixed_width if filler_mode == "fixed"
+                           else FILLER_WIDTHS[0])
+            prime_salt = 0 if order_mode in ("identical", "permuted") else 999
+            reset_prefix_cache(base_url)
+            submit_concurrently(base_url, info.model, case["requests"],
+                                filler_requests(prime_width, block_size, prime_salt),
+                                max_tokens, cap)
+
         for repeat in range(repeats):
-            fillers = filler_requests(FILLER_WIDTHS[repeat % len(FILLER_WIDTHS)],
-                                      block_size, repeat)
+            width = (fixed_width if filler_mode == "fixed"
+                     else FILLER_WIDTHS[repeat % len(FILLER_WIDTHS)])
+            # Salt the fillers by repeat even in fixed mode, so "fixed" means
+            # fixed *count* rather than identical requests; identical fillers
+            # would make their own prefixes cacheable and reintroduce the cache
+            # as a variable through the back door.
+            # In permutation mode the fillers must be byte-identical across
+            # repeats, otherwise "only the order changed" is false and the
+            # experiment tests two things at once, which is the mistake the
+            # factorial made.
+            # Three modes, and the middle one is the control that makes the
+            # third interpretable:
+            #   stable     fillers re-salted per repeat, order fixed
+            #   identical  fillers byte-identical, order fixed  <- the control
+            #   permuted   fillers byte-identical, order rotated
+            # Comparing "permuted" against "stable" would confound order with
+            # filler content. Only "identical" isolates order.
+            fillers = filler_requests(
+                width, block_size,
+                repeat if order_mode == "stable" else 0,
+            )
+
+            cache_reset_ok = True
+            if cache_mode == "cold":
+                cache_reset_ok = reset_prefix_cache(base_url)
+
             with BatchWitness(base_url) as witness:
-                batch = submit_concurrently(
-                    base_url, info.model, case["requests"], fillers, max_tokens, cap
-                )
+                if sequential:
+                    # The negative control. One request in flight at a time
+                    # reproduces the condition the withdrawn sequential run
+                    # measured, on the current code path, so a difference
+                    # between this and the concurrent cells is attributable to
+                    # concurrency rather than to everything else that changed.
+                    batch = [complete(base_url, info.model, tokens, max_tokens)
+                             for tokens in case["requests"]]
+                    for tokens in fillers:
+                        complete(base_url, info.model, tokens, max_tokens)
+                else:
+                    batch = submit_concurrently(
+                        base_url, info.model, case["requests"], fillers,
+                        max_tokens, cap,
+                        order_seed=repeat if order_mode == "permuted" else 0,
+                    )
             observations.append(batch)
+            # G2: a digest per repeat, so the same repeat index can be compared
+            # across independent server lifetimes. Inferring cross-lifetime
+            # reproducibility from matching max-delta values is weaker than
+            # comparing the returned values themselves.
+            digests.append(hashlib.sha256(repr([
+                (c.tokens, c.logprobs, c.alternatives) for c in batch
+            ]).encode()).hexdigest())
             witnesses.append({
                 "repeat": repeat,
                 "fillers": len(fillers),
                 "max_concurrent_running": witness.max_running,
                 "gauge_samples": witness.samples,
+                "cache_reset_ok": cache_reset_ok,
             })
 
+        # Every pair, not just first-against-rest. Comparing only repeat 0 to the
+        # others cannot distinguish "the engine is nondeterministic" from "the
+        # first batch after warmup differs and everything after it agrees", and
+        # those have completely different verdicts: the second is a warmup
+        # artifact, not a determinism failure. The identical divergence
+        # magnitudes across independent server lifetimes are exactly what a
+        # systematic first-batch effect would look like, so the distinction is
+        # not hypothetical.
         divergences = []
-        for index in range(len(case["requests"])):
-            first = observations[0][index]
-            for repeat in range(1, len(observations)):
-                verdict = compare(first, observations[repeat][index])
-                if not verdict.identical:
-                    divergences.append({
-                        "request": index,
-                        "repeat": repeat,
-                        "detail": verdict.detail,
-                        "max_logprob_delta": verdict.max_logprob_delta,
-                        "first_token_divergence": verdict.first_token_divergence,
-                    })
+        pair_results = []
+        for left in range(len(observations)):
+            for right in range(left + 1, len(observations)):
+                differing = 0
+                for index in range(len(case["requests"])):
+                    verdict = compare(observations[left][index],
+                                      observations[right][index])
+                    if not verdict.identical:
+                        differing += 1
+                        divergences.append({
+                            "request": index,
+                            "repeat": right,
+                            "pair": [left, right],
+                            "detail": verdict.detail,
+                            "max_logprob_delta": verdict.max_logprob_delta,
+                            "first_token_divergence": verdict.first_token_divergence,
+                        })
+                pair_results.append({"pair": [left, right], "requests_differing": differing})
 
         observed_batch = max((w["max_concurrent_running"] for w in witnesses), default=0)
+        cold_enforced = all(w["cache_reset_ok"] for w in witnesses)
         gauge_seen = any(w["gauge_samples"] for w in witnesses)
         # A clean verdict on a case that never formed a batch is the vacuous pass
         # this repository has caught five times internally. It is not scored as
         # clean; it is scored as not-batched and reported separately.
         batched = observed_batch > 1
+        # A cold cell whose reset never took is not a cold cell. Scoring it would
+        # put a mislabelled point in the factorial, which is the failure mode a
+        # factorial exists to avoid.
+        cold_ok = cache_mode != "cold" or cold_enforced
+        # A sequential control forms no batch on purpose, so "never exceeded one
+        # running request" is the expected observation rather than a vacuous
+        # cell. Every concurrent cell still has to prove it batched.
+        configured = cold_ok and (batched or sequential)
         results.append({
             "case": case["name"],
+            "cache_mode": cache_mode,
+            "filler_mode": filler_mode,
+            "relation": RELATIONS.get((cache_mode, filler_mode), "unclassified"),
+            "cold_enforced": cold_enforced,
             "requests": len(case["requests"]),
             "positions": sum(c.positions() for c in observations[0]),
             "repeats": repeats,
@@ -416,8 +588,26 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
             "batch_gauge_available": gauge_seen,
             "batched": batched,
             "divergences": divergences,
-            "clean": not divergences and batched,
-            "vacuous": not batched,
+            "pairs": pair_results,
+            "repeat_digests": digests,
+            # The discriminator: do the non-first repeats agree with each other?
+            "later_repeats_agree": all(
+                p["requests_differing"] == 0 for p in pair_results if p["pair"][0] > 0
+            ),
+            "first_repeat_is_odd": (
+                all(p["requests_differing"] > 0 for p in pair_results if p["pair"][0] == 0)
+                and all(p["requests_differing"] == 0 for p in pair_results if p["pair"][0] > 0)
+            ),
+            "clean": not divergences and configured,
+            "vacuous": not configured,
+            "sequential": sequential,
+            "order_mode": order_mode,
+            "fixed_width": fixed_width if filler_mode == "fixed" else None,
+            "vacuous_reason": (
+                "" if configured
+                else ("never formed a batch" if not batched
+                      else "cold mode requested but /reset_prefix_cache did not respond")
+            ),
         })
     return results
 
@@ -481,8 +671,15 @@ def main() -> int:
     vacuous = [r for r in results if r.get("vacuous")]
     print()
     print(f"  {clean}/{len(results)} boundary cases clean at this observable")
-    print(f"  {len(results) - len(vacuous)}/{len(results)} cases actually formed a batch"
-          + ("  <- the rest tested nothing" if vacuous else ""))
+    # Count real batching, not the absence of a vacuity flag. A sequential
+    # control is deliberately not vacuous while also forming no batch, so
+    # deriving this from the vacuity count printed "7/7 formed a batch" for a
+    # run whose whole point was one request in flight.
+    formed = sum(1 for r in results if r.get("max_concurrent_running", 0) > 1)
+    print(f"  {formed}/{len(results)} cases actually formed a batch"
+          + ("  <- the rest tested nothing" if vacuous else "")
+          + ("  (sequential control: forming no batch is the point)"
+             if formed == 0 and not vacuous else ""))
     if vacuous:
         print("  a case that never cohabited cannot certify batch invariance, so "
               "these are reported rather than scored")
