@@ -32,12 +32,78 @@ The trajectory hash covers emitted tokens, raw fp16 logit bytes, the packed work
 list, the allocator ledger, and the prefix cache index. Output bits alone would
 leave allocator faults invisible.
 
+## Three observers, and what each one cannot see
+
+The relations above are not one detector with one blind spot. They are three,
+and the reason there are three is that a mutation testing run found a fault the
+first two both missed.
+
+| Observer | Compares | Against | Tolerance | Blind to |
+|---|---|---|---|---|
+| **I1 to I4** | the engine | itself, under a perturbed schedule | none, bitwise | any perturbation uniform across schedules |
+| **F1** | the engine | an fp64 CPU reference | max abs logit error 0.5 | anything inside the tolerance |
+| **golden bytes** | the engine | a committed baseline digest | none, bitwise | any change made before the baseline was written |
+
+The first two blind spots overlap exactly where a real fault lives. Reverse the
+fold loop in the split-combine CTA, descending instead of ascending, and every
+metamorphic relation still passes. Not because the relations are weak, but
+because the reversal is not a function of the schedule: the split count follows
+from `kv_len` alone, so a position reached through four prefill chunks folds the
+same partials in the same reversed order as the same position reached in one
+pass. The engine agrees with itself perfectly, and I1 to I4 only ever ask whether
+it agrees with itself.
+
+F1 does not catch it either, and should not. Measured rather than predicted:
+
+| engine | max abs logit error vs fp64 | within the 0.5 bound |
+|---|---|---|
+| clean | 6.669992e-02 | yes, 7.5x headroom |
+| reversed fold | 6.669992e-02 | yes |
+
+600-token prompt, batch 1, two splits.
+
+The two are not merely both inside the bound, they are the same number to every
+digit printed, with the mutant's sentinel confirming the patched kernel ran 28
+times during the measurement. No tightening of F1's bound would catch this fault,
+because there is no gap to tighten: the maximum error against fp64 is attained at
+a large-magnitude logit whose fp16 quantization error dominates, and one step of
+reassociation inside an fp32 accumulation does not move it.
+
+So the mutant survives both, and both are behaving correctly. What was missing
+was an observer that compares against something outside the running process:
+`harness/fuzz/golden.py` commits a sha256 over raw fp16 logit bytes for a fixed
+four-prompt corpus and compares exactly. Under the reversed fold it reports the
+two prompts of 600 and 520 tokens as differing and the two of 48 and 17 as
+identical, which is the corpus doing what it was built for. Two prompts cross the
+512-token split boundary and two do not, so the fold path is exercised and the
+comparison is not vacuous, and the split that falls exactly along the boundary
+between changed and unchanged digests is evidence that the observer is seeing the
+mechanism rather than noise.
+
+**The first version of this operator was killed for the wrong reason.** It was a
+proxy: scale the output by `1 + 2**-11` whenever the split count was at least
+two, on the theory that a reversed fold moves the last bits by about that much.
+The campaign killed it by bitwise divergence and the kill was worthless, because
+the *firing condition* was schedule-dependent in a way the modelled fault is not.
+A request prefilled in chunks reaches a position through a different sequence of
+`kv_len` values than the same request prefilled whole, so the proxy fired on a
+different set of calls in the two runs and the relations saw a difference no real
+reversed fold would produce. A mutant killed for the wrong reason inflates a
+mutation score exactly as badly as a mutant that never ran. The operator is now
+the actual kernel with one loop bound reversed.
+
+Golden bytes have the blind spot the other two do not: they cannot see a fault
+that was present when the baseline was written. They are a regression detector,
+not a correctness detector, and the baseline's authority comes entirely from the
+`env.lock` committed beside it. Regenerating it on different hardware is not a
+repair, it is a new claim.
+
 ## The three numbers
 
 | # | Claim | Value | Reproduce |
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | see `harness/mr/run.py`; 55 of 55 relation runs bitwise identical across 5 block sizes | `python3 -m harness.mr.run` |
-| 2 | Harness power | 6 of 7 seeded faults killed, 1 proven-equivalent, 0 not-exercised; median time to detection 26.5 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
+| 2 | Harness power | 9 of 10 seeded faults killed, 1 proven-equivalent, 0 not-exercised; median time to detection 10.4 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
 | 3 | Cost of determinism | 1.06x within lockstep, against vLLM's own 1.45x; lockstep invariant is 3.3x vLLM batch-invariant wall time | `python3 -m bench.throughput` |
 
 Claim 3, in full, on a committed 8-request 1232-token trace, median of 5:
@@ -67,6 +133,22 @@ correctness-reference engine rather than a fast one.
 SGLang is not installed in the external environment, so its row is not measured
 rather than estimated or omitted.
 
+Claim 2, before and after the third observer was added. The operator set and the
+campaign are otherwise identical, and the difference is one mutant:
+
+| | killed | survived | not exercised |
+|---|---|---|---|
+| invariance relations and F1 only | 8 of 10 | 2 | 0 |
+| with golden bytes | **9 of 10** | 1 | 0 |
+
+The two survivors in the first row are the reversed split-combine fold, which is
+a real fault no observer then present could see, and the recompute off-by-one,
+which is a proven-equivalent mutant: it re-prefills a token that is immediately
+overwritten with the identical value, so no observer can distinguish it and none
+should. The second row has only the equivalent mutant left. Every one of the ten
+reports a nonzero sentinel, so no trial in either row is a mutant that failed to
+execute.
+
 ## What this does not claim
 
 - **No novelty on batch-invariant kernels.** Thinking Machines published the
@@ -85,12 +167,29 @@ rather than estimated or omitted.
   **This holds only because there is no fork API.** vLLM and SGLang need
   copy-on-write because they fork for parallel sampling and beam search; adding
   either here would require it back.
-- **The mutation score is 7 operators, not 30 to 50.** Three were deleted along
-  with the code they targeted, once that code turned out to be unreachable.
-  Scoring against unreachable operators measures nothing.
+- **The mutation score is 10 operators, not 30 to 50.** Three earlier ones were
+  deleted along with the code they targeted, once that code turned out to be
+  unreachable; three were added later to cover the RNG keying, the split-combine
+  fold order, and the batch-derived split size. Scoring against unreachable
+  operators measures nothing, and ten is a thin denominator even so.
 - **Coverage is a percentage of a derived denominator**, not of an exhaustive
   one. The denominator comes from a declared transition relation; it is checked
   against reality but it is still a model.
+- **Execution-counter gating proves the path ran, not that the patch took
+  effect.** These are different claims and the counters cannot tell them apart.
+  A mutation operator that rebinds a name in the module defining it leaves an
+  importing caller bound to the original, so the mutated code never executes
+  while every counter the gate checks still fires. That happened here, to the
+  reversed split-combine operator, and it was scored as a survivor until a
+  sentinel contradicted it. Each operator now increments a counter from inside
+  the mutant body, checked separately from the execution counters, and a trial
+  whose sentinel reads zero is reported as `not-exercised` rather than as a
+  survivor. The sentinel closes this particular hole; it does not prove no
+  operator has a subtler version of it, and a mutation score is only ever as
+  sound as the evidence that its mutants ran.
+- **The golden baseline is a regression detector, not an oracle.** It cannot see
+  a fault that predates it, and its authority is entirely the `env.lock` beside
+  it.
 
 ## The thesis, demonstrated on its author
 
@@ -106,6 +205,7 @@ contradicting a declaration rather than by review:
 | 3 | Eviction under memory pressure, tested | Admission counted only free blocks, so a request serviceable by evicting was refused and the eviction path was unreachable |
 | 4 | A copy-on-write boundary case passing | Nothing in the engine called `fork`; the test exercised dead code |
 | 5 | A coverage denominator derived from the lifecycle | The transition table was wrong four times, in both directions, inflating and deflating the denominator |
+| 6 | A mutation trial gated on the mutated path executing | The gate passed and the patch never ran; the fault rebound a name in the module that defined it while the caller held its own import, and the trial was scored as a survivor |
 
 Each was found the same way: an execution counter, an assertion, or an
 observed-versus-feasible check contradicted something that had been written down
