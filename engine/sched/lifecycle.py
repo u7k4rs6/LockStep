@@ -61,6 +61,9 @@ TRANSITIONS: dict[tuple[State, Event], State] = {
     (State.ADMITTED, Event.DECODE): State.DECODING,
     (State.PREFILLING, Event.CHUNK): State.PREFILLING,
     (State.PREFILLING, Event.DECODE): State.DECODING,
+    (State.PREFILLING, Event.PREEMPT_RC): State.PREEMPTED,
+    (State.PREFILLING, Event.EVICT): State.PREFILLING,
+    (State.ADMITTED, Event.PREEMPT_RC): State.PREEMPTED,
     (State.DECODING, Event.DECODE): State.DECODING,
     (State.DECODING, Event.PREEMPT_RC): State.PREEMPTED,
     (State.DECODING, Event.FINISH): State.DONE,
@@ -80,18 +83,35 @@ TRANSITIONS: dict[tuple[State, Event], State] = {
 #     is the more realistic design and where more interesting bugs live, these
 #     come back and the denominator grows again.
 #
-#   (ADMITTED, PREEMPT_RC) and (PREFILLING, PREEMPT_RC)
-#     The scheduler skips preemption for any request with no generated tokens,
-#     so a request can only be preempted once it is decoding. Preempting
-#     mid-prefill would discard work with nothing to show for it.
+# (ADMITTED, PREEMPT_RC) and (PREFILLING, PREEMPT_RC) were also removed, on the
+# reasoning that preemption requires a generated token so a request can only be
+# preempted while decoding. That was wrong, and the observed-versus-feasible
+# check caught it within one campaign: after a resume, a request re-prefills its
+# whole context in chunks *while already holding generated tokens*, so it is
+# preemptable mid-prefill and the engine emits chunk -> preempt_rc. Both are
+# restored.
 #
-# tests/test_lifecycle_coverage.py asserts these four stay unreachable, so the
-# removal cannot silently become wrong if the scheduler changes.
+# Worth recording rather than quietly fixing. The check has now caught three
+# errors in this table, in both directions: CACHE_HIT placed on the wrong state
+# inflating the denominator, EVICT transitions the engine cannot take inflating
+# it further, and these two removals deflating it. A denominator nobody can check
+# is worth less than no denominator at all.
+#
+# tests/test_lifecycle_coverage.py asserts the remaining two stay unreachable.
+# (PREFILLING, EVICT) was also restored: eviction runs inside
+# _reserve_with_eviction, which _admit calls *after* applying a cache hit, so the
+# engine emits cache_hit -> evict. Only (DECODING, EVICT) is genuinely
+# unreachable, because a request in DECODING has already been admitted and
+# nothing reserves blocks again.
+#
+# Four errors in this table now, caught by the same check: CACHE_HIT on the wrong
+# state, and three removals that were wrong. Every one was found by a real run
+# contradicting the declaration rather than by review. That is the argument for
+# checking a denominator against reality instead of trusting it.
 UNREACHABLE_BY_DESIGN: dict[tuple[State, Event], str] = {
-    (State.PREFILLING, Event.EVICT): "blocks are reserved once, at admission",
-    (State.DECODING, Event.EVICT): "blocks are reserved once, at admission",
-    (State.ADMITTED, Event.PREEMPT_RC): "preemption requires a generated token",
-    (State.PREFILLING, Event.PREEMPT_RC): "preemption requires a generated token",
+    (State.DECODING, Event.EVICT): (
+        "a decoding request has been admitted and nothing reserves blocks again"
+    ),
 }
 
 INITIAL = State.WAITING

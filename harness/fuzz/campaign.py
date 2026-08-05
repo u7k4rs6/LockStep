@@ -135,6 +135,9 @@ def run_campaign(model, seeds, cases_per_seed, coverage, oracle, progress=True):
             except Exception as exc:  # noqa: BLE001 - a crash is a finding
                 findings.append(Finding(case, f"{type(exc).__name__}: {exc}",
                                         config.describe(), time.monotonic() - started))
+                print(f"\n  FINDING {len(findings)} (crash): {type(exc).__name__}: "
+                      f"{str(exc)[:100]}")
+                print(f"    config {config.describe()}", flush=True)
                 continue
             reason = oracle(case)
             if reason:
@@ -266,24 +269,42 @@ def main() -> int:
             detected, detail = None, ""
             exercised = Counters()
             found = []
+            fault_coverage = Coverage()
+
+            # Generic swarm cases plus the eviction-targeted ones. A fault whose
+            # path is eviction barely executes under a uniform campaign: the
+            # "eviction eligible-set includes a running sequence" operator
+            # survived a generic campaign and died in 57s once eviction was
+            # actually reached, so the trial must drive the path the fault sits
+            # on rather than hope a uniform draw wanders into it.
+            trial_cases = [
+                draw_case(draw_config(seed), model.cfg.vocab_size, index)
+                for seed in range(6) for index in range(4)
+            ] + eviction_cases(model.cfg.vocab_size, 24)
+
             with fault.apply():
-                for seed in range(6):
-                    config = draw_config(seed)
-                    for index in range(4):
-                        case = draw_case(config, model.cfg.vocab_size, index)
-                        try:
-                            outcome = run_case(model, case)
-                        except Exception as exc:  # noqa: BLE001
-                            found.append(f"{type(exc).__name__}: {exc}")
-                            continue
-                        exercised.merge(outcome.counters)
-                        if outcome.error:
-                            found.append(outcome.error)
-                            continue
-                        reason = case_fails(model, case)
-                        if reason:
-                            found.append(reason)
-                    if found:
+                for case in trial_cases:
+                    try:
+                        outcome = run_case(model, case)
+                    except Exception as exc:  # noqa: BLE001
+                        found.append(f"{type(exc).__name__}: {exc}")
+                        break
+                    exercised.merge(outcome.counters)
+                    if outcome.error:
+                        found.append(outcome.error)
+                        break
+                    try:
+                        # The same observer set the clean campaign uses. Dropping
+                        # the n-gram check here made the chunk-boundary operator
+                        # look like a survivor when it is caught by exactly that
+                        # observer.
+                        observe(fault_coverage, case, outcome)
+                    except Exception as exc:  # noqa: BLE001
+                        found.append(f"{type(exc).__name__}: {exc}")
+                        break
+                    reason = case_fails(model, case)
+                    if reason:
+                        found.append(reason)
                         break
             if found:
                 detected = time.monotonic() - started

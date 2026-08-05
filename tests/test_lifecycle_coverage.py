@@ -90,15 +90,32 @@ def test_transitions_removed_by_design_are_really_unreachable():
 
     source = inspect.getsource(Scheduler)
 
-    # Eviction runs only inside _reserve_with_eviction, and only _admit calls it.
+    # Eviction runs only inside _reserve_with_eviction, and only _admit calls it,
+    # so a request already decoding can never observe one.
     assert source.count("_reserve_with_eviction(") == 2, (
-        "reserve-with-eviction is called from somewhere new; a running request "
-        "may now be able to observe an eviction, and (PREFILLING, EVICT) and "
-        "(DECODING, EVICT) belong back in the transition table"
+        "reserve-with-eviction is called from somewhere new; a decoding request "
+        "may now be able to observe an eviction, and (DECODING, EVICT) belongs "
+        "back in the transition table"
     )
 
-    # Preemption is skipped for a request with no generated token.
-    assert "if request.kv_len == 0 or not request.generated:" in source, (
-        "the guard that keeps preemption to decoding requests has changed; "
-        "(ADMITTED, PREEMPT_RC) and (PREFILLING, PREEMPT_RC) may now be reachable"
-    )
+
+def test_a_resumed_request_can_be_preempted_mid_prefill():
+    """chunk -> preempt_rc is reachable, and the table must say so.
+
+    After a resume the request re-prefills its whole context in chunks while
+    already holding generated tokens, so the guard that skips preemption for a
+    request with no generated token does not exclude it. An earlier version of
+    the table removed this transition on exactly that mistaken reasoning, and the
+    observed-versus-feasible check caught it within one campaign.
+    """
+    assert (State.PREFILLING, Event.PREEMPT_RC) in TRANSITIONS
+    assert (Event.CHUNK, Event.PREEMPT_RC) in feasible_ngrams(2)
+    assert (Event.RESUME, Event.PREEMPT_RC) in feasible_ngrams(2)
+
+
+def test_a_cache_hit_can_be_followed_by_an_eviction():
+    """Eviction runs inside _admit, after the hit is applied, so the engine
+    emits cache_hit -> evict. Removing this was the fourth error in the table
+    that a real run caught."""
+    assert (State.PREFILLING, Event.EVICT) in TRANSITIONS
+    assert (Event.CACHE_HIT, Event.EVICT) in feasible_ngrams(2)
