@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "verify",
-  "created_utc": "2026-08-04T05:11:21Z",
+  "created_utc": "2026-08-05T18:48:42Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -14,13 +14,14 @@
     "python_version": "3.12.13",
     "os_kernel": "Linux 7.0.0-28-generic x86_64",
     "cpu_model": "12th Gen Intel(R) Core(TM) i5-12450HX",
-    "omp_num_threads": null,
-    "mkl_num_threads": null,
+    "omp_num_threads": "8",
+    "mkl_num_threads": "8",
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": null,
+    "engine_revision": "bed028f2d38e-dirty",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "955eca114b02c51bcf1b631519bb7a5d8689c1649251358f284346f9db455d09"
+    "digest": "820e5c31150d33adbc663e7d77e8bd7e2a7fd9b8c4228c0043acd9e5b4e9b921"
   },
   "payload": {
     "block_sizes": [
@@ -177,69 +178,219 @@
           },
           {
             "id": "MR3",
-            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "statement": "preempt and resume: preemption at any depth up to 3 leaves bits unchanged",
             "passed": true,
-            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=8",
+            "detail": "25/25 schedules identical to canonical; depth distribution reached {0: 3, 1: 15, 2: 4, 3: 3}, block_size=8",
             "cases": [
               {
-                "preempt_at_step": 0,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  0
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
               },
               {
-                "preempt_at_step": 1,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  1
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 2,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  2
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 3,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  3
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 4,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  4
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 5,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  5
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 6,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  6
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 7,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  7
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 8,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  8
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 9,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  9
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  10
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  11
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  12
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  13
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  14
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  15
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  16
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  17
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  4,
+                  9
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  8
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3,
+                  5
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5,
+                  9
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  6,
+                  12
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
               }
             ]
           },
@@ -391,56 +542,56 @@
                   "requests": 3,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "ee648b5e8226"
+                  "trajectory": "91b5d9de73db"
                 },
                 {
                   "workload": "short sampled, 6 requests",
                   "requests": 6,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "89e8cf11f37b"
+                  "trajectory": "e8e67fefe2bb"
                 },
                 {
                   "workload": "long decode, 2 requests x 24 tokens",
                   "requests": 2,
                   "steps": 24,
                   "identical": true,
-                  "trajectory": "b984a5974de7"
+                  "trajectory": "21335757a28e"
                 },
                 {
                   "workload": "wide batch, 16 requests",
                   "requests": 16,
                   "steps": 5,
                   "identical": true,
-                  "trajectory": "dd2212aac18f"
+                  "trajectory": "75cb0feae76c"
                 },
                 {
                   "workload": "crosses the 512 split, 2 requests",
                   "requests": 2,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "946c9fa0b022"
+                  "trajectory": "75075680d301"
                 },
                 {
                   "workload": "chunked prefill",
                   "requests": 4,
                   "steps": 14,
                   "identical": true,
-                  "trajectory": "d924a1d4e892"
+                  "trajectory": "5d15863428c8"
                 },
                 {
                   "workload": "preemption mid-decode",
                   "requests": 3,
                   "steps": 9,
                   "identical": true,
-                  "trajectory": "d1cabf68aee1"
+                  "trajectory": "9fadb271b265"
                 },
                 {
                   "workload": "eviction pressure, cache on",
                   "requests": 6,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "a2ad1131fc3b"
+                  "trajectory": "72dd38bafad0"
                 }
               ]
             }
@@ -449,9 +600,9 @@
             "id": "MR6-xproc",
             "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
             "passed": true,
-            "detail": "6 steps, sha256:18bd4fe76caf, PYTHONHASHSEED 1 vs 999",
+            "detail": "6 steps, sha256:09651919cc72, PYTHONHASHSEED 1 vs 999",
             "cases": {
-              "trajectory_sha256": "18bd4fe76caf5b6a5ac098aa85554852fd50f7bdbf0719423dbd9311cded156d",
+              "trajectory_sha256": "09651919cc7284c2585dde37625969382e2909caa06d3c9e255161e43fcd0270",
               "steps": 6
             }
           },
@@ -535,7 +686,7 @@
             "id": "BOUNDARY",
             "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
             "passed": true,
-            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=8",
+            "detail": "6/6 cases pass, 4 of which registered a real cache hit, block_size=8",
             "cases": [
               {
                 "case": "prefix_len == block_size - 1 (7)",
@@ -566,11 +717,6 @@
                 "case": "eviction under pressure, ledger audited every step",
                 "ok": true,
                 "detail": "3 evictions, ledger balanced throughout"
-              },
-              {
-                "case": "fork with copy-on-write at a block boundary",
-                "ok": true,
-                "detail": "copied logical block 1 into physical 2"
               }
             ]
           }
@@ -721,69 +867,219 @@
           },
           {
             "id": "MR3",
-            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "statement": "preempt and resume: preemption at any depth up to 3 leaves bits unchanged",
             "passed": true,
-            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=16",
+            "detail": "25/25 schedules identical to canonical; depth distribution reached {0: 3, 1: 15, 2: 4, 3: 3}, block_size=16",
             "cases": [
               {
-                "preempt_at_step": 0,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  0
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
               },
               {
-                "preempt_at_step": 1,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  1
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 2,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  2
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 3,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  3
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 4,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  4
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 5,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  5
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 6,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  6
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 7,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  7
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 8,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  8
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 9,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  9
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  10
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  11
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  12
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  13
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  14
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  15
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  16
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  17
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  4,
+                  9
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  8
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3,
+                  5
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5,
+                  9
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  6,
+                  12
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
               }
             ]
           },
@@ -935,56 +1231,56 @@
                   "requests": 3,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "69eb2488dbc0"
+                  "trajectory": "589edf27d3d6"
                 },
                 {
                   "workload": "short sampled, 6 requests",
                   "requests": 6,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "b4ee0a6a0a0b"
+                  "trajectory": "e74a347202f7"
                 },
                 {
                   "workload": "long decode, 2 requests x 24 tokens",
                   "requests": 2,
                   "steps": 24,
                   "identical": true,
-                  "trajectory": "ccc6d4c5d0e8"
+                  "trajectory": "ff9c4f156efb"
                 },
                 {
                   "workload": "wide batch, 16 requests",
                   "requests": 16,
                   "steps": 5,
                   "identical": true,
-                  "trajectory": "e4a0e6e81be6"
+                  "trajectory": "b811c0bb52f7"
                 },
                 {
                   "workload": "crosses the 512 split, 2 requests",
                   "requests": 2,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "946c9fa0b022"
+                  "trajectory": "75075680d301"
                 },
                 {
                   "workload": "chunked prefill",
                   "requests": 4,
                   "steps": 14,
                   "identical": true,
-                  "trajectory": "b568605d45f6"
+                  "trajectory": "451d396ce3bc"
                 },
                 {
                   "workload": "preemption mid-decode",
                   "requests": 3,
                   "steps": 9,
                   "identical": true,
-                  "trajectory": "7b9f6af0001e"
+                  "trajectory": "36c0d2735273"
                 },
                 {
                   "workload": "eviction pressure, cache on",
                   "requests": 6,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "a2ad1131fc3b"
+                  "trajectory": "72dd38bafad0"
                 }
               ]
             }
@@ -993,9 +1289,9 @@
             "id": "MR6-xproc",
             "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
             "passed": true,
-            "detail": "6 steps, sha256:43cf9f909657, PYTHONHASHSEED 1 vs 999",
+            "detail": "6 steps, sha256:90a7e8db2a57, PYTHONHASHSEED 1 vs 999",
             "cases": {
-              "trajectory_sha256": "43cf9f909657fb34f98769be253f921e44d57dc2b3e0c1cf607d636fabb8afbc",
+              "trajectory_sha256": "90a7e8db2a57413f7cb0a9db58baeb575560dc39fe7439a73856c8f1635f140c",
               "steps": 6
             }
           },
@@ -1079,7 +1375,7 @@
             "id": "BOUNDARY",
             "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
             "passed": true,
-            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=16",
+            "detail": "6/6 cases pass, 4 of which registered a real cache hit, block_size=16",
             "cases": [
               {
                 "case": "prefix_len == block_size - 1 (15)",
@@ -1110,11 +1406,6 @@
                 "case": "eviction under pressure, ledger audited every step",
                 "ok": true,
                 "detail": "3 evictions, ledger balanced throughout"
-              },
-              {
-                "case": "fork with copy-on-write at a block boundary",
-                "ok": true,
-                "detail": "copied logical block 1 into physical 2"
               }
             ]
           }
@@ -1265,69 +1556,219 @@
           },
           {
             "id": "MR3",
-            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "statement": "preempt and resume: preemption at any depth up to 3 leaves bits unchanged",
             "passed": true,
-            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=32",
+            "detail": "25/25 schedules identical to canonical; depth distribution reached {0: 3, 1: 15, 2: 4, 3: 3}, block_size=32",
             "cases": [
               {
-                "preempt_at_step": 0,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  0
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
               },
               {
-                "preempt_at_step": 1,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  1
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 2,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  2
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 3,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  3
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 4,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  4
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 5,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  5
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 6,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  6
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 7,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  7
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 8,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  8
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 9,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  9
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  10
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  11
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  12
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  13
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  14
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  15
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  16
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  17
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  4,
+                  9
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  8
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3,
+                  5
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5,
+                  9
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  6,
+                  12
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
               }
             ]
           },
@@ -1479,56 +1920,56 @@
                   "requests": 3,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "8e316c820b19"
+                  "trajectory": "69e10a2b671b"
                 },
                 {
                   "workload": "short sampled, 6 requests",
                   "requests": 6,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "6c970dd61827"
+                  "trajectory": "8ecc82bc7c2f"
                 },
                 {
                   "workload": "long decode, 2 requests x 24 tokens",
                   "requests": 2,
                   "steps": 24,
                   "identical": true,
-                  "trajectory": "b892b53e686b"
+                  "trajectory": "5b146270dbb6"
                 },
                 {
                   "workload": "wide batch, 16 requests",
                   "requests": 16,
                   "steps": 5,
                   "identical": true,
-                  "trajectory": "a8c4f16b7f36"
+                  "trajectory": "37e1bb425567"
                 },
                 {
                   "workload": "crosses the 512 split, 2 requests",
                   "requests": 2,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "946c9fa0b022"
+                  "trajectory": "75075680d301"
                 },
                 {
                   "workload": "chunked prefill",
                   "requests": 4,
                   "steps": 14,
                   "identical": true,
-                  "trajectory": "a97154800a02"
+                  "trajectory": "fafcbecdf35c"
                 },
                 {
                   "workload": "preemption mid-decode",
                   "requests": 3,
                   "steps": 9,
                   "identical": true,
-                  "trajectory": "815ebff577b0"
+                  "trajectory": "38ab8491b5e1"
                 },
                 {
                   "workload": "eviction pressure, cache on",
                   "requests": 6,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "a2ad1131fc3b"
+                  "trajectory": "72dd38bafad0"
                 }
               ]
             }
@@ -1537,9 +1978,9 @@
             "id": "MR6-xproc",
             "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
             "passed": true,
-            "detail": "6 steps, sha256:cafa164edeb6, PYTHONHASHSEED 1 vs 999",
+            "detail": "6 steps, sha256:a5ad392327d0, PYTHONHASHSEED 1 vs 999",
             "cases": {
-              "trajectory_sha256": "cafa164edeb6974a2e4be3bd290c23cdd19591edc1a5ab7ab1fb979ce3b72dd8",
+              "trajectory_sha256": "a5ad392327d09fa0c4a96f4f428ab3406f669b7f938944419e0e665fad34318b",
               "steps": 6
             }
           },
@@ -1623,7 +2064,7 @@
             "id": "BOUNDARY",
             "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
             "passed": true,
-            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=32",
+            "detail": "6/6 cases pass, 4 of which registered a real cache hit, block_size=32",
             "cases": [
               {
                 "case": "prefix_len == block_size - 1 (31)",
@@ -1654,11 +2095,6 @@
                 "case": "eviction under pressure, ledger audited every step",
                 "ok": true,
                 "detail": "3 evictions, ledger balanced throughout"
-              },
-              {
-                "case": "fork with copy-on-write at a block boundary",
-                "ok": true,
-                "detail": "copied logical block 1 into physical 2"
               }
             ]
           }
@@ -1809,69 +2245,219 @@
           },
           {
             "id": "MR3",
-            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "statement": "preempt and resume: preemption at any depth up to 3 leaves bits unchanged",
             "passed": true,
-            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=64",
+            "detail": "25/25 schedules identical to canonical; depth distribution reached {0: 3, 1: 15, 2: 4, 3: 3}, block_size=64",
             "cases": [
               {
-                "preempt_at_step": 0,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  0
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
               },
               {
-                "preempt_at_step": 1,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  1
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 2,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  2
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 3,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  3
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 4,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  4
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 5,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  5
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 6,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  6
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 7,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  7
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 8,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  8
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 9,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  9
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  10
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  11
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  12
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  13
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  14
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  15
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  16
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  17
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  4,
+                  9
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  8
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3,
+                  5
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5,
+                  9
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  6,
+                  12
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
               }
             ]
           },
@@ -2023,56 +2609,56 @@
                   "requests": 3,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "5eff272e7a21"
+                  "trajectory": "5c63fd964f68"
                 },
                 {
                   "workload": "short sampled, 6 requests",
                   "requests": 6,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "d591b38ee0ea"
+                  "trajectory": "0ecc10f78d57"
                 },
                 {
                   "workload": "long decode, 2 requests x 24 tokens",
                   "requests": 2,
                   "steps": 24,
                   "identical": true,
-                  "trajectory": "77a12146d12f"
+                  "trajectory": "a3767ef49aab"
                 },
                 {
                   "workload": "wide batch, 16 requests",
                   "requests": 16,
                   "steps": 5,
                   "identical": true,
-                  "trajectory": "3a9abae6e543"
+                  "trajectory": "bceabfde92f0"
                 },
                 {
                   "workload": "crosses the 512 split, 2 requests",
                   "requests": 2,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "946c9fa0b022"
+                  "trajectory": "75075680d301"
                 },
                 {
                   "workload": "chunked prefill",
                   "requests": 4,
                   "steps": 14,
                   "identical": true,
-                  "trajectory": "69ff64a893de"
+                  "trajectory": "b4c8c665c134"
                 },
                 {
                   "workload": "preemption mid-decode",
                   "requests": 3,
                   "steps": 9,
                   "identical": true,
-                  "trajectory": "0a2846107ec2"
+                  "trajectory": "d799987f0e19"
                 },
                 {
                   "workload": "eviction pressure, cache on",
                   "requests": 6,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "a2ad1131fc3b"
+                  "trajectory": "72dd38bafad0"
                 }
               ]
             }
@@ -2081,9 +2667,9 @@
             "id": "MR6-xproc",
             "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
             "passed": true,
-            "detail": "6 steps, sha256:c127041ea9b0, PYTHONHASHSEED 1 vs 999",
+            "detail": "6 steps, sha256:1645e2e5c2d3, PYTHONHASHSEED 1 vs 999",
             "cases": {
-              "trajectory_sha256": "c127041ea9b00d913ba590795928dab72e6e5b43940a4741a5dacc8f9cb071b8",
+              "trajectory_sha256": "1645e2e5c2d30447b73676c39173434d566dcf2d1503656acdc22c5c1b9f59e3",
               "steps": 6
             }
           },
@@ -2167,7 +2753,7 @@
             "id": "BOUNDARY",
             "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
             "passed": true,
-            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=64",
+            "detail": "6/6 cases pass, 4 of which registered a real cache hit, block_size=64",
             "cases": [
               {
                 "case": "prefix_len == block_size - 1 (63)",
@@ -2198,11 +2784,6 @@
                 "case": "eviction under pressure, ledger audited every step",
                 "ok": true,
                 "detail": "3 evictions, ledger balanced throughout"
-              },
-              {
-                "case": "fork with copy-on-write at a block boundary",
-                "ok": true,
-                "detail": "copied logical block 1 into physical 2"
               }
             ]
           }
@@ -2353,69 +2934,219 @@
           },
           {
             "id": "MR3",
-            "statement": "preempt and resume: preemption at any decode step leaves bits unchanged",
+            "statement": "preempt and resume: preemption at any depth up to 3 leaves bits unchanged",
             "passed": true,
-            "detail": "10/10 preemption points identical to canonical, 7 of which actually preempted, block_size=128",
+            "detail": "25/25 schedules identical to canonical; depth distribution reached {0: 3, 1: 15, 2: 4, 3: 3}, block_size=128",
             "cases": [
               {
-                "preempt_at_step": 0,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  0
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
               },
               {
-                "preempt_at_step": 1,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  1
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 2,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  2
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 3,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  3
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 4,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  4
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 5,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  5
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 6,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  6
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 7,
-                "preemption_fired": true,
-                "identical": true,
-                "preempt_count": 1
+                "preempt_at_steps": [
+                  7
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 8,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  8
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
               },
               {
-                "preempt_at_step": 9,
-                "preemption_fired": false,
-                "identical": true,
-                "preempt_count": 0
+                "preempt_at_steps": [
+                  9
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  10
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  11
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  12
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  13
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  14
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  15
+                ],
+                "intended_depth": 1,
+                "depth_reached": 1,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  16
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  17
+                ],
+                "intended_depth": 1,
+                "depth_reached": 0,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  4,
+                  9
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  8
+                ],
+                "intended_depth": 2,
+                "depth_reached": 2,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  3,
+                  5
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  2,
+                  5,
+                  9
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
+              },
+              {
+                "preempt_at_steps": [
+                  1,
+                  6,
+                  12
+                ],
+                "intended_depth": 3,
+                "depth_reached": 3,
+                "identical": true
               }
             ]
           },
@@ -2567,56 +3298,56 @@
                   "requests": 3,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "b664a70908ae"
+                  "trajectory": "7dbfa1961fef"
                 },
                 {
                   "workload": "short sampled, 6 requests",
                   "requests": 6,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "b33a4e09fd65"
+                  "trajectory": "bb34bb2e3132"
                 },
                 {
                   "workload": "long decode, 2 requests x 24 tokens",
                   "requests": 2,
                   "steps": 24,
                   "identical": true,
-                  "trajectory": "be12ff0b07a8"
+                  "trajectory": "02a4bd1a9991"
                 },
                 {
                   "workload": "wide batch, 16 requests",
                   "requests": 16,
                   "steps": 5,
                   "identical": true,
-                  "trajectory": "053f74c6234a"
+                  "trajectory": "db0702819b1f"
                 },
                 {
                   "workload": "crosses the 512 split, 2 requests",
                   "requests": 2,
                   "steps": 6,
                   "identical": true,
-                  "trajectory": "946c9fa0b022"
+                  "trajectory": "75075680d301"
                 },
                 {
                   "workload": "chunked prefill",
                   "requests": 4,
                   "steps": 14,
                   "identical": true,
-                  "trajectory": "4e76e90e1701"
+                  "trajectory": "369e377f9be5"
                 },
                 {
                   "workload": "preemption mid-decode",
                   "requests": 3,
                   "steps": 9,
                   "identical": true,
-                  "trajectory": "b8e7d27b67be"
+                  "trajectory": "b840d556a788"
                 },
                 {
                   "workload": "eviction pressure, cache on",
                   "requests": 6,
                   "steps": 4,
                   "identical": true,
-                  "trajectory": "a2ad1131fc3b"
+                  "trajectory": "72dd38bafad0"
                 }
               ]
             }
@@ -2625,9 +3356,9 @@
             "id": "MR6-xproc",
             "statement": "replay across processes: two fresh interpreters, identical trajectory hash",
             "passed": true,
-            "detail": "6 steps, sha256:ca31336366ba, PYTHONHASHSEED 1 vs 999",
+            "detail": "6 steps, sha256:5f39b567b581, PYTHONHASHSEED 1 vs 999",
             "cases": {
-              "trajectory_sha256": "ca31336366ba3e9b8c4efb41fec25efa8ce37981e3ea604f351761c89c578e06",
+              "trajectory_sha256": "5f39b567b5814a7d0e03bd97c83f7510e66aeef7f8ec767a8f17f0f92553b763",
               "steps": 6
             }
           },
@@ -2711,7 +3442,7 @@
             "id": "BOUNDARY",
             "statement": "block-boundary cases hit deliberately, not left to the fuzzer",
             "passed": true,
-            "detail": "7/7 cases pass, 4 of which registered a real cache hit, block_size=128",
+            "detail": "6/6 cases pass, 4 of which registered a real cache hit, block_size=128",
             "cases": [
               {
                 "case": "prefix_len == block_size - 1 (127)",
@@ -2742,11 +3473,6 @@
                 "case": "eviction under pressure, ledger audited every step",
                 "ok": true,
                 "detail": "3 evictions, ledger balanced throughout"
-              },
-              {
-                "case": "fork with copy-on-write at a block boundary",
-                "ok": true,
-                "detail": "copied logical block 1 into physical 2"
               }
             ]
           }

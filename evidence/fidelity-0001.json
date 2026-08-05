@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "fidelity",
-  "created_utc": "2026-08-04T01:54:52Z",
+  "created_utc": "2026-08-05T18:50:46Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -19,8 +19,9 @@
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": "59759d5b266cd314dd82635a1cafa7ce7f48f832276229843e7a9f8469d7ef58",
+    "engine_revision": "328a06678147-dirty",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "a52f9a72c1209b9b58243bd16c566a8fb765fef1a35bf689583ac92832630fa2"
+    "digest": "8efdecd297ed78fd9b0a4a57063138828dfae58023688a90e9b7b745c9b65743"
   },
   "payload": {
     "corpus_sha256": "59759d5b266cd314dd82635a1cafa7ce7f48f832276229843e7a9f8469d7ef58",
@@ -46,11 +47,6 @@
     "logit_abs_error": {
       "max": 0.1316463395005094,
       "mean": 0.005376137035130746
-    },
-    "logit_rel_error": {
-      "max": 0.08778985332295494,
-      "floor": 1.0,
-      "values_counted": 329751792
     },
     "abs_error_histogram": [
       {
@@ -104,6 +100,13 @@
       "matched": 2622,
       "total": 2622
     },
+    "minimum_threshold_for_100_percent": 0.012831338853256826,
+    "positions_kept_at_that_threshold": 2721,
+    "matched_at_that_threshold": 2721,
+    "largest_gap_among_mismatches_exact": 0.012831338853256824,
+    "match_comparison": "gap >= threshold",
+    "expected_exceedances_at_quantile": 2.7560000000000024,
+    "observed_exceedances": 0,
     "match_near_ties_only": {
       "matched": 129,
       "total": 134
@@ -170,6 +173,11 @@
         "pass": true
       }
     ],
+    "peak_rss_bytes": 5051338752,
+    "peak_rss_anon_bytes": 2440200192,
+    "projected_peak_bytes": 1984719232,
+    "memory_ceiling_bytes": 4294967296,
+    "peak_vram_bytes": 2019833344,
     "f1_pass": true,
     "hf_sanity_check": {
       "new_tokens": 32,

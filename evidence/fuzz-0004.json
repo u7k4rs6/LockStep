@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "fuzz",
-  "created_utc": "2026-08-05T11:35:22Z",
+  "created_utc": "2026-08-05T16:35:36Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -19,8 +19,9 @@
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": null,
+    "engine_revision": "bed028f2d38e-dirty",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "3ae469a63dae49844948c3812976b88dcf7ac20e94e82422ffefdc215462bf9d"
+    "digest": "820e5c31150d33adbc663e7d77e8bd7e2a7fd9b8c4228c0043acd9e5b4e9b921"
   },
   "payload": {
     "cases_executed": 72,
@@ -446,7 +447,7 @@
         "counters_seen": {
           "eviction_taken": 0
         },
-        "seconds": 25.2,
+        "seconds": 43.9,
         "detail": "AssertionError: unpinning block 0, which the cache does not hold"
       },
       {
@@ -476,7 +477,7 @@
         "counters_seen": {
           "eviction_taken": 31
         },
-        "seconds": 178.7,
+        "seconds": 317.1,
         "detail": "OutOfBlocks: all 4 blocks are held; the policy must evict or preempt b"
       },
       {
@@ -491,7 +492,7 @@
         "counters_seen": {
           "cache_hit": 1
         },
-        "seconds": 10.4,
+        "seconds": 17.9,
         "detail": "r01 diverged from canonical: [36089] != [32995]"
       },
       {
@@ -506,25 +507,25 @@
         "counters_seen": {
           "prefill_chunk": 2570
         },
-        "seconds": 196.3,
+        "seconds": 419.1,
         "detail": "UndeclaredTransition: observed the 2-gram ['decode', 'chunk'], which t"
       },
       {
         "fault": "recompute_off_by_one_token_count",
         "operator": "recompute re-prefills with an off-by-one token count",
-        "verdict": "survived",
-        "mutation_took_effect": 16,
-        "mechanism": "-",
+        "verdict": "killed",
+        "mutation_took_effect": 6,
+        "mechanism": "bitwise divergence",
         "requires": [
           "preempt_fired",
           "resume"
         ],
         "counters_seen": {
-          "preempt_fired": 8,
-          "resume": 8
+          "preempt_fired": 3,
+          "resume": 3
         },
-        "seconds": null,
-        "detail": ""
+        "seconds": 1.3,
+        "detail": "r00 diverged from canonical: [271, 13874, 492, 87423] != [271, 13874, "
       },
       {
         "fault": "rng_keyed_on_global_step",
@@ -538,7 +539,7 @@
         "counters_seen": {
           "decode_step": 9
         },
-        "seconds": 2.6,
+        "seconds": 5.6,
         "detail": "r00 diverged from canonical: [2548] != [67308]"
       },
       {
@@ -553,7 +554,7 @@
         "counters_seen": {
           "attention_multi_split": 23
         },
-        "seconds": 182.7,
+        "seconds": 333.8,
         "detail": "golden bytes differ from the committed baseline at prompt_600, prompt_"
       },
       {
@@ -568,7 +569,7 @@
         "counters_seen": {
           "admit": 10
         },
-        "seconds": 9.9,
+        "seconds": 10.1,
         "detail": "r00 diverged from canonical: [74866, 106, 30844, 136933] != [5858, 13,"
       }
     ],

@@ -1,0 +1,53 @@
+{
+  "note": "Provenance for the one finding this project filed upstream. Recorded because the strongest result in the repository otherwise lived on GitHub with no committed link back to what produced it, which is the gap evidence/case-0003.json was pinned to close.",
+  "issue": "https://github.com/vllm-project/vllm/issues/51187",
+  "cross_reference": "https://github.com/vllm-project/vllm/issues/27433#issuecomment-5195555951",
+  "filed_by": "u7k4rs6",
+  "subject": {
+    "engine": "vLLM 0.26.0",
+    "torch": "2.11.0+cu130",
+    "model": "Qwen3-0.6B fp16",
+    "mode": "VLLM_BATCH_INVARIANT=1",
+    "server_flags": "--enforce-eager --max-model-len 1024 --block-size 16 --gpu-memory-utilization 0.55"
+  },
+  "backing_artifacts": {
+    "certify-pairs-a.json": {
+      "role": "lifetime 1, 5 repeats: every workload reproducible (1 distinct output of 5)",
+      "source": "results/2026-08-05/certify-0043.json",
+      "env_fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+      "engine_revision_recorded": "bed028f2d38e-dirty",
+      "created_utc": "2026-08-05T18:00:59Z"
+    },
+    "certify-pairs-b.json": {
+      "role": "lifetime 2, 5 repeats: THE FINDING. 31-request workload 3 distinct of 5, 32-request 2 distinct of 5, later-vs-later pairs differing",
+      "source": "results/2026-08-05/certify-0044.json",
+      "env_fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+      "engine_revision_recorded": "bed028f2d38e-dirty",
+      "created_utc": "2026-08-05T18:01:38Z"
+    },
+    "certify-pairs-mns8.json": {
+      "role": "--max-num-seqs 8, 5 repeats: every workload reproducible. The single controlled variable",
+      "source": "results/2026-08-05/certify-0045.json",
+      "env_fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+      "engine_revision_recorded": "bed028f2d38e-dirty",
+      "created_utc": "2026-08-05T18:02:51Z"
+    }
+  },
+  "engine_revision": {
+    "recorded_in_artifacts": "bed028f2d38e-dirty",
+    "actual": "328a06678147",
+    "explanation": "The artifacts record a dirty tree because certify/run.py was being given all-pairs comparison and identical-workload priming while the runs executed. They were not regenerated at a clean revision as a replacement, on purpose: the finding is intermittent, one lifetime in three was fully reproducible, so a rerun could return clean and destroy the only artifact that exhibits the divergence. A clean-revision run was added alongside instead; see clean_revision_rerun below.",
+    "how_the_revision_was_established": "No tree hash was captured at run time, so this is weaker than a cryptographic claim and is stated as such. What was established, after the fact, is that the files determining execution were not modified between the runs and the commit: certify/run.py was last written 2026-08-05 18:00:04Z, the three artifacts were written 18:00:59Z, 18:01:38Z and 18:02:51Z, and no certify/*.py file has an mtime between the first run and commit 328a066. The run-time tree as a whole was NOT identical to 328a066^{tree}: that commit also carries README.md edits made after the runs finished. The correct statement is 'the certifier code was identical', not 'the tree was identical'.",
+    "what_the_mtime_claim_rests_on": "mtimes are not tamper-evident. They can be set arbitrarily with touch, so this rests on there having been no reason to do so, not on the filesystem proving anything. Stated so a reader knows the strength of the claim rather than having to assume it.",
+    "mtime_check_scope": "Widened beyond certify/. No file under engine/, harness/, report/ or certify/ has an mtime between the first pairs run and commit 328a066, with one exception: certify/run.py at 18:00:04Z, 55 seconds before the first artifact and before pairs.sh was launched. The runs execute engine/ code too, so checking only certify/ would have left the more relevant tree unchecked."
+  },
+  "scope": {
+    "claimed": "Two workloads at 44 and 45 co-resident sequences only.",
+    "retracted": "Small-workload divergences at 15 to 16 co-resident, reported in earlier drafts from the factorial and the concurrency ladder, were substantially a first-batch artifact. Identical-workload priming eliminates them. They are not in the filed issue.",
+    "not_determined": "The mechanism, and whether the width dependence is a threshold or a probability. Only the --max-num-seqs comparison is controlled."
+  },
+  "known_gaps": {
+    "lifetime_1_server_log_lost": "Lifetimes 1 and 2 wrote to the same log filename and lifetime 1's vLLM server log was overwritten. Nothing in the issue or in this record depends on it: lifetime 1's RESULTS are in evidence/certify-pairs-a.json, which is intact, and the issue cites lifetime 1 only for the intermittency claim, which the artifact supports on its own. Server-side diagnosis of that specific lifetime is no longer possible. The filename now carries the run label.",
+    "kv_cache_figure_varies": "The issue quotes 'GPU KV cache size: 27,744 tokens'. That figure is from one server log; across runs it ranges 26,928 to 27,744, because --gpu-memory-utilization 0.55 resolves against whatever else is resident at launch. The argument it supports, roughly 2,700 tokens needed against about 27,000 available, holds at every observed value."
+  }
+}

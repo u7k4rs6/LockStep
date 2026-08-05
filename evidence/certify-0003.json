@@ -1,0 +1,1189 @@
+{
+  "schema_version": 1,
+  "kind": "certify",
+  "created_utc": "2026-08-05T15:55:52Z",
+  "env": {
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "gpu_arch": "sm_89",
+    "gpu_memory_bytes": 8177975296,
+    "driver_version": "595.84",
+    "cuda_version": "12.4",
+    "torch_version": "2.6.0+cu124",
+    "triton_version": "3.2.0",
+    "numpy_version": "2.1.3",
+    "python_version": "3.12.13",
+    "os_kernel": "Linux 7.0.0-28-generic x86_64",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i5-12450HX",
+    "omp_num_threads": "8",
+    "mkl_num_threads": "8",
+    "torch_intraop_threads": 8,
+    "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
+    "corpus_sha256": null,
+    "engine_revision": "bed028f2d38e-dirty",
+    "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    "digest": "820e5c31150d33adbc663e7d77e8bd7e2a7fd9b8c4228c0043acd9e5b4e9b921"
+  },
+  "payload": {
+    "engine": "vLLM (default)",
+    "mode": "default",
+    "model": "qwen3",
+    "block_size": 16,
+    "block_size_assumed": false,
+    "block_size_source": "configured at launch; vLLM exposes no endpoint reporting it",
+    "observable": "observable: token ids identical, and the chosen-token logprob plus the top 5 alternatives with their ids identical as doubles after JSON round-trip, at every emitted position. Greedy only (temperature 0). This is strictly weaker than the internal relations, which compare raw fp16 logit bytes; a negative result means no divergence at this observable, not bitwise identity.",
+    "top_logprobs": 5,
+    "repeats": 3,
+    "results": [
+      {
+        "case": "prefix_len == block_size - 1 (15)",
+        "requests": 2,
+        "positions": 48,
+        "repeats": 3,
+        "filler_widths": [
+          0,
+          5,
+          13
+        ],
+        "max_concurrent_running": 15,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [
+          {
+            "request": 0,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 4.616e-02",
+            "max_logprob_delta": 0.046163082122802734,
+            "first_token_divergence": null
+          },
+          {
+            "request": 0,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 3.072e-02",
+            "max_logprob_delta": 0.030716419219970703,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 1.531e-02",
+            "max_logprob_delta": 0.015311956405639648,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.454e-02",
+            "max_logprob_delta": 0.014538764953613281,
+            "first_token_divergence": null
+          }
+        ],
+        "clean": false,
+        "vacuous": false
+      },
+      {
+        "case": "prefix_len == block_size (16)",
+        "requests": 2,
+        "positions": 48,
+        "repeats": 3,
+        "filler_widths": [
+          0,
+          5,
+          13
+        ],
+        "max_concurrent_running": 15,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [
+          {
+            "request": 0,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.517e-02",
+            "max_logprob_delta": 0.015172958374023438,
+            "first_token_divergence": null
+          },
+          {
+            "request": 0,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 1.431e-02",
+            "max_logprob_delta": 0.014307260513305664,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.542e-02",
+            "max_logprob_delta": 0.015423297882080078,
+            "first_token_divergence": null
+          }
+        ],
+        "clean": false,
+        "vacuous": false
+      },
+      {
+        "case": "prefix_len == block_size + 1 (17)",
+        "requests": 2,
+        "positions": 48,
+        "repeats": 3,
+        "filler_widths": [
+          0,
+          5,
+          13
+        ],
+        "max_concurrent_running": 15,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [
+          {
+            "request": 0,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 2.309e-02",
+            "max_logprob_delta": 0.02309274673461914,
+            "first_token_divergence": null
+          },
+          {
+            "request": 0,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 1.483e-02",
+            "max_logprob_delta": 0.014834880828857422,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.946e-02",
+            "max_logprob_delta": 0.019462108612060547,
+            "first_token_divergence": null
+          }
+        ],
+        "clean": false,
+        "vacuous": false
+      },
+      {
+        "case": "zero-prefix request co-batched with a nonzero-prefix request",
+        "requests": 3,
+        "positions": 72,
+        "repeats": 3,
+        "filler_widths": [
+          0,
+          5,
+          13
+        ],
+        "max_concurrent_running": 16,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [
+          {
+            "request": 0,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 1.557e-02",
+            "max_logprob_delta": 0.015568256378173828,
+            "first_token_divergence": null
+          },
+          {
+            "request": 0,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.623e-02",
+            "max_logprob_delta": 0.016231536865234375,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.321e-02",
+            "max_logprob_delta": 0.023213863372802734,
+            "first_token_divergence": null
+          },
+          {
+            "request": 2,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 2.846e-02",
+            "max_logprob_delta": 0.028463363647460938,
+            "first_token_divergence": null
+          },
+          {
+            "request": 2,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.826e-02",
+            "max_logprob_delta": 0.028264522552490234,
+            "first_token_divergence": null
+          }
+        ],
+        "clean": false,
+        "vacuous": false
+      },
+      {
+        "case": "cache hit covering the full prompt",
+        "requests": 2,
+        "positions": 48,
+        "repeats": 3,
+        "filler_widths": [
+          0,
+          5,
+          13
+        ],
+        "max_concurrent_running": 15,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [
+          {
+            "request": 0,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 2.332e-02",
+            "max_logprob_delta": 0.02332448959350586,
+            "first_token_divergence": null
+          },
+          {
+            "request": 0,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.088e-02",
+            "max_logprob_delta": 0.020882606506347656,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 1.550e-02",
+            "max_logprob_delta": 0.015504837036132812,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.530e-02",
+            "max_logprob_delta": 0.01529550552368164,
+            "first_token_divergence": null
+          }
+        ],
+        "clean": false,
+        "vacuous": false
+      },
+      {
+        "case": "batch 31, shared prefix of one block",
+        "requests": 31,
+        "positions": 744,
+        "repeats": 3,
+        "filler_widths": [
+          0,
+          5,
+          13
+        ],
+        "max_concurrent_running": 44,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [
+          {
+            "request": 0,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 1.968e-02",
+            "max_logprob_delta": 0.01968097686767578,
+            "first_token_divergence": null
+          },
+          {
+            "request": 0,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.185e-02",
+            "max_logprob_delta": 0.02185201644897461,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 8.583e-06",
+            "max_logprob_delta": 8.58306884765625e-06,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.355e-02",
+            "max_logprob_delta": 0.013549089431762695,
+            "first_token_divergence": null
+          },
+          {
+            "request": 2,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 6.795e-06",
+            "max_logprob_delta": 6.794929504394531e-06,
+            "first_token_divergence": null
+          },
+          {
+            "request": 2,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.480e-02",
+            "max_logprob_delta": 0.014795303344726562,
+            "first_token_divergence": null
+          },
+          {
+            "request": 3,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 7.690e-03",
+            "max_logprob_delta": 0.0076904296875,
+            "first_token_divergence": null
+          },
+          {
+            "request": 3,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.605e-02",
+            "max_logprob_delta": 0.0260467529296875,
+            "first_token_divergence": null
+          },
+          {
+            "request": 4,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 2.861e-05",
+            "max_logprob_delta": 2.86102294921875e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 4,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.131e-02",
+            "max_logprob_delta": 0.0113067626953125,
+            "first_token_divergence": null
+          },
+          {
+            "request": 5,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.192e-05",
+            "max_logprob_delta": 1.1920928955078125e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 5,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.736e-02",
+            "max_logprob_delta": 0.01736295223236084,
+            "first_token_divergence": null
+          },
+          {
+            "request": 6,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.669e-05",
+            "max_logprob_delta": 1.6689300537109375e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 6,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.798e-02",
+            "max_logprob_delta": 0.017979145050048828,
+            "first_token_divergence": null
+          },
+          {
+            "request": 7,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.684e-05",
+            "max_logprob_delta": 1.683831214904785e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 7,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 3.028e-02",
+            "max_logprob_delta": 0.030283451080322266,
+            "first_token_divergence": null
+          },
+          {
+            "request": 8,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 7.510e-03",
+            "max_logprob_delta": 0.00751042366027832,
+            "first_token_divergence": null
+          },
+          {
+            "request": 8,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.444e-02",
+            "max_logprob_delta": 0.014438152313232422,
+            "first_token_divergence": null
+          },
+          {
+            "request": 9,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.144e-05",
+            "max_logprob_delta": 1.1444091796875e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 9,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.512e-02",
+            "max_logprob_delta": 0.015118122100830078,
+            "first_token_divergence": null
+          },
+          {
+            "request": 10,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 2.599e-05",
+            "max_logprob_delta": 2.5987625122070312e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 10,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.523e-02",
+            "max_logprob_delta": 0.015234708786010742,
+            "first_token_divergence": null
+          },
+          {
+            "request": 11,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 5.245e-06",
+            "max_logprob_delta": 5.245208740234375e-06,
+            "first_token_divergence": null
+          },
+          {
+            "request": 11,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.525e-02",
+            "max_logprob_delta": 0.015249252319335938,
+            "first_token_divergence": null
+          },
+          {
+            "request": 12,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.287e-05",
+            "max_logprob_delta": 1.2874603271484375e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 12,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.430e-02",
+            "max_logprob_delta": 0.014304637908935547,
+            "first_token_divergence": null
+          },
+          {
+            "request": 13,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 5.960e-06",
+            "max_logprob_delta": 5.9604644775390625e-06,
+            "first_token_divergence": null
+          },
+          {
+            "request": 13,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.089e-02",
+            "max_logprob_delta": 0.020887374877929688,
+            "first_token_divergence": null
+          },
+          {
+            "request": 14,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 3.099e-05",
+            "max_logprob_delta": 3.0994415283203125e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 14,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.858e-02",
+            "max_logprob_delta": 0.028583765029907227,
+            "first_token_divergence": null
+          },
+          {
+            "request": 15,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 3.600e-05",
+            "max_logprob_delta": 3.600120544433594e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 15,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.968e-02",
+            "max_logprob_delta": 0.01968073844909668,
+            "first_token_divergence": null
+          },
+          {
+            "request": 16,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.335e-05",
+            "max_logprob_delta": 1.33514404296875e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 16,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.516e-02",
+            "max_logprob_delta": 0.01516103744506836,
+            "first_token_divergence": null
+          },
+          {
+            "request": 17,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 8.154e-05",
+            "max_logprob_delta": 8.153915405273438e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 17,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.892e-02",
+            "max_logprob_delta": 0.018916606903076172,
+            "first_token_divergence": null
+          },
+          {
+            "request": 18,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 3.421e-05",
+            "max_logprob_delta": 3.421306610107422e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 18,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.676e-02",
+            "max_logprob_delta": 0.016762733459472656,
+            "first_token_divergence": null
+          },
+          {
+            "request": 19,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 2.893e-06",
+            "max_logprob_delta": 2.8926879167556763e-06,
+            "first_token_divergence": null
+          },
+          {
+            "request": 19,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.297e-02",
+            "max_logprob_delta": 0.02297067642211914,
+            "first_token_divergence": null
+          },
+          {
+            "request": 20,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.057e-02",
+            "max_logprob_delta": 0.010574698448181152,
+            "first_token_divergence": null
+          },
+          {
+            "request": 20,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.289e-02",
+            "max_logprob_delta": 0.022890090942382812,
+            "first_token_divergence": null
+          },
+          {
+            "request": 21,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 7.314e-03",
+            "max_logprob_delta": 0.007314443588256836,
+            "first_token_divergence": null
+          },
+          {
+            "request": 21,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.562e-02",
+            "max_logprob_delta": 0.015619277954101562,
+            "first_token_divergence": null
+          },
+          {
+            "request": 22,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 2.176e-02",
+            "max_logprob_delta": 0.021757125854492188,
+            "first_token_divergence": null
+          },
+          {
+            "request": 22,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.850e-02",
+            "max_logprob_delta": 0.028504371643066406,
+            "first_token_divergence": null
+          },
+          {
+            "request": 23,
+            "repeat": 1,
+            "detail": "first token divergence at 17",
+            "max_logprob_delta": 11.266245365142822,
+            "first_token_divergence": 17
+          },
+          {
+            "request": 23,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.364e-02",
+            "max_logprob_delta": 0.023640871047973633,
+            "first_token_divergence": null
+          },
+          {
+            "request": 24,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 2.119e-02",
+            "max_logprob_delta": 0.021193504333496094,
+            "first_token_divergence": null
+          },
+          {
+            "request": 24,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.470e-02",
+            "max_logprob_delta": 0.014698028564453125,
+            "first_token_divergence": null
+          },
+          {
+            "request": 25,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 2.607e-02",
+            "max_logprob_delta": 0.02607107162475586,
+            "first_token_divergence": null
+          },
+          {
+            "request": 25,
+            "repeat": 2,
+            "detail": "first token divergence at 12",
+            "max_logprob_delta": 6.103583812713623,
+            "first_token_divergence": 12
+          },
+          {
+            "request": 26,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 7.319e-05",
+            "max_logprob_delta": 7.319450378417969e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 26,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.267e-02",
+            "max_logprob_delta": 0.022665977478027344,
+            "first_token_divergence": null
+          },
+          {
+            "request": 27,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 9.537e-06",
+            "max_logprob_delta": 9.5367431640625e-06,
+            "first_token_divergence": null
+          },
+          {
+            "request": 27,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.773e-02",
+            "max_logprob_delta": 0.017725706100463867,
+            "first_token_divergence": null
+          },
+          {
+            "request": 28,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 8.655e-05",
+            "max_logprob_delta": 8.654594421386719e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 28,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.512e-02",
+            "max_logprob_delta": 0.015123844146728516,
+            "first_token_divergence": null
+          },
+          {
+            "request": 29,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 6.676e-06",
+            "max_logprob_delta": 6.67572021484375e-06,
+            "first_token_divergence": null
+          },
+          {
+            "request": 29,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.744e-02",
+            "max_logprob_delta": 0.017439603805541992,
+            "first_token_divergence": null
+          },
+          {
+            "request": 30,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 1.025e-05",
+            "max_logprob_delta": 1.0251998901367188e-05,
+            "first_token_divergence": null
+          },
+          {
+            "request": 30,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.431e-02",
+            "max_logprob_delta": 0.014314651489257812,
+            "first_token_divergence": null
+          }
+        ],
+        "clean": false,
+        "vacuous": false
+      },
+      {
+        "case": "batch 32, shared prefix of one block",
+        "requests": 32,
+        "positions": 768,
+        "repeats": 3,
+        "filler_widths": [
+          0,
+          5,
+          13
+        ],
+        "max_concurrent_running": 45,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [
+          {
+            "request": 0,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 1.508e-02",
+            "max_logprob_delta": 0.015082120895385742,
+            "first_token_divergence": null
+          },
+          {
+            "request": 0,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.784e-02",
+            "max_logprob_delta": 0.01783895492553711,
+            "first_token_divergence": null
+          },
+          {
+            "request": 1,
+            "repeat": 1,
+            "detail": "first token divergence at 23",
+            "max_logprob_delta": 0.030840396881103516,
+            "first_token_divergence": 23
+          },
+          {
+            "request": 1,
+            "repeat": 2,
+            "detail": "first token divergence at 23",
+            "max_logprob_delta": 0.030120372772216797,
+            "first_token_divergence": 23
+          },
+          {
+            "request": 2,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.905e-02",
+            "max_logprob_delta": 0.03904533386230469,
+            "first_token_divergence": null
+          },
+          {
+            "request": 2,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.343e-02",
+            "max_logprob_delta": 0.02342700958251953,
+            "first_token_divergence": null
+          },
+          {
+            "request": 3,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 2.304e-02",
+            "max_logprob_delta": 0.02304363250732422,
+            "first_token_divergence": null
+          },
+          {
+            "request": 3,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.378e-02",
+            "max_logprob_delta": 0.023777008056640625,
+            "first_token_divergence": null
+          },
+          {
+            "request": 4,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 2.117e-02",
+            "max_logprob_delta": 0.021167278289794922,
+            "first_token_divergence": null
+          },
+          {
+            "request": 4,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.331e-02",
+            "max_logprob_delta": 0.023306846618652344,
+            "first_token_divergence": null
+          },
+          {
+            "request": 5,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 2.805e-02",
+            "max_logprob_delta": 0.028046369552612305,
+            "first_token_divergence": null
+          },
+          {
+            "request": 5,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.653e-02",
+            "max_logprob_delta": 0.02653217315673828,
+            "first_token_divergence": null
+          },
+          {
+            "request": 6,
+            "repeat": 1,
+            "detail": "first token divergence at 22",
+            "max_logprob_delta": 1.016822099685669,
+            "first_token_divergence": 22
+          },
+          {
+            "request": 6,
+            "repeat": 2,
+            "detail": "first token divergence at 22",
+            "max_logprob_delta": 1.0118846893310547,
+            "first_token_divergence": 22
+          },
+          {
+            "request": 7,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 1.501e-02",
+            "max_logprob_delta": 0.015010833740234375,
+            "first_token_divergence": null
+          },
+          {
+            "request": 7,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.734e-02",
+            "max_logprob_delta": 0.027339458465576172,
+            "first_token_divergence": null
+          },
+          {
+            "request": 8,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.113e-02",
+            "max_logprob_delta": 0.031127452850341797,
+            "first_token_divergence": null
+          },
+          {
+            "request": 8,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 3.106e-02",
+            "max_logprob_delta": 0.031062602996826172,
+            "first_token_divergence": null
+          },
+          {
+            "request": 9,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 1.561e-02",
+            "max_logprob_delta": 0.015605926513671875,
+            "first_token_divergence": null
+          },
+          {
+            "request": 9,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.890e-02",
+            "max_logprob_delta": 0.028900623321533203,
+            "first_token_divergence": null
+          },
+          {
+            "request": 10,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.118e-02",
+            "max_logprob_delta": 0.031183242797851562,
+            "first_token_divergence": null
+          },
+          {
+            "request": 10,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 5.450e-02",
+            "max_logprob_delta": 0.054495811462402344,
+            "first_token_divergence": null
+          },
+          {
+            "request": 11,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 1.550e-02",
+            "max_logprob_delta": 0.015501022338867188,
+            "first_token_divergence": null
+          },
+          {
+            "request": 11,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 1.552e-02",
+            "max_logprob_delta": 0.015522956848144531,
+            "first_token_divergence": null
+          },
+          {
+            "request": 12,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.125e-02",
+            "max_logprob_delta": 0.03125,
+            "first_token_divergence": null
+          },
+          {
+            "request": 12,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.554e-02",
+            "max_logprob_delta": 0.025535106658935547,
+            "first_token_divergence": null
+          },
+          {
+            "request": 13,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.122e-02",
+            "max_logprob_delta": 0.031217575073242188,
+            "first_token_divergence": null
+          },
+          {
+            "request": 13,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 3.903e-02",
+            "max_logprob_delta": 0.03902721405029297,
+            "first_token_divergence": null
+          },
+          {
+            "request": 14,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 2.936e-02",
+            "max_logprob_delta": 0.029356002807617188,
+            "first_token_divergence": null
+          },
+          {
+            "request": 14,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.987e-02",
+            "max_logprob_delta": 0.029867172241210938,
+            "first_token_divergence": null
+          },
+          {
+            "request": 15,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 2.307e-02",
+            "max_logprob_delta": 0.02307271957397461,
+            "first_token_divergence": null
+          },
+          {
+            "request": 15,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.420e-02",
+            "max_logprob_delta": 0.024204492568969727,
+            "first_token_divergence": null
+          },
+          {
+            "request": 16,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 1.563e-02",
+            "max_logprob_delta": 0.015630722045898438,
+            "first_token_divergence": null
+          },
+          {
+            "request": 16,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.220e-02",
+            "max_logprob_delta": 0.022201061248779297,
+            "first_token_divergence": null
+          },
+          {
+            "request": 17,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.125e-02",
+            "max_logprob_delta": 0.031249046325683594,
+            "first_token_divergence": null
+          },
+          {
+            "request": 17,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 4.269e-02",
+            "max_logprob_delta": 0.04269003868103027,
+            "first_token_divergence": null
+          },
+          {
+            "request": 18,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 2.344e-02",
+            "max_logprob_delta": 0.0234375,
+            "first_token_divergence": null
+          },
+          {
+            "request": 18,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.249e-02",
+            "max_logprob_delta": 0.022493600845336914,
+            "first_token_divergence": null
+          },
+          {
+            "request": 19,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 1.964e-02",
+            "max_logprob_delta": 0.0196380615234375,
+            "first_token_divergence": null
+          },
+          {
+            "request": 19,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.850e-02",
+            "max_logprob_delta": 0.028503894805908203,
+            "first_token_divergence": null
+          },
+          {
+            "request": 20,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 3.106e-02",
+            "max_logprob_delta": 0.031059741973876953,
+            "first_token_divergence": null
+          },
+          {
+            "request": 20,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 3.125e-02",
+            "max_logprob_delta": 0.031246185302734375,
+            "first_token_divergence": null
+          },
+          {
+            "request": 21,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.069e-02",
+            "max_logprob_delta": 0.03069019317626953,
+            "first_token_divergence": null
+          },
+          {
+            "request": 21,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 3.113e-02",
+            "max_logprob_delta": 0.031133651733398438,
+            "first_token_divergence": null
+          },
+          {
+            "request": 22,
+            "repeat": 1,
+            "detail": "logprobs differ from position 2, max delta 3.120e-02",
+            "max_logprob_delta": 0.031200408935546875,
+            "first_token_divergence": null
+          },
+          {
+            "request": 22,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 4.672e-02",
+            "max_logprob_delta": 0.04672050476074219,
+            "first_token_divergence": null
+          },
+          {
+            "request": 23,
+            "repeat": 1,
+            "detail": "logprobs differ from position 0, max delta 2.214e-02",
+            "max_logprob_delta": 0.02213573455810547,
+            "first_token_divergence": null
+          },
+          {
+            "request": 23,
+            "repeat": 2,
+            "detail": "logprobs differ from position 1, max delta 2.537e-02",
+            "max_logprob_delta": 0.02537369728088379,
+            "first_token_divergence": null
+          },
+          {
+            "request": 24,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 2.619e-02",
+            "max_logprob_delta": 0.026187419891357422,
+            "first_token_divergence": null
+          },
+          {
+            "request": 24,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.337e-02",
+            "max_logprob_delta": 0.02336597442626953,
+            "first_token_divergence": null
+          },
+          {
+            "request": 25,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 3.125e-02",
+            "max_logprob_delta": 0.03124713897705078,
+            "first_token_divergence": null
+          },
+          {
+            "request": 25,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 3.906e-02",
+            "max_logprob_delta": 0.0390625,
+            "first_token_divergence": null
+          },
+          {
+            "request": 26,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 2.909e-02",
+            "max_logprob_delta": 0.029094219207763672,
+            "first_token_divergence": null
+          },
+          {
+            "request": 26,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 3.125e-02",
+            "max_logprob_delta": 0.03125,
+            "first_token_divergence": null
+          },
+          {
+            "request": 27,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 3.125e-02",
+            "max_logprob_delta": 0.03124523162841797,
+            "first_token_divergence": null
+          },
+          {
+            "request": 27,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.336e-02",
+            "max_logprob_delta": 0.023364543914794922,
+            "first_token_divergence": null
+          },
+          {
+            "request": 28,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 4.921e-02",
+            "max_logprob_delta": 0.04921436309814453,
+            "first_token_divergence": null
+          },
+          {
+            "request": 28,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 2.210e-02",
+            "max_logprob_delta": 0.022099971771240234,
+            "first_token_divergence": null
+          },
+          {
+            "request": 29,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.291e-02",
+            "max_logprob_delta": 0.012906074523925781,
+            "first_token_divergence": null
+          },
+          {
+            "request": 29,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 1.698e-02",
+            "max_logprob_delta": 0.016982078552246094,
+            "first_token_divergence": null
+          },
+          {
+            "request": 30,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 2.874e-02",
+            "max_logprob_delta": 0.02873992919921875,
+            "first_token_divergence": null
+          },
+          {
+            "request": 30,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 3.125e-02",
+            "max_logprob_delta": 0.03124713897705078,
+            "first_token_divergence": null
+          },
+          {
+            "request": 31,
+            "repeat": 1,
+            "detail": "logprobs differ from position 1, max delta 1.488e-02",
+            "max_logprob_delta": 0.014883041381835938,
+            "first_token_divergence": null
+          },
+          {
+            "request": 31,
+            "repeat": 2,
+            "detail": "logprobs differ from position 0, max delta 3.058e-02",
+            "max_logprob_delta": 0.03058147430419922,
+            "first_token_divergence": null
+          }
+        ],
+        "clean": false,
+        "vacuous": false
+      }
+    ],
+    "clean": 0,
+    "total": 7,
+    "batched_cases": 7,
+    "max_concurrent_running": 45,
+    "filler_widths": [
+      0,
+      5,
+      13
+    ]
+  }
+}

@@ -177,7 +177,11 @@ def main() -> int:
            f"vllm-certify-{int(invariant)}-{args.cache_mode}-{args.filler_mode}"
            f"-w{args.fixed_width}{'-seq' if args.sequential else ''}"
            f"{f'-mnbt{args.max_num_batched_tokens}' if args.max_num_batched_tokens else ''}"
-           f"{f'-mns{args.max_num_seqs}' if args.max_num_seqs else ''}.log")
+           f"{f'-mns{args.max_num_seqs}' if args.max_num_seqs else ''}"
+           # The label too: two lifetimes of the same configuration wrote to one
+           # filename and the first one's server log was overwritten, which was
+           # only noticed while reconstructing timings for a provenance record.
+           f"{('-' + args.label.replace(' ', '_')) if args.label else ''}.log")
     log.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"lockstep certify  vLLM, {mode}")

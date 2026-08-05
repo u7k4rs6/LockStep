@@ -127,31 +127,45 @@ repair, it is a new claim.
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | see `harness/mr/run.py`; 55 of 55 relation runs bitwise identical across 5 block sizes | `python3 -m harness.mr.run` |
 | 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 17.9 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
-| 3 | Cost of determinism | 1.06x within lockstep, against vLLM's own 1.45x; lockstep invariant is 3.3x vLLM batch-invariant wall time | `python3 -m bench.throughput` |
+| 3 | Cost of determinism | 1.05x within lockstep; lockstep invariant is **4.7x** vLLM batch-invariant eager and **4.8x** with CUDA graphs | `python3 -m bench.throughput` |
 
-Claim 3, in full, on a committed 8-request 1232-token trace, median of 5:
+Claim 3, in full, on a committed 8-request 2972-token trace, median of 5. Four of
+the eight prompts cross the 512-token attention split boundary, so the
+split-combine fold executes during the measurement. The previous version of this
+trace topped out at 192 prompt tokens against a 512-token model length, meaning
+the benchmark for a project about split-combine invariance never ran the fold at
+all; that is why this number moved.
 
 | configuration | wall time vs lockstep fast |
 |---|---|
 | lockstep, fast mode | 1.00x |
-| lockstep, invariant | 1.06x |
-| vLLM default | 0.22x |
-| vLLM `VLLM_BATCH_INVARIANT=1` | 0.32x |
+| lockstep, invariant | 1.05x |
+| vLLM default, eager | 0.17x |
+| vLLM `VLLM_BATCH_INVARIANT=1`, eager | 0.22x |
+| vLLM default, CUDA graphs | 0.14x |
+| vLLM `VLLM_BATCH_INVARIANT=1`, CUDA graphs | 0.22x |
 | SGLang deterministic | not measured |
 
-Two readings, and the second is the honest one.
+**Absolute standing**: lockstep invariant is **4.7x the wall time of vLLM
+batch-invariant in eager mode, and 4.8x with CUDA graphs enabled**. That is the
+number a reader should use. The previous README reported 3.3x on the shorter
+trace against an eager-only comparator.
 
-**Cost of determinism inside each engine**, each measured against its own fast
-path, which is unaffected by this engine being slower overall: **lockstep 1.06x,
-vLLM 1.45x**. Lockstep's figure is small because its fast path differs in exactly
-one way, letting torch pick the GEMM; the attention kernel and scheduler are
-identical in both. It is the cost of the GEMM constraint, not of the whole
-design, and it should be read that way.
+Both comparator configurations are published because the earlier benchmark
+hardcoded `enforce_eager=True` for vLLM, which handicapped it by exactly the
+feature this engine lacks. Measuring both turned out to matter less than
+expected, and the reason is itself worth reporting: **CUDA graphs give vLLM's
+batch-invariant mode no measurable benefit on this trace**, 0.22x either way,
+while they improve its default mode from 0.17x to 0.14x. That is consistent with
+vLLM's documentation, which says the batch-invariant attention operators do not
+support `FULL` or `FULL_DECODE_ONLY` cudagraph modes. So the eager-versus-eager
+comparison was not unfair for the row that matters; the number moved because the
+trace now crosses the split, not because the comparator was ungagged.
 
-**Absolute standing**: lockstep invariant is **3.3x the wall time of vLLM
-batch-invariant** on this trace. No CUDA graphs, no host-sync elimination, eager
-only. That is the number a reader should use, and it is why this is called a
-correctness-reference engine rather than a fast one.
+**Cost of determinism inside this engine**: **1.05x** against its own fast path,
+which differs in exactly one way, letting torch pick the GEMM. That measures the
+GEMM constraint alone, and this engine's fast path is already constrained in ways
+an unconstrained engine's is not, so it is not comparable to any figure above.
 
 SGLang is not installed in the external environment, so its row is not measured
 rather than estimated or omitted.
@@ -247,10 +261,12 @@ order of magnitude rather than a measurement.
 
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
-thirteen times in this repository, and the last five were found by an outside
-audit rather than by the project's own machinery, which is the most useful thing
-in this table. Most were caught by a run contradicting a declaration. Several
-were not, and the reason each escaped is worth more than the fix:
+thirteen times in this repository. Rows 1 to 8 were found by this project's own
+machinery or while fixing what it found; rows 9 to 12 were found by an outside
+audit; row 13 was found afterwards, by neither, from an anomaly in the results.
+That distribution is the most useful thing in the table. Most instances were
+caught by a run contradicting a declaration. Several were not, and the reason
+each escaped is worth more than the fix:
 
 | # | Declared | Actually |
 |---|---|---|
@@ -445,13 +461,15 @@ Promotion is deliberate, one artifact at a time, with
 
 | file | backs |
 |---|---|
-| `evidence/verify-0004.json` | claim 1, 55 of 55 relation runs across 5 block sizes |
-| `evidence/fuzz-0003.json` | claim 2, the ten-operator mutation campaign over 192 cases |
-| `evidence/throughput-0002.json` | claim 3, the cost-of-determinism table |
-| `evidence/fidelity-0003.json` | F1, exact KL over the full vocabulary |
-| `evidence/certify-0001.json` | the vLLM certification, superseded and withdrawn, see below |
+| `evidence/verify-0001.json` | claim 1, 55 of 55 relation runs across 5 block sizes |
+| `evidence/fuzz-0004.json` | claim 2, ten operators over 192 cases, 10 of 10 killed |
+| `evidence/throughput-0003.json` | claim 3, both graph modes on the extended trace |
+| `evidence/fidelity-0001.json` | F1, 7 of 7 bounds, exact KL over the full vocabulary |
+| `evidence/certify-0003.json` | the default-mode positive control, 0 of 7 clean |
 | `evidence/case-0003.json` | the eviction finding the fuzzer found, minimized and 1-minimal |
 | `evidence/case-witness.json` | a replay-determinism witness, see below |
+| `evidence/upstream-finding.json` | provenance for [vllm#51187](https://github.com/vllm-project/vllm/issues/51187): the issue URL, the artifacts backing every number in it, and why their `engine_revision` reads dirty |
+| `evidence/certify-pairs-{a,b,mns8}.json` | the three runs the filed issue rests on. `b` is the one exhibiting the divergence; `mns8` is the controlled variable |
 
 The differentiator sentence at the top of this file claims every finding
 minimizes to an exact replay. That is checkable rather than asserted:

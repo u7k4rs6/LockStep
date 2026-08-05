@@ -1,0 +1,813 @@
+{
+  "schema_version": 1,
+  "kind": "certify",
+  "created_utc": "2026-08-05T18:02:51Z",
+  "env": {
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "gpu_arch": "sm_89",
+    "gpu_memory_bytes": 8177975296,
+    "driver_version": "595.84",
+    "cuda_version": "12.4",
+    "torch_version": "2.6.0+cu124",
+    "triton_version": "3.2.0",
+    "numpy_version": "2.1.3",
+    "python_version": "3.12.13",
+    "os_kernel": "Linux 7.0.0-28-generic x86_64",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i5-12450HX",
+    "omp_num_threads": "8",
+    "mkl_num_threads": "8",
+    "torch_intraop_threads": 8,
+    "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
+    "corpus_sha256": null,
+    "engine_revision": "bed028f2d38e-dirty",
+    "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    "digest": "820e5c31150d33adbc663e7d77e8bd7e2a7fd9b8c4228c0043acd9e5b4e9b921"
+  },
+  "payload": {
+    "engine": "vLLM (VLLM_BATCH_INVARIANT=1)",
+    "mode": "VLLM_BATCH_INVARIANT=1",
+    "model": "qwen3",
+    "block_size": 16,
+    "block_size_assumed": false,
+    "block_size_source": "configured at launch; vLLM exposes no endpoint reporting it",
+    "observable": "observable: token ids identical, and the chosen-token logprob plus the top 5 alternatives with their ids identical as doubles after JSON round-trip, at every emitted position. Greedy only (temperature 0). This is strictly weaker than the internal relations, which compare raw fp16 logit bytes; a negative result means no divergence at this observable, not bitwise identity.",
+    "top_logprobs": 5,
+    "repeats": 5,
+    "results": [
+      {
+        "case": "prefix_len == block_size - 1 (15)",
+        "cache_mode": "warm",
+        "filler_mode": "fixed",
+        "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+        "cold_enforced": true,
+        "requests": 2,
+        "positions": 48,
+        "repeats": 5,
+        "filler_widths": [
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "max_concurrent_running": 8,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [],
+        "pairs": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              3,
+              4
+            ],
+            "requests_differing": 0
+          }
+        ],
+        "repeat_digests": [
+          "45d91e8e7dd86694bdbf982e84986d5210b191b01e293b7f800fa66a8b0434fb",
+          "45d91e8e7dd86694bdbf982e84986d5210b191b01e293b7f800fa66a8b0434fb",
+          "45d91e8e7dd86694bdbf982e84986d5210b191b01e293b7f800fa66a8b0434fb",
+          "45d91e8e7dd86694bdbf982e84986d5210b191b01e293b7f800fa66a8b0434fb",
+          "45d91e8e7dd86694bdbf982e84986d5210b191b01e293b7f800fa66a8b0434fb"
+        ],
+        "later_repeats_agree": true,
+        "first_repeat_is_odd": false,
+        "clean": true,
+        "vacuous": false,
+        "sequential": false,
+        "order_mode": "identical",
+        "fixed_width": 13,
+        "vacuous_reason": ""
+      },
+      {
+        "case": "prefix_len == block_size (16)",
+        "cache_mode": "warm",
+        "filler_mode": "fixed",
+        "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+        "cold_enforced": true,
+        "requests": 2,
+        "positions": 48,
+        "repeats": 5,
+        "filler_widths": [
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "max_concurrent_running": 8,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [],
+        "pairs": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              3,
+              4
+            ],
+            "requests_differing": 0
+          }
+        ],
+        "repeat_digests": [
+          "9dc8b3c3c6e0017650d387a5c3f2a3b7356af3505fb2e3a4856752cdf0ec0474",
+          "9dc8b3c3c6e0017650d387a5c3f2a3b7356af3505fb2e3a4856752cdf0ec0474",
+          "9dc8b3c3c6e0017650d387a5c3f2a3b7356af3505fb2e3a4856752cdf0ec0474",
+          "9dc8b3c3c6e0017650d387a5c3f2a3b7356af3505fb2e3a4856752cdf0ec0474",
+          "9dc8b3c3c6e0017650d387a5c3f2a3b7356af3505fb2e3a4856752cdf0ec0474"
+        ],
+        "later_repeats_agree": true,
+        "first_repeat_is_odd": false,
+        "clean": true,
+        "vacuous": false,
+        "sequential": false,
+        "order_mode": "identical",
+        "fixed_width": 13,
+        "vacuous_reason": ""
+      },
+      {
+        "case": "prefix_len == block_size + 1 (17)",
+        "cache_mode": "warm",
+        "filler_mode": "fixed",
+        "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+        "cold_enforced": true,
+        "requests": 2,
+        "positions": 48,
+        "repeats": 5,
+        "filler_widths": [
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "max_concurrent_running": 8,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [],
+        "pairs": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              3,
+              4
+            ],
+            "requests_differing": 0
+          }
+        ],
+        "repeat_digests": [
+          "2a7bc0f0df9651a5e105e8086ac23caedc63fc0eda027148d416bf8866eecd9b",
+          "2a7bc0f0df9651a5e105e8086ac23caedc63fc0eda027148d416bf8866eecd9b",
+          "2a7bc0f0df9651a5e105e8086ac23caedc63fc0eda027148d416bf8866eecd9b",
+          "2a7bc0f0df9651a5e105e8086ac23caedc63fc0eda027148d416bf8866eecd9b",
+          "2a7bc0f0df9651a5e105e8086ac23caedc63fc0eda027148d416bf8866eecd9b"
+        ],
+        "later_repeats_agree": true,
+        "first_repeat_is_odd": false,
+        "clean": true,
+        "vacuous": false,
+        "sequential": false,
+        "order_mode": "identical",
+        "fixed_width": 13,
+        "vacuous_reason": ""
+      },
+      {
+        "case": "zero-prefix request co-batched with a nonzero-prefix request",
+        "cache_mode": "warm",
+        "filler_mode": "fixed",
+        "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+        "cold_enforced": true,
+        "requests": 3,
+        "positions": 72,
+        "repeats": 5,
+        "filler_widths": [
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "max_concurrent_running": 8,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [],
+        "pairs": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              3,
+              4
+            ],
+            "requests_differing": 0
+          }
+        ],
+        "repeat_digests": [
+          "9d4575761ad47805d9705137a45fa70dfd3a0411bc590827ebaf274905e7c2c9",
+          "9d4575761ad47805d9705137a45fa70dfd3a0411bc590827ebaf274905e7c2c9",
+          "9d4575761ad47805d9705137a45fa70dfd3a0411bc590827ebaf274905e7c2c9",
+          "9d4575761ad47805d9705137a45fa70dfd3a0411bc590827ebaf274905e7c2c9",
+          "9d4575761ad47805d9705137a45fa70dfd3a0411bc590827ebaf274905e7c2c9"
+        ],
+        "later_repeats_agree": true,
+        "first_repeat_is_odd": false,
+        "clean": true,
+        "vacuous": false,
+        "sequential": false,
+        "order_mode": "identical",
+        "fixed_width": 13,
+        "vacuous_reason": ""
+      },
+      {
+        "case": "cache hit covering the full prompt",
+        "cache_mode": "warm",
+        "filler_mode": "fixed",
+        "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+        "cold_enforced": true,
+        "requests": 2,
+        "positions": 48,
+        "repeats": 5,
+        "filler_widths": [
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "max_concurrent_running": 8,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [],
+        "pairs": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              3,
+              4
+            ],
+            "requests_differing": 0
+          }
+        ],
+        "repeat_digests": [
+          "c98f774035e6961c89ae29c1fae7f64f91250fb4847c09af3ff703fc41cac8c7",
+          "c98f774035e6961c89ae29c1fae7f64f91250fb4847c09af3ff703fc41cac8c7",
+          "c98f774035e6961c89ae29c1fae7f64f91250fb4847c09af3ff703fc41cac8c7",
+          "c98f774035e6961c89ae29c1fae7f64f91250fb4847c09af3ff703fc41cac8c7",
+          "c98f774035e6961c89ae29c1fae7f64f91250fb4847c09af3ff703fc41cac8c7"
+        ],
+        "later_repeats_agree": true,
+        "first_repeat_is_odd": false,
+        "clean": true,
+        "vacuous": false,
+        "sequential": false,
+        "order_mode": "identical",
+        "fixed_width": 13,
+        "vacuous_reason": ""
+      },
+      {
+        "case": "batch 31, shared prefix of one block",
+        "cache_mode": "warm",
+        "filler_mode": "fixed",
+        "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+        "cold_enforced": true,
+        "requests": 31,
+        "positions": 744,
+        "repeats": 5,
+        "filler_widths": [
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "max_concurrent_running": 8,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [],
+        "pairs": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              3,
+              4
+            ],
+            "requests_differing": 0
+          }
+        ],
+        "repeat_digests": [
+          "c8a79343a867fd08fc86de282aa1c853f36b66b450f7afb5fc8d85fe7d5e196b",
+          "c8a79343a867fd08fc86de282aa1c853f36b66b450f7afb5fc8d85fe7d5e196b",
+          "c8a79343a867fd08fc86de282aa1c853f36b66b450f7afb5fc8d85fe7d5e196b",
+          "c8a79343a867fd08fc86de282aa1c853f36b66b450f7afb5fc8d85fe7d5e196b",
+          "c8a79343a867fd08fc86de282aa1c853f36b66b450f7afb5fc8d85fe7d5e196b"
+        ],
+        "later_repeats_agree": true,
+        "first_repeat_is_odd": false,
+        "clean": true,
+        "vacuous": false,
+        "sequential": false,
+        "order_mode": "identical",
+        "fixed_width": 13,
+        "vacuous_reason": ""
+      },
+      {
+        "case": "batch 32, shared prefix of one block",
+        "cache_mode": "warm",
+        "filler_mode": "fixed",
+        "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+        "cold_enforced": true,
+        "requests": 32,
+        "positions": 768,
+        "repeats": 5,
+        "filler_widths": [
+          13,
+          13,
+          13,
+          13,
+          13
+        ],
+        "max_concurrent_running": 8,
+        "batch_gauge_available": true,
+        "batched": true,
+        "divergences": [],
+        "pairs": [
+          {
+            "pair": [
+              0,
+              1
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              0,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              2
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              1,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              3
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              2,
+              4
+            ],
+            "requests_differing": 0
+          },
+          {
+            "pair": [
+              3,
+              4
+            ],
+            "requests_differing": 0
+          }
+        ],
+        "repeat_digests": [
+          "f86b7e9ae1bd592d3f7706d8ecb1df3e0a4a4917a21e3916c28f20ce675019ef",
+          "f86b7e9ae1bd592d3f7706d8ecb1df3e0a4a4917a21e3916c28f20ce675019ef",
+          "f86b7e9ae1bd592d3f7706d8ecb1df3e0a4a4917a21e3916c28f20ce675019ef",
+          "f86b7e9ae1bd592d3f7706d8ecb1df3e0a4a4917a21e3916c28f20ce675019ef",
+          "f86b7e9ae1bd592d3f7706d8ecb1df3e0a4a4917a21e3916c28f20ce675019ef"
+        ],
+        "later_repeats_agree": true,
+        "first_repeat_is_odd": false,
+        "clean": true,
+        "vacuous": false,
+        "sequential": false,
+        "order_mode": "identical",
+        "fixed_width": 13,
+        "vacuous_reason": ""
+      }
+    ],
+    "clean": 7,
+    "total": 7,
+    "batched_cases": 7,
+    "cache_mode": "warm",
+    "filler_mode": "fixed",
+    "cell_label": "pairs-mns8",
+    "relation": "baseline: neither factor varies, so a divergence here is neither property and indicts the measurement itself",
+    "fixed_width": 13,
+    "sequential": false,
+    "order_mode": "identical",
+    "max_num_batched_tokens": null,
+    "max_num_seqs": 8,
+    "max_concurrent_running": 8,
+    "filler_widths": [
+      0,
+      5,
+      13
+    ]
+  }
+}
