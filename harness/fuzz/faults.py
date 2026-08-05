@@ -15,7 +15,14 @@ from __future__ import annotations
 import contextlib
 from dataclasses import dataclass
 
+import triton
+import triton.language as tl
+
 from engine.cache import prefix
+# Triton resolves a kernel's free names from the *defining* module's globals, so
+# the reversed-combine mutant below cannot close over a local alias. Bound here
+# from the real constant rather than retyped, so the two cannot drift.
+from engine.kernels.attention import NEG_SENTINEL as _NEG_SENTINEL
 from engine.kv import paged
 
 
@@ -39,6 +46,19 @@ class Fault:
     fidelity_observable: bool = False
 
 
+# Incremented by a mutant's own body when it actually executes. The execution
+# counters prove the *path* ran; they cannot prove the *patch* took effect, and
+# the difference is not theoretical: a fault that patched only the defining
+# module left engine/model/qwen3.py bound to the name it had imported, so the
+# mutation never ran while the counter gate still passed and the trial was scored
+# as a survivor. Every mutant now trips a sentinel, checked separately.
+SENTINELS: dict[str, int] = {}
+
+
+def trip(name: str) -> None:
+    SENTINELS[name] = SENTINELS.get(name, 0) + 1
+
+
 @contextlib.contextmanager
 def _patch(target, attribute, replacement):
     original = getattr(target, attribute)
@@ -58,6 +78,7 @@ def refcount_decrement_missing_on_free():
 
     def mutant(self, uid):
         sequence = self.sequences.pop(uid)
+        trip("refcount_decrement_missing_on_free")
         # The decrement is simply not done.
         sequence.block_ids.clear()
         sequence.length = 0
@@ -72,6 +93,7 @@ def free_block_still_in_cache_index():
     original = prefix.PrefixCache.evict
 
     def mutant(self, physical_block, pool):
+        trip("free_block_still_in_cache_index")
         # Release the reference without removing the entry.
         pool.unpin(physical_block)
         self.stats["evictions"] += 1
@@ -87,6 +109,7 @@ def stale_block_table_read_after_reclamation():
     original = paged.PagedKVCache.reserve
 
     def mutant(self, uid, total_tokens):
+        trip("stale_block_table_read_after_reclamation")
         sequence = self.sequences[uid]
         needed = -(-total_tokens // self.block_size)
         while sequence.logical_blocks() < needed:
@@ -110,6 +133,7 @@ def eviction_set_includes_a_running_sequence():
     original = prefix.PrefixCache.evictable_blocks
 
     def mutant(self, pool):
+        trip("eviction_set_includes_a_running_sequence")
         return sorted(entry.physical_block for entry in self.entries.values())
 
     with _patch(prefix.PrefixCache, "evictable_blocks", mutant):
@@ -121,6 +145,7 @@ def cache_match_length_rounded_up_past_a_block():
     original = prefix.PrefixCache.lookup
 
     def mutant(self, tokens):
+        trip("cache_match_length_rounded_up_past_a_block")
         hit_tokens, blocks = original(self, tokens)
         if blocks:
             hit_tokens += self.block_size  # claims one block more than it has
@@ -138,6 +163,7 @@ def chunk_boundary_off_by_one():
     original = sched.Scheduler.step
 
     def mutant(self):
+        trip("chunk_boundary_off_by_one")
         for request in self.running:
             if request.kv_len > 0 and request.kv_len < len(request.context()):
                 request.kv_len -= 1  # reprocess the last token
@@ -155,6 +181,7 @@ def recompute_off_by_one_token_count():
     original = sched.Scheduler._preempt
 
     def mutant(self, request):
+        trip("recompute_off_by_one_token_count")
         original(self, request)
         request.kv_len = 1  # recompute starts one token in
 
@@ -185,6 +212,7 @@ def rng_keyed_on_global_step():
     state = {"step": 0}
 
     def mutant(seed, uid, position, index=0):
+        trip("rng_keyed_on_global_step")
         state["step"] += 1
         return original(seed, uid, state["step"], index)
 
@@ -196,36 +224,87 @@ def rng_keyed_on_global_step():
 def split_combine_reduction_reversed():
     """Architecture doc 10.1: "reduction order reversed in the split-combine CTA".
 
-    Folding partials in descending rather than ascending split order. The result
-    is a valid softmax and differs only in the last bits, so nothing crashes and
-    no audit fires: only bitwise comparison against canonical can see it.
+    An earlier version of this operator was a proxy: it scaled the output by
+    (1 + 2**-11) whenever the split count was at least two, on the theory that a
+    reversed fold moves the last bits by about that much. The campaign killed it
+    by bitwise divergence and the kill was worthless, because the *firing
+    condition* was schedule-dependent. A request prefilled in chunks reaches a
+    given position through a different sequence of kv_len values than the same
+    request prefilled whole, so the proxy fired on a different set of calls in
+    the two runs and the relations saw a difference that a real reversed fold
+    would never produce. That is a mutant killed for the wrong reason, which
+    inflates a mutation score exactly as badly as a mutant that never ran.
+
+    This is the real thing: the combine kernel with its fold loop running
+    descending instead of ascending, and nothing else changed. The fold order for
+    a given kv_len is then identical no matter how the request was scheduled,
+    which is what makes this operator worth having. It is the one perturbation in
+    this set that the invariance relations *should* miss.
     """
     from engine.kernels import attention as attn
 
-    original = attn.attention
+    original_launch = attn._attn_combine_kernel
 
-    def mutant(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale):
-        import torch
+    @triton.jit
+    def _reversed_combine(
+        Acc, MPart, LPart, Out, q_len, num_splits,
+        stride_at, stride_ah, stride_as, stride_ad,
+        stride_mt, stride_mh, stride_ms,
+        stride_ot, stride_oh, stride_od,
+        BLOCK_M: tl.constexpr, BLOCK_D: tl.constexpr,
+    ):
+        pid_m = tl.program_id(0)
+        pid_h = tl.program_id(1)
 
-        # Reverse the KV traversal by reversing the block table and the logical
-        # positions it names, which reverses the order partials are folded in.
-        splits = attn._num_splits(kv_len)
-        if splits < 2:
-            return original(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale)
-        out = original(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale)
-        # Perturb by the amount a reversed fold would: recompute the tail split
-        # first by folding it into the result a second time at zero weight, which
-        # changes the rounding without changing the mathematics.
-        return (out.to(torch.float32) * (1.0 + 2.0**-11)).to(out.dtype)
+        offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+        offs_d = tl.arange(0, BLOCK_D)
+        m_valid = offs_m < q_len
 
-    # Both references. engine/model/qwen3.py does `from ... import attention`, so
-    # patching only the defining module leaves the call site bound to the
-    # original and the mutation never takes effect. An earlier version did
-    # exactly that and the trial was scored as a survivor when in truth the
-    # mutant had never run.
-    from engine.model import qwen3
+        acc = tl.zeros((BLOCK_M, BLOCK_D), dtype=tl.float32)
+        m_run = tl.full((BLOCK_M,), _NEG_SENTINEL, dtype=tl.float32)
+        l_run = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
-    with _patch(attn, "attention", mutant), _patch(qwen3, "attention", mutant):
+        # The single mutated line. Everything below it is the clean kernel.
+        for s in range(num_splits - 1, -1, -1):
+            part_offset = offs_m * stride_mt + pid_h * stride_mh + s * stride_ms
+            m_s = tl.load(MPart + part_offset, mask=m_valid, other=_NEG_SENTINEL)
+            l_s = tl.load(LPart + part_offset, mask=m_valid, other=0.0)
+            a_s = tl.load(
+                Acc + offs_m[:, None] * stride_at + pid_h * stride_ah
+                + s * stride_as + offs_d[None, :] * stride_ad,
+                mask=m_valid[:, None], other=0.0,
+            )
+            m_new = tl.maximum(m_run, m_s)
+            alpha = tl.exp(m_run - m_new)
+            beta = tl.exp(m_s - m_new)
+            acc = acc * alpha[:, None] + a_s * beta[:, None]
+            l_run = l_run * alpha + l_s * beta
+            m_run = m_new
+
+        out = tl.where(l_run[:, None] > 0.0, acc / l_run[:, None], 0.0)
+        tl.store(
+            Out + offs_m[:, None] * stride_ot + pid_h * stride_oh
+            + offs_d[None, :] * stride_od,
+            out.to(Out.dtype.element_ty), mask=m_valid[:, None],
+        )
+
+    class _Sentinelled:
+        """Trips the sentinel on launch, since `trip` cannot run inside a kernel."""
+
+        def __getitem__(self, grid):
+            inner = _reversed_combine[grid]
+
+            def launch(*args, **kwargs):
+                trip("split_combine_reduction_reversed")
+                return inner(*args, **kwargs)
+
+            return launch
+
+    # `attention` resolves `_attn_combine_kernel` from this module's globals at
+    # call time, so there is only one binding to patch here. That is not true of
+    # every operator in this file, which is why the sentinel exists.
+    assert original_launch is not None
+    with _patch(attn, "_attn_combine_kernel", _Sentinelled()):
         yield
 
 
@@ -249,6 +328,7 @@ def split_size_read_from_batch():
     original_forward = qwen3.Qwen3.forward_batch
 
     def forward_batch(self, pool, work):
+        trip("split_size_read_from_batch")
         # The probe reads this module-level value, which is the batch-derived
         # quantity the operator is about.
         ablation._BATCH_TOKENS = sum(len(tokens) for _, tokens, _ in work)
