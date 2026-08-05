@@ -319,19 +319,39 @@ def main() -> int:
             else:
                 verdict = "survived"
 
+            # Which observer fired matters as much as the time. An undeclared
+            # transition is a claim about the lifecycle table, so a kill by that
+            # mechanism has to be re-verified whenever the table changes; an
+            # audit assertion or a bitwise divergence does not.
+            if not detail:
+                mechanism = "-"
+            elif detail.startswith("AuditFailure"):
+                mechanism = "internal audit"
+            elif detail.startswith("UndeclaredTransition"):
+                mechanism = "undeclared transition"
+            elif "diverged from canonical" in detail:
+                mechanism = "bitwise divergence"
+            elif detail.startswith("AssertionError"):
+                mechanism = "engine assertion"
+            else:
+                mechanism = "crash"
+
             fault_results.append({
                 "fault": fault.name,
                 "operator": fault.operator,
                 "verdict": verdict,
+                "mechanism": mechanism,
                 "requires": list(fault.requires),
                 "counters_seen": {p: exercised[p] for p in fault.requires},
                 "seconds": round(detected, 1) if detected else None,
                 "detail": detail,
             })
-            mark = {"killed": f"killed in {detected:5.1f}s" if detected else "killed",
-                    "survived": "SURVIVED       ",
-                    "not-exercised": "not exercised  "}[verdict]
+            mark = {"killed": f"killed in {detected:6.1f}s" if detected else "killed",
+                    "survived": "SURVIVED        ",
+                    "not-exercised": "not exercised   "}[verdict]
             print(f"  [{mark}]  {fault.operator}")
+            if verdict == "killed":
+                print(f"                     mechanism: {mechanism}")
             if verdict == "not-exercised":
                 print(f"                     mutated path never ran: {', '.join(missing)}")
             elif detail:

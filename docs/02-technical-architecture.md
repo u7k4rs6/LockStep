@@ -61,6 +61,18 @@ This yields invariance under arbitrary chunk boundaries, which is strictly stron
 
 ### 4.3 Prefix cache
 
+**Copy-on-write is deliberately absent, and only because there is no fork API.**
+Sharing here is whole-block only: a granted hit always covers an exact multiple
+of the block size, so a sequence's first write lands on a block boundary in a
+block it reserved for itself and never touches a block it adopted.
+`PagedKVCache.assert_exclusive` checks that on every write rather than leaving it
+implicit. vLLM and SGLang need copy-on-write because they fork for parallel
+sampling and beam search; adding either here would make partial-block sharing
+reachable and would require copy-on-write back. An earlier version of this engine
+carried `fork` and `ensure_writable` that nothing ever called, and a boundary
+test that exercised them was testing dead code.
+
+
 A cache hit returns stored bytes. Hit-versus-miss is therefore bit-identical if and only if chunk invariance holds, because the cached bits equal what recomputation would produce. Without chunk invariance, caching changes numerics. This is the exact class of defect to hunt in external engines: SGLang ships a radix-cache consistency test mode and still has an open block-boundary corruption bug in deterministic mode.
 
 ## 5. Common failure modes to design against

@@ -97,7 +97,20 @@ def draw_case(config: SwarmConfig, vocab: int, index: int) -> Case:
     for shape in config.prompt_shapes:
         lengths.extend(PROMPT_SHAPES[shape])
 
-    count = rng.randint(1, config.max_requests)
+    # Draw the exact boundary widths rather than uniformly below the cap. With
+    # randint(1, 31) the chance of landing on 31 is 1 in 31, so the predicate
+    # that is most likely to find something was the one least likely to be hit.
+    # BLOCK_M is 16, so a batch of 31 spans two tiles with the second partial,
+    # which is exactly where a tile-boundary bug lives.
+    # Stratified rather than uniform: the boundary widths are guaranteed to
+    # appear but are a minority, because a batch of 31 costs 31 forward passes
+    # per step and letting them dominate turned a 40-minute campaign into a
+    # five-hour one. 15 percent keeps the predicate reachable in a 240-case
+    # campaign while leaving most of the budget for cheap cases.
+    if config.max_requests >= 16 and rng.random() < 0.15:
+        count = rng.choice((16, 31, 32))
+    else:
+        count = rng.randint(1, min(config.max_requests, 8))
     shared_prefix = None
     shared_len = 0
     if config.cache_enabled and rng.random() < 0.6:
@@ -118,7 +131,10 @@ def draw_case(config: SwarmConfig, vocab: int, index: int) -> Case:
             uid=f"r{i:02d}",
             prompt=prompt,
             seed=1000 + i,
-            max_new_tokens=rng.choice((1, 2, 4, 8)),
+            # Short generations. Findings cluster in the first few steps, so a
+            # long decode tail buys coverage of 2-grams already reached and
+            # costs a forward pass per request per step.
+            max_new_tokens=rng.choice((1, 2, 4)) if count <= 8 else 1,
             temperature=rng.choice((0.0, 0.0, 0.8)),
             top_p=0.95,
         ))
