@@ -38,11 +38,34 @@ leave allocator faults invisible.
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | see `harness/mr/run.py`; 55 of 55 relation runs bitwise identical across 5 block sizes | `python3 -m harness.mr.run` |
 | 2 | Harness power | 6 of 7 seeded faults killed, 1 proven-equivalent, 0 not-exercised; median time to detection 26.5 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
-| 3 | Cost of determinism | **not yet measured** | `python3 -m bench.throughput` |
+| 3 | Cost of determinism | 1.06x within lockstep, against vLLM's own 1.45x; lockstep invariant is 3.3x vLLM batch-invariant wall time | `python3 -m bench.throughput` |
 
-Claim 3 is a ratio against this engine's own fast mode and against vLLM and
-SGLang deterministic modes. It is not written down yet, and an unwritten number
-is stated as unwritten rather than estimated.
+Claim 3, in full, on a committed 8-request 1232-token trace, median of 5:
+
+| configuration | wall time vs lockstep fast |
+|---|---|
+| lockstep, fast mode | 1.00x |
+| lockstep, invariant | 1.06x |
+| vLLM default | 0.22x |
+| vLLM `VLLM_BATCH_INVARIANT=1` | 0.32x |
+| SGLang deterministic | not measured |
+
+Two readings, and the second is the honest one.
+
+**Cost of determinism inside each engine**, each measured against its own fast
+path, which is unaffected by this engine being slower overall: **lockstep 1.06x,
+vLLM 1.45x**. Lockstep's figure is small because its fast path differs in exactly
+one way, letting torch pick the GEMM; the attention kernel and scheduler are
+identical in both. It is the cost of the GEMM constraint, not of the whole
+design, and it should be read that way.
+
+**Absolute standing**: lockstep invariant is **3.3x the wall time of vLLM
+batch-invariant** on this trace. No CUDA graphs, no host-sync elimination, eager
+only. That is the number a reader should use, and it is why this is called a
+correctness-reference engine rather than a fast one.
+
+SGLang is not installed in the external environment, so its row is not measured
+rather than estimated or omitted.
 
 ## What this does not claim
 

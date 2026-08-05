@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import statistics
 import subprocess
 import sys
@@ -93,10 +94,14 @@ def time_external(python: Path, engine: str, deterministic: bool, trace) -> floa
         "weights": str(WEIGHTS),
         "trace": [[list(p), n] for p, n in trace],
     })
+    # vLLM shells out to ninja when it compiles its custom ops, and a venv-local
+    # ninja is not on PATH by default, so the engine core dies at startup with a
+    # FileNotFoundError that reads like an unsupported GPU.
+    env = dict(os.environ, PATH=f"{python.parent}:{os.environ.get('PATH', '')}")
     try:
         out = subprocess.run(
             [str(python), str(script), payload],
-            capture_output=True, text=True, timeout=1800, check=True,
+            capture_output=True, text=True, timeout=1800, check=True, env=env,
         )
         return float(json.loads(out.stdout.strip().splitlines()[-1])["seconds"])
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
@@ -151,17 +156,38 @@ def main() -> int:
             "seconds": statistics.median(samples) if samples else None,
             "samples": samples,
             "measured": bool(samples),
-            "why": "" if samples else "engine failed to run on this GPU",
+            "why": "" if samples else "engine not present in the external environment",
         })
 
-    baseline = next(r["seconds"] for r in rows if r["config"] == "lockstep, fast mode")
-    print(f"  {'configuration':<32} {'ratio to lockstep fast':>24}")
-    print("  " + "-" * 58)
+    by = {r["config"]: r["seconds"] for r in rows if r["measured"]}
+    baseline = by["lockstep, fast mode"]
+
+    print(f"  {'configuration':<32} {'wall time vs lockstep fast':>27}")
+    print("  " + "-" * 61)
     for row in rows:
         if not row["measured"]:
-            print(f"  {row['config']:<32} {'not measured':>24}   {row.get('why', '')}")
+            print(f"  {row['config']:<32} {'not measured':>27}   {row.get('why', '')}")
             continue
-        print(f"  {row['config']:<32} {row['seconds'] / baseline:>23.2f}x")
+        print(f"  {row['config']:<32} {row['seconds'] / baseline:>26.2f}x")
+
+    # The comparison the PRD actually asks for: the cost of determinism inside
+    # each engine, which is a ratio each engine is measured against itself, and
+    # so is not affected by this engine being slower overall.
+    print()
+    print("  cost of determinism, each engine against its own fast path")
+    lock = by["lockstep, invariant"] / by["lockstep, fast mode"]
+    print(f"    lockstep                     {lock:.2f}x"
+          f"   (GEMM constraint only; attention and scheduler are identical)")
+    derived = {"lockstep_invariant_over_fast": lock}
+    if "vLLM VLLM_BATCH_INVARIANT=1" in by and "vLLM default" in by:
+        vllm = by["vLLM VLLM_BATCH_INVARIANT=1"] / by["vLLM default"]
+        print(f"    vLLM                         {vllm:.2f}x")
+        derived["vllm_invariant_over_default"] = vllm
+        cross = by["lockstep, invariant"] / by["vLLM VLLM_BATCH_INVARIANT=1"]
+        print()
+        print(f"  lockstep invariant is {cross:.1f}x the wall time of vLLM batch-invariant")
+        print("  on this trace. No CUDA graphs, no host-sync elimination, eager only.")
+        derived["lockstep_invariant_over_vllm_invariant"] = cross
 
     env = envlock.capture()
     print()
@@ -169,7 +195,7 @@ def main() -> int:
     if not args.no_artifact:
         path = Artifact(kind="throughput", env=env,
                         payload={"trace_tokens": total_tokens, "runs": args.runs,
-                                 "rows": rows}).write()
+                                 "rows": rows, "derived": derived}).write()
         print(f"artifact  {relpath(path)}")
     return 0
 
