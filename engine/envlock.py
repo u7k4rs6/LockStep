@@ -53,6 +53,11 @@ class EnvLock:
     torch_intraop_threads: int
     kernel_registry_sha256: str
     corpus_sha256: str | None
+    # The engine that produced the artifact, not just the environment it ran in.
+    # Without it, a replay that does not reproduce is ambiguous between "the
+    # environment differs" and "the bug was fixed", and those are opposite
+    # conclusions. `lockstep replay` reports which one it is by comparing this.
+    engine_revision: str = UNKNOWN
 
     def fingerprint(self) -> str:
         """The short form that terminates every bitwise claim line.
@@ -81,6 +86,35 @@ class EnvLock:
         d["fingerprint"] = self.fingerprint()
         d["digest"] = self.digest()
         return d
+
+
+def _engine_revision() -> str:
+    """The commit this engine is at, marked dirty if the tree has changes.
+
+    Read via git rather than recorded by hand, and degrading to "unknown" rather
+    than guessing when this is not a checkout. A dirty tree is reported as such
+    because a claim produced from uncommitted code is not reproducible from the
+    revision it names, and silently dropping the marker would hide that.
+    """
+    import subprocess
+
+    try:
+        root = Path(__file__).resolve().parent.parent
+        head = subprocess.run(
+            ["git", "-C", str(root), "rev-parse", "HEAD"],
+            capture_output=True, text=True, timeout=10,
+        )
+        if head.returncode != 0:
+            return UNKNOWN
+        sha = head.stdout.strip()[:12]
+        status = subprocess.run(
+            ["git", "-C", str(root), "status", "--porcelain"],
+            capture_output=True, text=True, timeout=10,
+        )
+        dirty = bool(status.stdout.strip()) if status.returncode == 0 else False
+        return f"{sha}-dirty" if dirty else sha
+    except (OSError, subprocess.SubprocessError):
+        return UNKNOWN
 
 
 def _sha256_file(path: Path) -> str:
@@ -196,6 +230,7 @@ def capture(corpus_sha256: str | None = None) -> EnvLock:
         torch_intraop_threads=torch.get_num_threads(),
         kernel_registry_sha256=_sha256_file(KERNEL_REGISTRY),
         corpus_sha256=corpus_sha256,
+        engine_revision=_engine_revision(),
     )
     _assert_scrubbed(lock)
     return lock

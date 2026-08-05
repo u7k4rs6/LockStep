@@ -41,6 +41,21 @@ class RequestSpec:
             temperature=self.temperature, top_p=self.top_p,
         )
 
+    def to_dict(self) -> dict:
+        return {
+            "uid": self.uid, "prompt": list(self.prompt), "seed": self.seed,
+            "max_new_tokens": self.max_new_tokens,
+            "temperature": self.temperature, "top_p": self.top_p,
+        }
+
+    @staticmethod
+    def from_dict(d: dict) -> "RequestSpec":
+        return RequestSpec(
+            uid=d["uid"], prompt=tuple(d["prompt"]), seed=d["seed"],
+            max_new_tokens=d["max_new_tokens"],
+            temperature=d.get("temperature", 0.0), top_p=d.get("top_p", 1.0),
+        )
+
 
 @dataclass(frozen=True)
 class Case:
@@ -58,6 +73,40 @@ class Case:
 
     def shrunk(self, **changes) -> "Case":
         return replace(self, **changes)
+
+    def to_dict(self) -> dict:
+        """Every field, because every field determines the execution.
+
+        A Case that round-trips through this and back must produce the same
+        trajectory hash. `tests/test_replay_artifact.py` asserts exactly that, on
+        the committed evidence, since a reproduce command that silently drops a
+        field would replay a different case and report agreement.
+        """
+        return {
+            "requests": [r.to_dict() for r in self.requests],
+            "chunk_plan": list(self.chunk_plan),
+            "preempt_at": [[uid, step] for uid, step in self.preempt_at],
+            "refuse_cache_at": list(self.refuse_cache_at),
+            "block_size": self.block_size,
+            "num_blocks": self.num_blocks,
+            "enable_cache": self.enable_cache,
+            "shared_prefix_len": self.shared_prefix_len,
+            "label": self.label,
+        }
+
+    @staticmethod
+    def from_dict(d: dict) -> "Case":
+        return Case(
+            requests=tuple(RequestSpec.from_dict(r) for r in d["requests"]),
+            chunk_plan=tuple(d.get("chunk_plan", ())),
+            preempt_at=tuple((uid, step) for uid, step in d.get("preempt_at", ())),
+            refuse_cache_at=tuple(d.get("refuse_cache_at", ())),
+            block_size=d.get("block_size", 16),
+            num_blocks=d.get("num_blocks", 64),
+            enable_cache=d.get("enable_cache", True),
+            shared_prefix_len=d.get("shared_prefix_len", 0),
+            label=d.get("label", ""),
+        )
 
 
 class ScriptedPolicy(DefaultPolicy):
