@@ -30,6 +30,13 @@ class Fault:
     # score a measurement of campaign coverage rather than of harness power,
     # which is the opposite of what the number means.
     requires: tuple = ()
+    # Some faults are invisible to I1 through I4 by construction and only the
+    # fidelity relation can see them. Reversing the split-combine fold is the
+    # clear case: the split count is a function of the request's own KV length,
+    # identical in canonical and batched execution, so both sides are perturbed
+    # the same way and no invariance relation can distinguish them. F1 compares
+    # against fp64 and does not care about batching at all.
+    fidelity_observable: bool = False
 
 
 @contextlib.contextmanager
@@ -211,7 +218,14 @@ def split_combine_reduction_reversed():
         # changes the rounding without changing the mathematics.
         return (out.to(torch.float32) * (1.0 + 2.0**-11)).to(out.dtype)
 
-    with _patch(attn, "attention", mutant):
+    # Both references. engine/model/qwen3.py does `from ... import attention`, so
+    # patching only the defining module leaves the call site bound to the
+    # original and the mutation never takes effect. An earlier version did
+    # exactly that and the trial was scored as a survivor when in truth the
+    # mutant had never run.
+    from engine.model import qwen3
+
+    with _patch(attn, "attention", mutant), _patch(qwen3, "attention", mutant):
         yield
 
 
@@ -219,35 +233,30 @@ def split_combine_reduction_reversed():
 def split_size_read_from_batch():
     """Architecture doc 10.1: "one code path reads split size from batch size".
 
-    The ablation drives this as a probe; here it is a mutant, so the campaign has
-    to catch it rather than a hand-built I1 check. The engine's own attention is
-    left alone and the split count is perturbed by the packed token count.
+    This reuses the ablation's `batch_derived_split_attention`, which is a
+    faithful online-softmax fold whose only defect is that its blocking constant
+    comes from the packed token count, and which the ablation table already shows
+    turns I1 red. An earlier version of this operator applied a scalar to the
+    attention output gated on token-count parity, which perturbed canonical and
+    batched execution identically often enough to survive. That was a badly
+    constructed mutant rather than a harness gap, and reusing the probe that is
+    known to work converts an invalid trial into a real one.
     """
-    from engine.model import qwen3
-
-    original = qwen3.forward_batch_hook if hasattr(qwen3, "forward_batch_hook") else None
     from engine.kernels import attention as attn
-
-    real = attn.attention
-    seen = {"tokens": 1}
-
-    def mutant(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale):
-        import torch
-
-        out = real(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale)
-        # A blocking constant taken from the batch: perturbs by one fp16 ulp when
-        # the packed token count is odd, which is a batch-derived quantity.
-        if seen["tokens"] % 2:
-            out = (out.to(torch.float32) * (1.0 + 2.0**-11)).to(out.dtype)
-        return out
+    from engine.model import qwen3
+    from harness.mr import ablation
 
     original_forward = qwen3.Qwen3.forward_batch
 
     def forward_batch(self, pool, work):
-        seen["tokens"] = sum(len(tokens) for _, tokens, _ in work)
+        # The probe reads this module-level value, which is the batch-derived
+        # quantity the operator is about.
+        ablation._BATCH_TOKENS = sum(len(tokens) for _, tokens, _ in work)
         return original_forward(self, pool, work)
 
-    with _patch(attn, "attention", mutant), _patch(qwen3.Qwen3, "forward_batch", forward_batch):
+    with _patch(attn, "attention", ablation.batch_derived_split_attention), \
+         _patch(qwen3, "attention", ablation.batch_derived_split_attention), \
+         _patch(qwen3.Qwen3, "forward_batch", forward_batch):
         yield
 
 
@@ -278,7 +287,8 @@ FAULTS: tuple[Fault, ...] = (
           rng_keyed_on_global_step, requires=("decode_step",)),
     Fault("split_combine_reduction_reversed",
           "reduction order reversed in the split-combine CTA",
-          split_combine_reduction_reversed, requires=("attention_multi_split",)),
+          split_combine_reduction_reversed, requires=("attention_multi_split",),
+          fidelity_observable=True),
     Fault("split_size_read_from_batch",
           "one code path reads split size from batch size",
           split_size_read_from_batch, requires=("admit",)),

@@ -310,6 +310,29 @@ def main() -> int:
                 detected = time.monotonic() - started
                 detail = found[0][:70]
 
+            # If no invariance observer saw it, and the operator is one F1 can
+            # see, run fidelity against fp64 before calling it a survivor.
+            if not found and fault.fidelity_observable:
+                from bench.fp64_reference import Fp64Reference, require_pinned_threads
+                from harness.fuzz.f1_observer import build_prompt, spot_check
+
+                try:
+                    require_pinned_threads()
+                    reference = Fp64Reference(REPO_ROOT / "weights" / "Qwen3-0.6B")
+                    prompt = build_prompt(model.cfg.vocab_size)
+                    with fault.apply():
+                        within, worst = spot_check(model, reference, prompt)
+                    del reference
+                    if not within:
+                        found.append(
+                            f"F1 bound exceeded: max abs logit error {worst:.4e} "
+                            f"against fp64, bound 0.5"
+                        )
+                        detected = time.monotonic() - started
+                        detail = found[0][:70]
+                except SystemExit as exc:
+                    print(f"                     F1 observer skipped: {exc}")
+
             # Gate: did the mutated path execute at all?
             missing = exercised.missing(*fault.requires) if fault.requires else []
             if missing and detected is None:
@@ -331,6 +354,8 @@ def main() -> int:
                 mechanism = "undeclared transition"
             elif "diverged from canonical" in detail:
                 mechanism = "bitwise divergence"
+            elif detail.startswith("F1 bound exceeded"):
+                mechanism = "fidelity vs fp64"
             elif detail.startswith("AssertionError"):
                 mechanism = "engine assertion"
             else:
