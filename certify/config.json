@@ -1,0 +1,6 @@
+{
+  "i_control_this_endpoint": true,
+  "note": "Required by docs/03-security-and-access.md section 2, with no default. It is a speed bump against accident, not a security control, and is documented as such. Setting it asserts that the endpoint being certified is a process this developer started on this machine.",
+  "max_concurrency": 1,
+  "max_requests_per_second": 4
+}

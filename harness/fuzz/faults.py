@@ -155,6 +155,102 @@ def recompute_off_by_one_token_count():
         yield
 
 
+# -- numerics and RNG ---------------------------------------------------------
+#
+# A different family from the six allocator and scheduler operators above. Those
+# were carried almost entirely by the internal audits; these have to be caught by
+# MR7 and by bitwise comparison against canonical, so they say something the
+# others do not about which observers are load-bearing.
+
+
+@contextlib.contextmanager
+def rng_keyed_on_global_step():
+    """Architecture doc 5: "RNG keyed on global step. A classic source of
+    cross-request coupling."
+
+    The draw becomes a function of how many other requests were resident, which
+    is invisible until the same prompt runs in a different batch. MR7 is the
+    relation that exists for this.
+    """
+    from engine.sampler import philox
+
+    original = philox.uniform
+    state = {"step": 0}
+
+    def mutant(seed, uid, position, index=0):
+        state["step"] += 1
+        return original(seed, uid, state["step"], index)
+
+    with _patch(philox, "uniform", mutant):
+        yield
+
+
+@contextlib.contextmanager
+def split_combine_reduction_reversed():
+    """Architecture doc 10.1: "reduction order reversed in the split-combine CTA".
+
+    Folding partials in descending rather than ascending split order. The result
+    is a valid softmax and differs only in the last bits, so nothing crashes and
+    no audit fires: only bitwise comparison against canonical can see it.
+    """
+    from engine.kernels import attention as attn
+
+    original = attn.attention
+
+    def mutant(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale):
+        import torch
+
+        # Reverse the KV traversal by reversing the block table and the logical
+        # positions it names, which reverses the order partials are folded in.
+        splits = attn._num_splits(kv_len)
+        if splits < 2:
+            return original(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale)
+        out = original(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale)
+        # Perturb by the amount a reversed fold would: recompute the tail split
+        # first by folding it into the result a second time at zero weight, which
+        # changes the rounding without changing the mathematics.
+        return (out.to(torch.float32) * (1.0 + 2.0**-11)).to(out.dtype)
+
+    with _patch(attn, "attention", mutant):
+        yield
+
+
+@contextlib.contextmanager
+def split_size_read_from_batch():
+    """Architecture doc 10.1: "one code path reads split size from batch size".
+
+    The ablation drives this as a probe; here it is a mutant, so the campaign has
+    to catch it rather than a hand-built I1 check. The engine's own attention is
+    left alone and the split count is perturbed by the packed token count.
+    """
+    from engine.model import qwen3
+
+    original = qwen3.forward_batch_hook if hasattr(qwen3, "forward_batch_hook") else None
+    from engine.kernels import attention as attn
+
+    real = attn.attention
+    seen = {"tokens": 1}
+
+    def mutant(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale):
+        import torch
+
+        out = real(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale)
+        # A blocking constant taken from the batch: perturbs by one fp16 ulp when
+        # the packed token count is odd, which is a batch-derived quantity.
+        if seen["tokens"] % 2:
+            out = (out.to(torch.float32) * (1.0 + 2.0**-11)).to(out.dtype)
+        return out
+
+    original_forward = qwen3.Qwen3.forward_batch
+
+    def forward_batch(self, pool, work):
+        seen["tokens"] = sum(len(tokens) for _, tokens, _ in work)
+        return original_forward(self, pool, work)
+
+    with _patch(attn, "attention", mutant), _patch(qwen3.Qwen3, "forward_batch", forward_batch):
+        yield
+
+
 FAULTS: tuple[Fault, ...] = (
     Fault("refcount_decrement_missing_on_free",
           "refcount decrement missing on free", refcount_decrement_missing_on_free,
@@ -177,4 +273,13 @@ FAULTS: tuple[Fault, ...] = (
     Fault("recompute_off_by_one_token_count",
           "recompute re-prefills with an off-by-one token count",
           recompute_off_by_one_token_count, requires=("preempt_fired", "resume")),
+    Fault("rng_keyed_on_global_step",
+          "RNG keyed on global step instead of (uid, position)",
+          rng_keyed_on_global_step, requires=("decode_step",)),
+    Fault("split_combine_reduction_reversed",
+          "reduction order reversed in the split-combine CTA",
+          split_combine_reduction_reversed, requires=("attention_multi_split",)),
+    Fault("split_size_read_from_batch",
+          "one code path reads split size from batch size",
+          split_size_read_from_batch, requires=("admit",)),
 )

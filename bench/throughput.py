@@ -10,8 +10,8 @@ Absolute tokens per second is not published. This engine has no CUDA graphs and
 makes no attempt to be fast; an absolute number invites the dismissal the PRD's
 risk table names, and the ratio is the quantity a reader actually needs.
 
-The workload is committed: `bench/trace.py` holds it, and every configuration
-runs the same one.
+The workload is committed: `committed_trace` in this file holds it, seeded and
+fixed, and every configuration runs the same one.
 
 External engines run out of a separate virtual environment, because vLLM pins
 torch versions that would fight the locked environment this project's claims are
@@ -170,24 +170,33 @@ def main() -> int:
             continue
         print(f"  {row['config']:<32} {row['seconds'] / baseline:>26.2f}x")
 
-    # The comparison the PRD actually asks for: the cost of determinism inside
-    # each engine, which is a ratio each engine is measured against itself, and
-    # so is not affected by this engine being slower overall.
-    print()
-    print("  cost of determinism, each engine against its own fast path")
+    # Absolute standing is the headline. The within-engine cost of determinism
+    # is deliberately NOT printed as a side-by-side against vLLM's: this engine's
+    # fast path is already constrained in ways vLLM's is not, so the two ratios
+    # measure different things and pairing them implies a comparison that does
+    # not hold.
     lock = by["lockstep, invariant"] / by["lockstep, fast mode"]
-    print(f"    lockstep                     {lock:.2f}x"
-          f"   (GEMM constraint only; attention and scheduler are identical)")
     derived = {"lockstep_invariant_over_fast": lock}
-    if "vLLM VLLM_BATCH_INVARIANT=1" in by and "vLLM default" in by:
-        vllm = by["vLLM VLLM_BATCH_INVARIANT=1"] / by["vLLM default"]
-        print(f"    vLLM                         {vllm:.2f}x")
-        derived["vllm_invariant_over_default"] = vllm
-        cross = by["lockstep, invariant"] / by["vLLM VLLM_BATCH_INVARIANT=1"]
-        print()
-        print(f"  lockstep invariant is {cross:.1f}x the wall time of vLLM batch-invariant")
-        print("  on this trace. No CUDA graphs, no host-sync elimination, eager only.")
-        derived["lockstep_invariant_over_vllm_invariant"] = cross
+    print()
+    print("  headline: standing against the engines being certified")
+    for other in ("vLLM default", "vLLM VLLM_BATCH_INVARIANT=1", "SGLang deterministic"):
+        if other in by:
+            ratio = by["lockstep, invariant"] / by[other]
+            print(f"    lockstep invariant is {ratio:5.1f}x the wall time of {other}")
+            derived[f"lockstep_invariant_over_{other}"] = ratio
+    for other in ("vLLM default",):
+        if other in by:
+            print(f"    lockstep invariant runs at "
+                  f"{100 * by[other] / by['lockstep, invariant']:.0f} percent of "
+                  f"{other} throughput")
+
+    print()
+    print("  separately, and not comparable to any figure above:")
+    print(f"    lockstep invariant over its own fast path   {lock:.2f}x")
+    print("    That measures the GEMM constraint alone. The fast path differs in")
+    print("    exactly one way, letting torch pick the GEMM; attention and the")
+    print("    scheduler are identical in both, and it is already constrained in")
+    print("    ways an unconstrained engine's fast path is not.")
 
     env = envlock.capture()
     print()
