@@ -116,6 +116,16 @@
     },
     "reproduces": true,
     "one_minimal": true,
-    "checks_run": 788
+    "checks_run": 788,
+    "provenance": {
+      "note": "Pinned by hand after the fact, because this artifact predates the engine_revision field. Every claim below was verified rather than inferred from commit dates.",
+      "last_revision_before_fix": "1269c01ff6eaf2f79b9faf11a277569f1a87a1b8",
+      "fixed_by": "b592d7cfca28b0d511ae42c5aa0f3f68e8ccc5fc",
+      "fixed_by_subject": "Bound the eviction loop, and refuse a request that can never fit the pool",
+      "reproduces_at_head": false,
+      "no_single_checkout_reproduces": "The harness that produces and replays cases (harness/sim/driver.py and engine/sched/lifecycle.py) landed in d8465e8, which is after the fix in b592d7c. So no committed revision holds both the pre-fix scheduler and the code that drives it, and 1269c01 cannot be checked out and replayed directly. That is stated rather than papered over.",
+      "verified_by": "Removing only the oversized-request guard from Scheduler.submit at HEAD, 8 lines, and running this artifact's minimized case. The engine raises OutOfBlocks with the recorded condition: 1 request waiting, 2 blocks free, nothing running to free them. Restoring the guard, the same case is refused at submit and never wedges.",
+      "verified_at_head": "7c234bf"
+    }
   }
 }

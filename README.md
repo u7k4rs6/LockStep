@@ -319,8 +319,34 @@ is preempted mid-decode, and a 544-token prefix is shared, because a witness tha
 exercised none of the machinery would pass whatever the engine did.
 
 `evidence/case-0003.json` is the other kind: a real finding, minimized to one
-request and proven 1-minimal in 788 checks. Replaying it today reports that it no
-longer reproduces, and attributes that to the engine revision rather than calling
-it a failure, because the bug it found was fixed. Artifacts record
-`engine_revision` so that "did not reproduce" and "was fixed" are distinguishable
-rather than the same output.
+request and proven 1-minimal in 788 checks. It is the oversized-request wedge,
+where a 61-token request with 4 new tokens against a 2-block pool at block size 32
+needed 3 blocks, could never be admitted, and sat in the queue until the scheduler
+reported memory pressure that named free blocks the request could never have used.
+
+**It is pinned to the commit that closed it.** Fixed by
+[`b592d7c`](https://github.com/u7k4rs6/LockStep/commit/b592d7c), "Bound the
+eviction loop, and refuse a request that can never fit the pool"; the last
+revision before that fix is
+[`1269c01`](https://github.com/u7k4rs6/LockStep/commit/1269c01). Replaying it at
+HEAD reports the finding as closed and names the commit, rather than reporting a
+bare "did not reproduce" that a reader cannot distinguish from a broken file.
+
+One thing about that pin has to be said plainly, because the obvious reading of
+it is wrong. **No single checkout reproduces this finding**, and not because
+anything is missing: the harness that produces and replays cases,
+`harness/sim/driver.py` and `engine/sched/lifecycle.py`, landed in `d8465e8`,
+which is *after* the fix. The fuzzer found this bug from an uncommitted working
+tree, the fix was committed, and the fuzzer was committed after it. So checking
+out `1269c01` gets the pre-fix scheduler and no way to drive it.
+
+What was verified, rather than inferred from commit dates: removing only the
+oversized-request guard from `Scheduler.submit` at HEAD, 8 lines, makes this
+artifact's minimized case raise `OutOfBlocks` with the recorded condition, one
+request waiting against 2 free blocks with nothing running to free them.
+Restoring the guard, the same case is refused at submit and never wedges. That is
+in the artifact's `provenance` block along with both SHAs, and it is a one-hunk
+change a reader can apply.
+
+Artifacts written since carry `engine_revision`, so newer findings pin themselves
+and need none of this.

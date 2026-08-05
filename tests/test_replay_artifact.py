@@ -231,3 +231,32 @@ def runpy_load_commands() -> dict:
         if isinstance(node, ast.AnnAssign) and getattr(node.target, "id", "") == "COMMANDS":
             return ast.literal_eval(node.value)
     raise AssertionError("COMMANDS not found in the dispatcher")
+
+
+def test_a_pinned_finding_names_the_commit_that_closed_it():
+    """A historical finding without a commit reads as a stale file.
+
+    `case-0003.json` predates `engine_revision`, so replaying it can only say
+    "did not reproduce", which a reader cannot distinguish from a broken
+    artifact. The provenance block is what makes it evidence: both SHAs, and the
+    verification that produced them.
+    """
+    payload = load(EVIDENCE / "case-0003.json")["payload"]
+    provenance = payload.get("provenance")
+    assert provenance, "case-0003 carries no provenance"
+
+    for field in ("fixed_by", "last_revision_before_fix", "verified_by"):
+        assert provenance.get(field), f"provenance is missing {field}"
+
+    # Full SHAs, not abbreviations: an abbreviation can become ambiguous as the
+    # history grows, and this is meant to outlive the repository's current size.
+    assert len(provenance["fixed_by"]) == 40
+    assert len(provenance["last_revision_before_fix"]) == 40
+
+    ok, detail = classify(payload["reason"], "", same_engine=False, same_env=True,
+                          engine_known=False, provenance=provenance)
+    assert ok is True
+    assert provenance["fixed_by"][:12] in detail
+    # The pin must outrank the weaker "cannot attribute" branch, which is what
+    # this artifact would otherwise fall through to.
+    assert "not recorded" not in detail

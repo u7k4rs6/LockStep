@@ -74,13 +74,27 @@ def outcome_of(model, case: Case) -> tuple[str, str]:
 
 
 def classify(recorded: str, observed: str, same_engine: bool, same_env: bool,
-             engine_known: bool = True):
+             engine_known: bool = True, provenance: dict | None = None):
     """Compare, and attribute the difference to something specific."""
     recorded_class = recorded.split(":", 1)[0].strip()
     observed_class = observed.split(":", 1)[0].strip()
 
     if recorded_class == observed_class:
         return True, f"raised {observed_class or 'nothing'} again, as recorded"
+
+    # A finding pinned to the commit that fixed it. This outranks every check
+    # below, because a named commit is stronger evidence than an inference from
+    # whether two revision strings happen to differ.
+    if provenance and provenance.get("fixed_by"):
+        return True, (
+            f"recorded {recorded_class or 'no error'}, observed "
+            f"{observed_class or 'no error'}. Fixed by "
+            f"{provenance['fixed_by'][:12]}, "
+            f"\"{provenance.get('fixed_by_subject', '')}\". Last revision before "
+            f"the fix: {provenance.get('last_revision_before_fix', '?')[:12]}. "
+            "This is a regression check on a closed finding, and it passing means "
+            "the fix is still in."
+        )
 
     if not same_env:
         return True, (
@@ -150,7 +164,15 @@ def main() -> int:
         print(f"  recorded          {payload['reason'][:88]}")
     print(f"  recorded env      {recorded_env.get('fingerprint', 'unknown')}")
     print(f"  this env          {here.fingerprint()}")
-    print(f"  recorded engine   {recorded_revision}")
+    provenance = payload.get("provenance") or {}
+    if provenance.get("fixed_by"):
+        print(f"  recorded engine   {recorded_revision}"
+              f"  (pinned: last revision before the fix "
+              f"{provenance.get('last_revision_before_fix', '?')[:12]})")
+        print(f"  fixed by          {provenance['fixed_by'][:12]}  "
+              f"{provenance.get('fixed_by_subject', '')}")
+    else:
+        print(f"  recorded engine   {recorded_revision}")
     print(f"  this engine       {here.engine_revision}")
     print(f"  minimality        reproduces={payload.get('reproduces')} "
           f"1-minimal={payload.get('one_minimal')} "
@@ -180,7 +202,8 @@ def main() -> int:
         )
     else:
         ok, detail = classify(payload["reason"], observed, same_engine, same_env,
-                              engine_known=recorded_revision not in ("unknown", None))
+                              engine_known=recorded_revision not in ("unknown", None),
+                              provenance=payload.get("provenance"))
 
     print()
     print(f"  {'OK' if ok else 'FAILED'}: {detail}")

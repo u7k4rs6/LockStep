@@ -474,9 +474,13 @@ def build(out: Path) -> Path:
      chunks prefill, preempts mid-decode, and shares a 544-token prefix, because a
      witness that exercised none of the machinery would pass whatever the engine did.
      <span class="mono">evidence/case-0003.json</span> is the other kind: a real finding,
-     minimized to one request and proven 1-minimal in 788 checks. It no longer
-     reproduces, and the replay attributes that to the engine revision rather than
-     reporting a failure, because the bug was fixed.</p>
+     minimized to one request and proven 1-minimal in 788 checks, pinned to the commit
+     that closed it. Replaying it names that commit rather than reporting a bare "did
+     not reproduce", which a reader cannot distinguish from a broken file. No single
+     checkout reproduces it, because the harness that replays cases landed after the
+     fix; what was verified instead is that removing the 8-line guard from
+     <span class="mono">Scheduler.submit</span> at HEAD makes the case wedge again with
+     the recorded condition. Both SHAs and that verification are in the artifact.</p>
 </section>
 """)
 
