@@ -40,7 +40,7 @@ from harness.mr.state import (  # noqa: E402
     mr5_occupancy,
     mr8_tiebreak_under_permutation,
 )
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 
 NOT_YET = {
     "MR9": "mask no-op, fidelity side. Needs an explicit pad region, which this "
@@ -93,8 +93,12 @@ def main() -> int:
         default=[16, 64],
         help="KV block sizes to sweep the relations over.",
     )
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="produce a claim artifact from an uncommitted "
+                             "tree; recorded in the artifact when used")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
+    provenance = require_clean_tree(args.allow_dirty)
 
     model = Qwen3(REPO_ROOT / "weights" / "Qwen3-0.6B", max_len=1024)
     vocab = model.cfg.vocab_size

@@ -44,7 +44,7 @@ from engine import envlock  # noqa: E402
 from engine.kernels import registry  # noqa: E402
 from engine.kernels.softmax import log_softmax  # noqa: E402
 from engine.model.qwen3 import KVCache, Qwen3  # noqa: E402
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 
 DEFAULT_WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 DEFAULT_REFERENCE = REPO_ROOT / "reference"
@@ -98,6 +98,9 @@ def main() -> int:
     parser.add_argument("--reference", type=Path, default=DEFAULT_REFERENCE)
     parser.add_argument("--hf-new-tokens", type=int, default=32)
     parser.add_argument("--skip-hf", action="store_true")
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="produce a claim artifact from an uncommitted "
+                             "tree; recorded in the artifact when used")
     parser.add_argument("--no-artifact", action="store_true")
     parser.add_argument(
         "--memory-ceiling-mib",
@@ -106,6 +109,7 @@ def main() -> int:
         help="Projected host memory the pass may use. Fails fast rather than swapping.",
     )
     args = parser.parse_args()
+    provenance = require_clean_tree(args.allow_dirty)
 
     threads = require_pinned_threads()
 

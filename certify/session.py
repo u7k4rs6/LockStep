@@ -33,7 +33,7 @@ from certify.run import (  # noqa: E402
     FILLER_WIDTHS, RELATIONS, EngineInfo, certify, concurrency_cap, guard,
 )
 from engine import envlock  # noqa: E402
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 PORT = 30011
@@ -165,8 +165,12 @@ def main() -> int:
                              "which is the perturbation vLLM's guarantee names")
     parser.add_argument("--label", default="",
                         help="a name for this cell, recorded in the artifact")
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="produce a claim artifact from an uncommitted "
+                             "tree; recorded in the artifact when used")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
+    provenance = require_clean_tree(args.allow_dirty)
 
     config = json.loads(args.config.read_text()) if args.config.exists() else {}
     guard(BASE_URL, config)

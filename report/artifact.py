@@ -72,6 +72,54 @@ class Artifact:
         return path
 
 
+class DirtyTree(SystemExit):
+    """A claim was about to be produced from an uncommitted working tree."""
+
+
+def require_clean_tree(allow_dirty: bool = False) -> dict:
+    """Refuse to produce a claim artifact from a tree that is not committed.
+
+    Three separate re-runs in this project were launched to replace artifacts
+    carrying a `-dirty` engine_revision, and all three produced artifacts that
+    were themselves dirty, because a file had been edited between the decision
+    and the launch. Each time it was noticed afterwards, by reading the artifact.
+
+    The rule that every claim ships with the revision that produced it was in the
+    docs from week 1 and enforced by remembering to follow it, which is the same
+    shape as `max_concurrency` sitting unread in the security config and the CLI
+    the frontend spec declared but nobody built. This is the mechanism.
+
+    `allow_dirty` exists because iterating without it would be unbearable, and it
+    is recorded in the artifact when used, so a dirty artifact is a deliberate
+    act with a trace rather than an accident nobody noticed.
+    """
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    try:
+        status = subprocess.run(["git", "-C", str(root), "status", "--porcelain"],
+                                capture_output=True, text=True, timeout=15)
+        head = subprocess.run(["git", "-C", str(root), "rev-parse", "HEAD"],
+                              capture_output=True, text=True, timeout=15)
+    except (OSError, subprocess.SubprocessError):
+        return {"clean": None, "override": allow_dirty,
+                "note": "git unavailable; provenance not established"}
+
+    dirty = [line for line in status.stdout.splitlines() if line.strip()]
+    revision = head.stdout.strip()[:12] if head.returncode == 0 else "unknown"
+
+    if dirty and not allow_dirty:
+        listing = "\n    ".join(dirty[:10])
+        raise DirtyTree(
+            f"refusing to produce a claim artifact from an uncommitted tree at "
+            f"{revision}. {len(dirty)} file(s) differ:\n    {listing}\n"
+            "Commit them, or pass --allow-dirty deliberately. The artifact will "
+            "record that the override was used."
+        )
+    return {"clean": not dirty, "override": bool(dirty and allow_dirty),
+            "revision": revision, "dirty_files": len(dirty)}
+
+
 def load(path: Path) -> dict:
     """Read an artifact back, rejecting anything that lost its env tuple."""
     data = json.loads(Path(path).read_text())

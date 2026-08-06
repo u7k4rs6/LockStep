@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "fuzz",
-  "created_utc": "2026-08-06T07:13:56Z",
+  "created_utc": "2026-08-06T08:28:30Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -19,9 +19,9 @@
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": null,
-    "engine_revision": "44e3b4af741b-dirty",
+    "engine_revision": "d2ffa5652e8e",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "2ac5edaa150b9a30e7672e2227ab38c2640e40c6a54b12396cda04915f076b76"
+    "digest": "1488b809574e2592e086bcb82a54c895c9a12200dbaca159b8f916ff828de646"
   },
   "payload": {
     "cases_executed": 72,
@@ -426,7 +426,7 @@
         "counters_seen": {
           "eviction_taken": 0
         },
-        "seconds": 25.3,
+        "seconds": 45.2,
         "detail": "AssertionError: unpinning block 0, which the cache does not hold"
       },
       {
@@ -456,7 +456,7 @@
         "counters_seen": {
           "eviction_taken": 31
         },
-        "seconds": 179.3,
+        "seconds": 308.1,
         "detail": "OutOfBlocks: all 4 blocks are held; the policy must evict or preempt b"
       },
       {
@@ -471,7 +471,7 @@
         "counters_seen": {
           "cache_hit": 1
         },
-        "seconds": 10.6,
+        "seconds": 17.6,
         "detail": "r01 diverged from canonical: [36089] != [32995]"
       },
       {
@@ -486,7 +486,7 @@
         "counters_seen": {
           "prefill_chunk": 2570
         },
-        "seconds": 239.1,
+        "seconds": 331.7,
         "detail": "UndeclaredTransition: observed the 2-gram ['decode', 'chunk'], which t"
       },
       {
@@ -518,7 +518,7 @@
         "counters_seen": {
           "decode_step": 9
         },
-        "seconds": 4.5,
+        "seconds": 5.3,
         "detail": "r00 diverged from canonical: [2548] != [67308]"
       },
       {
@@ -533,7 +533,7 @@
         "counters_seen": {
           "attention_multi_split": 23
         },
-        "seconds": 214.0,
+        "seconds": 313.7,
         "detail": "golden bytes differ from the committed baseline at prompt_600, prompt_"
       },
       {
@@ -548,7 +548,7 @@
         "counters_seen": {
           "admit": 7
         },
-        "seconds": 1.3,
+        "seconds": 2.1,
         "detail": "r00 logit bytes diverged from canonical at emitted position 0, max abs"
       }
     ],

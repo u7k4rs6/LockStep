@@ -149,7 +149,7 @@ repair, it is a new claim.
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | **65 of 65** relation runs bitwise identical across 5 block sizes, 13 relations including path equivalence and EOS finishing | `python3 -m harness.mr.run` |
 | 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 10.6 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
-| 3 | Cost of determinism | 1.05x within lockstep; lockstep invariant is **4.7x** vLLM batch-invariant eager and **4.8x** with CUDA graphs | `python3 -m bench.throughput` |
+| 3 | Cost of determinism | lockstep invariant is **4.7x to 5.0x** vLLM batch-invariant eager across two runs, like-for-like and stable; cross-mode figures are not stable on this hardware and are reported with that caveat | `python3 -m bench.throughput` |
 
 Claim 3, in full, on a committed 8-request 2972-token trace, median of 5. Four of
 the eight prompts cross the 512-token attention split boundary, so the
@@ -177,17 +177,39 @@ Both comparator configurations are published because the earlier benchmark
 hardcoded `enforce_eager=True` for vLLM, which handicapped it by exactly the
 feature this engine lacks.
 
-**CUDA graphs cost vLLM's batch-invariant mode its own speedup.** Enabling them
-moves vLLM's default mode from 0.446s to 0.358s, a 20 percent gain, and moves its
-batch-invariant mode from 0.587s to 0.579s, which is nothing. Determinism does
-not merely cost 1.3x here; it also forfeits the graph speedup that the
-unconstrained path keeps, so the gap between the two modes *widens* when graphs
-are on, from 1.32x to 1.62x. vLLM's documentation says the batch-invariant
-attention operators do not support `FULL` or `FULL_DECODE_ONLY` cudagraph modes,
-so this is consistent rather than surprising, but it is a real datapoint about
-the cost structure of determinism and it is not visible from an eager-only
-comparison. A reader deciding whether to turn batch invariance on in production
-should price in both the direct cost and the optimization it forecloses.
+**A claim published here was refuted by re-measuring it, and this is the
+retraction.** On one run, enabling CUDA graphs moved vLLM's batch-invariant mode
+from 0.587s to 0.579s, which is nothing, while moving its default mode from
+0.446s to 0.358s. That looked like a real result about the cost structure of
+determinism, consistent with vLLM's documentation that batch-invariant attention
+does not support `FULL` cudagraph modes, and it was written up as one. A second
+run of identical code on the identical trace gives 0.964s eager against 0.565s
+graphed: **a 41 percent gain, not nothing.**
+
+The reason is a limitation of this hardware rather than a fact about vLLM. Every
+eager measurement degraded by roughly 1.75x between the two runs and every
+graphed measurement held: lockstep 2.627s to 4.713s, vLLM default eager 0.446s to
+0.774s, vLLM invariant eager 0.587s to 0.964s, against 0.358s to 0.407s and
+0.579s to 0.565s graphed. Eager mode is launch-overhead bound and sensitive to
+machine load; graphed mode is not. This is a laptop that had been under sustained
+GPU load for hours.
+
+So the honest reporting is by stability rather than by a single run:
+
+| comparison | run 1 | run 2 | stable |
+|---|---|---|---|
+| lockstep invariant vs vLLM invariant, **both eager** | 4.7x | 5.0x | yes |
+| lockstep invariant vs vLLM invariant, **graphed** | 4.8x | 8.4x | no |
+| lockstep invariant as a fraction of vLLM default, **eager** | 16.1% | 16.2% | yes |
+| lockstep invariant as a fraction of vLLM default, **graphed** | 13.0% | 8.5% | no |
+
+Like-for-like comparisons are stable because both sides move together.
+Cross-mode comparisons are not, because this engine is always eager and its
+comparator is not, so the ratio absorbs the instability of the eager side alone.
+**Any single-run cross-mode figure from this hardware should be treated as an
+order of magnitude.** The kill-criterion conclusion survives regardless: both
+runs put the graphed comparison below the 15 percent bar, at 13.0 and 8.5
+percent.
 
 A consequence for this project's own headline: the eager-versus-eager comparison
 was not unfair for the row that decides it, because graphs give the invariant row
@@ -278,23 +300,59 @@ order of magnitude rather than a measurement.
 
 ## Coverage, with the denominator it is actually against
 
-From the campaign backing claim 2, against the corrected denominators:
+The denominators are **25 two-grams and 79 three-grams**, not the 27 and 84 this
+project published for most of its life. `(ADMITTED, PREEMPT_RC)` was declared and
+unreachable, so every coverage percentage reported before that correction was
+computed against a denominator that was too large. **The correction moves the
+percentages up**, from 55.6 to 60.0 percent on 2-grams and 33.3 to 35.4 percent
+on 3-grams at the same observed counts: the old figures understated exploration.
+That is worth saying plainly precisely because it flatters the project, and a
+reader who remembers the old numbers should find the reason here rather than
+having to reconstruct it.
 
-| metric | reached |
-|---|---|
-| lifecycle 2-grams | 15 of 25 |
-| lifecycle 3-grams | 28 of 79 |
-| boundary predicates | 17 of 20 |
-| declared transitions, **campaign unaided** | 11 of 13 |
+Coverage is reported by population, because a case built to reach a transition
+proves the transition belongs in the denominator and says nothing about whether
+the generator explores the space. Folding those together would let any coverage
+number be improved by writing more probes.
 
-Those denominators are 25 and 79 rather than the 27 and 84 published earlier,
-because `(ADMITTED, PREEMPT_RC)` was declared and unreachable. Every coverage
-percentage this project reported before that correction was computed against a
-denominator that was too large.
+**The rule, so a reader has something specific to disagree with:** a campaign
+phase is credited as exploration to the extent it reaches n-grams *outside* the
+subsystem it was written to target. A phase that only hits what it was built to
+hit is a probe wearing a campaign's name.
 
-**Reachability is reported separately from exploration**, and the distinction
-matters more than the numbers. `python3 -m harness.fuzz.witness` runs the
-standard swarm campaign and a purpose-built probe as two populations:
+| population | 2-grams | 3-grams | credited as exploration |
+|---|---|---|---|
+| swarm campaign, 72 cases | 15 of 25 | 28 of 79 | yes |
+| plus the eviction campaign, 132 cases | **19 of 25** | **43 of 79** | **yes, on evidence, see below** |
+| plus transition probes, 212 cases | 20 of 25 | 46 of 79 | no |
+
+**The eviction campaign was nearly excluded on an argument that turned out to be
+false.** It is written to reach eviction states, so the expectation was that the
+n-grams it adds are eviction n-grams, which would make it a probe by the rule
+above. The arithmetic looked like it agreed: the swarm campaign misses ten
+2-grams, six of which involve `evict`, and the eviction campaign adds exactly
+four. Four added against four non-eviction misses is the kind of tidy
+correspondence that reads as confirmation.
+
+Reading the identities refutes it. The four added are `cache_hit->evict`,
+`evict->chunk`, `cache_hit->chunk` and `resume->cache_hit`: **two of the four
+involve no eviction**. At 3-grams it is starker, six of fifteen, including
+`cache_hit->chunk->chunk`, `cache_hit->decode->decode` and
+`preempt_rc->resume->cache_hit`. The phase drives heavy prefix sharing under
+allocation pressure, and that reaches cache and resume interleavings the uniform
+swarm generator rarely produces. It explores outside its target, so it is
+credited, and the headline is **19 of 25 and 43 of 79**.
+
+**This question could not have been settled from committed data.** The eviction
+phase kept its own `Coverage` object and never wrote it into the artifact, so
+nothing published carried the numbers needed to decide whether it counted toward
+the project's own headline. It had to be re-measured. An artifact that cannot
+answer a question about its own headline figure is the defect this repository's
+table documents, and it is exactly the sort of thing that gets fixed quietly and
+forgotten, so it is written here and the artifact now carries
+`eviction_campaign.coverage`.
+
+Transitions, same discipline:
 
 | | transitions |
 |---|---|
@@ -302,13 +360,9 @@ standard swarm campaign and a purpose-built probe as two populations:
 | reachable at all, once a targeted probe is added | 13 of 13 |
 | declared unreachable, with a written argument | 2 |
 
-Only `(PREFILLING, PREEMPT_RC)` needs the probe, and it is genuinely rare rather
-than dead: it requires a resumed request re-prefilling in chunks while already
-holding generated tokens. **A transition reached only by a case built to reach it
-does not count toward the coverage number.** A probe proves a transition belongs
-in the denominator; it says nothing about whether the generator explores the
-space, and folding the two together would let any coverage figure be improved by
-writing more probes.
+Only `(PREFILLING, PREEMPT_RC)` needs the probe, and it is rare rather than dead:
+it requires a resumed request re-prefilling in chunks while already holding
+generated tokens. Boundary predicates reach 17 of 20.
 
 ## What this does not claim
 

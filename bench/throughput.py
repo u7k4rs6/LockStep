@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import random
 import statistics
 import subprocess
 import sys
@@ -38,7 +39,7 @@ import torch  # noqa: E402
 from engine import envlock  # noqa: E402
 from engine.model.qwen3 import Qwen3  # noqa: E402
 from engine.sched.scheduler import Request, Scheduler  # noqa: E402
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 RUNS = 5
@@ -123,12 +124,37 @@ def time_external(python: Path, engine: str, deterministic: bool, trace,
         return None
 
 
+def gpu_state() -> dict:
+    """Clock, temperature and power at the moment of a measurement.
+
+    Recorded per sample rather than per run. Drift was previously reconstructed
+    after the fact from a ratio moving 1.75x between two runs, which only worked
+    because the shift was large; a subtler one would have been invisible.
+    """
+    try:
+        out = subprocess.run(
+            ["nvidia-smi",
+             "--query-gpu=clocks.sm,temperature.gpu,power.draw,utilization.gpu",
+             "--format=csv,noheader,nounits"],
+            capture_output=True, text=True, timeout=10,
+        )
+        sm, temp, power, util = (x.strip() for x in out.stdout.strip().split(","))
+        return {"sm_mhz": int(float(sm)), "temp_c": int(float(temp)),
+                "power_w": float(power), "util_pct": int(float(util))}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--external-python", type=Path, default=None)
     parser.add_argument("--runs", type=int, default=RUNS)
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="produce a claim artifact from an uncommitted "
+                             "tree; recorded in the artifact when used")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
+    provenance = require_clean_tree(args.allow_dirty)
 
     model = Qwen3(WEIGHTS, max_len=1024)
     trace = committed_trace(model.cfg.vocab_size)
@@ -143,15 +169,74 @@ def main() -> int:
     print("  ratios only; absolute tokens per second is not a claim this project makes")
     print()
 
-    rows: list[dict] = []
-
-    for label, invariant in (("lockstep, fast mode", False), ("lockstep, invariant", True)):
-        samples = []
+    # Every measurement as an independent unit, then shuffled, so configurations
+    # are interleaved rather than blocked. Blocking by configuration was the
+    # earlier design and it maps any drift over the run straight onto the
+    # A-versus-B ratio: all of A ran while the machine was cool and all of B
+    # after it was not. Two runs of identical code then disagreed by 1.75x on
+    # every eager configuration while the graphed ones held, which was enough to
+    # refute a published claim. Interleaving makes drift hit both arms roughly
+    # equally, so a cross-mode ratio is a measurement rather than a caveat.
+    units: list[tuple[str, object]] = []
+    for label, invariant in (("lockstep, fast mode", False),
+                             ("lockstep, invariant", True)):
         for _ in range(args.runs):
-            samples.append(time_lockstep(model, trace, invariant))
+            units.append((label, ("lockstep", invariant)))
+
+    external_specs = [
+        ("vLLM default, eager", "vllm", False, False),
+        ("vLLM VLLM_BATCH_INVARIANT=1, eager", "vllm", True, False),
+        ("vLLM default, cudagraphs", "vllm", False, True),
+        ("vLLM VLLM_BATCH_INVARIANT=1, cudagraphs", "vllm", True, True),
+        ("SGLang deterministic", "sglang", True, False),
+    ]
+    if args.external_python is not None and args.external_python.exists():
+        for label, engine, deterministic, graphs in external_specs:
+            for _ in range(args.runs):
+                units.append((label, ("external", engine, deterministic, graphs)))
+
+    # Seeded, so the interleaving is a property of the committed code rather than
+    # of the day it ran, and a rerun executes the same order.
+    random.Random(20260806).shuffle(units)
+
+    samples: dict[str, list[float]] = {}
+    observed: dict[str, list[dict]] = {}
+    print(f"  {len(units)} measurements, interleaved and shuffled", flush=True)
+    for index, (label, spec) in enumerate(units, start=1):
+        before = gpu_state()
+        if spec[0] == "lockstep":
+            seconds = time_lockstep(model, trace, spec[1])
             torch.cuda.empty_cache()
-        rows.append({"config": label, "seconds": statistics.median(samples),
-                     "samples": samples, "measured": True})
+        else:
+            seconds = time_external(args.external_python, spec[1], spec[2],
+                                    trace, spec[3])
+        if seconds is None:
+            continue
+        samples.setdefault(label, []).append(seconds)
+        observed.setdefault(label, []).append(before)
+        print(f"\r    {index}/{len(units)}  {label[:38]:<38} {seconds:6.3f}s "
+              f"sm={before.get('sm_mhz', 0)}MHz {before.get('temp_c', 0)}C   ",
+              end="", flush=True)
+    print()
+
+    rows: list[dict] = []
+    for label, _engine, _det, _graphs in [("lockstep, fast mode", None, None, None),
+                                          ("lockstep, invariant", None, None, None)] + \
+                                         [(spec[0], spec[1], spec[2], spec[3])
+                                          for spec in external_specs]:
+        got = samples.get(label)
+        if not got:
+            rows.append({"config": label, "seconds": None, "measured": False,
+                         "why": "no external environment supplied"
+                                if label.startswith(("vLLM", "SGLang"))
+                                else "not measured"})
+            continue
+        rows.append({
+            "config": label, "seconds": statistics.median(got), "samples": got,
+            "measured": True,
+            "spread_ratio": max(got) / min(got),
+            "gpu_state": observed.get(label, []),
+        })
 
     # Both graph modes for vLLM. Eager against eager is the like-for-like
     # comparison, since this engine has no graphs; graphed is what vLLM actually
@@ -159,42 +244,19 @@ def main() -> int:
     # would use. Publishing only the first flatters this engine by degrading the
     # comparator, and publishing only the second hides that the gap is partly a
     # feature this engine simply does not have.
-    external = [
-        ("vLLM default, eager", "vllm", False, False),
-        ("vLLM VLLM_BATCH_INVARIANT=1, eager", "vllm", True, False),
-        ("vLLM default, cudagraphs", "vllm", False, True),
-        ("vLLM VLLM_BATCH_INVARIANT=1, cudagraphs", "vllm", True, True),
-        ("SGLang deterministic", "sglang", True, False),
-    ]
-    for label, engine, deterministic, cuda_graphs in external:
-        if args.external_python is None or not args.external_python.exists():
-            rows.append({"config": label, "seconds": None, "measured": False,
-                         "why": "no external environment supplied"})
-            continue
-        samples = [
-            s for s in (time_external(args.external_python, engine, deterministic,
-                                      trace, cuda_graphs)
-                        for _ in range(args.runs))
-            if s is not None
-        ]
-        rows.append({
-            "config": label,
-            "seconds": statistics.median(samples) if samples else None,
-            "samples": samples,
-            "measured": bool(samples),
-            "why": "" if samples else "engine not present in the external environment",
-        })
-
     by = {r["config"]: r["seconds"] for r in rows if r["measured"]}
     baseline = by["lockstep, fast mode"]
 
-    print(f"  {'configuration':<32} {'wall time vs lockstep fast':>27}")
-    print("  " + "-" * 61)
+    print(f"  {'configuration':<40} {'vs fast':>8}   {'sample spread':>13}")
+    print("  " + "-" * 68)
     for row in rows:
         if not row["measured"]:
             print(f"  {row['config']:<32} {'not measured':>27}   {row.get('why', '')}")
             continue
-        print(f"  {row['config']:<32} {row['seconds'] / baseline:>26.2f}x")
+        spread = row.get("spread_ratio", 1.0)
+        flag = "  <- unstable" if spread > 1.25 else ""
+        print(f"  {row['config']:<40} {row['seconds'] / baseline:>8.2f}x"
+              f"   spread {spread:4.2f}x{flag}")
 
     # Absolute standing is the headline. The within-engine cost of determinism
     # is deliberately NOT printed as a side-by-side against vLLM's: this engine's
@@ -232,6 +294,9 @@ def main() -> int:
     if not args.no_artifact:
         path = Artifact(kind="throughput", env=env,
                         payload={"trace_tokens": total_tokens, "runs": args.runs,
+                                 "interleaved": True,
+                                 "measurement_order_seed": 20260806,
+                                 "provenance": provenance,
                                  "rows": rows, "derived": derived}).write()
         print(f"artifact  {relpath(path)}")
     return 0

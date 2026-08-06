@@ -27,7 +27,7 @@ from harness.fuzz.faults import FAULTS  # noqa: E402
 from harness.fuzz.generators import draw_case, draw_config, eviction_cases  # noqa: E402
 from harness.minimize.ddmin import minimize  # noqa: E402
 from harness.sim.driver import Case, run_case  # noqa: E402
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 from report.divergence import Divergence  # noqa: E402
 
 
@@ -217,8 +217,12 @@ def main() -> int:
                         help="Run one campaign per architecture doc 10.1 operator.")
     parser.add_argument("--eviction-campaign", type=int, default=0,
                         help="Cases aimed at _reserve_with_eviction specifically.")
+    parser.add_argument("--allow-dirty", action="store_true",
+                        help="produce a claim artifact from an uncommitted "
+                             "tree; recorded in the artifact when used")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
+    provenance = require_clean_tree(args.allow_dirty)
 
     model = Qwen3(REPO_ROOT / "weights" / "Qwen3-0.6B", max_len=1024)
     env = envlock.capture()
@@ -287,6 +291,12 @@ def main() -> int:
             "eviction_passes_max_in_one_case": max_passes_seen,
             "pass_count_assertion_fired": assertion_fired,
             "findings": evict_findings,
+            # Recorded so the eviction phase's contribution to coverage is
+            # inspectable rather than inferred. Whether a named campaign is
+            # credited as exploration depends on whether it reaches n-grams
+            # outside the subsystem it targets, and that cannot be argued from an
+            # artifact that does not carry the numbers.
+            "coverage": evict_coverage.as_dict(),
         }
         print(f"  cases run                      {len(cases)}")
         print(f"  eviction passes, total         {total_passes}")

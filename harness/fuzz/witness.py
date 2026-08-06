@@ -92,7 +92,10 @@ def gather(model, cases) -> Coverage:
         except Exception:  # noqa: BLE001 - a crash is the campaign's business
             continue
         for events in outcome.events.values():
-            coverage.observe_transitions(events)
+            # observe_events, not observe_transitions: n-gram coverage is the
+            # headline figure claim 1 reports, so both populations have to carry
+            # it or the split cannot be stated for the number that matters.
+            coverage.observe_events(events)
     return coverage
 
 
@@ -125,6 +128,23 @@ def main() -> int:
             dead.append((state.value, event.value))
         print(f"  ({state.value}, {event.value})".ljust(36)
               + f"{'yes' if a else 'no':>9} {'yes' if b else 'no':>9}")
+
+    combined = Coverage()
+    combined.observed_ngrams = {
+        n: unaided.observed_ngrams[n] | probed.observed_ngrams[n]
+        for n in unaided.ngram_n
+    }
+    combined.witnessed_transitions = (
+        unaided.witnessed_transitions | probed.witnessed_transitions
+    )
+
+    print()
+    print("  n-gram coverage, against the corrected denominators")
+    print(f"    {'':<22} {'campaign':>10} {'+targeted':>10} {'denominator':>12}")
+    for n in (2, 3):
+        seen_a, total = unaided.ngram_fraction(n)
+        seen_b = len(combined.observed_ngrams[n])
+        print(f"    lifecycle {n}-grams{'':<8} {seen_a:>10} {seen_b:>10} {total:>12}")
 
     print()
     print(f"  reached by the standard campaign unaided   "
