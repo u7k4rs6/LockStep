@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "fuzz",
-  "created_utc": "2026-08-05T16:35:36Z",
+  "created_utc": "2026-08-06T07:13:56Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -19,24 +19,20 @@
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": null,
-    "engine_revision": "bed028f2d38e-dirty",
+    "engine_revision": "44e3b4af741b-dirty",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "820e5c31150d33adbc663e7d77e8bd7e2a7fd9b8c4228c0043acd9e5b4e9b921"
+    "digest": "2ac5edaa150b9a30e7672e2227ab38c2640e40c6a54b12396cda04915f076b76"
   },
   "payload": {
     "cases_executed": 72,
     "coverage": {
-      "denominator_derivation": "derived from 14 declared transitions over 6 reachable states; 8 events in the alphabet, 48 (state, event) pairs considered, 14 legal",
+      "denominator_derivation": "derived from 13 declared transitions over 6 reachable states; 8 events in the alphabet, 48 (state, event) pairs considered, 13 legal",
       "ngrams": {
         "2": {
           "observed": 15,
-          "feasible": 27,
+          "feasible": 25,
           "missing": [
             [
-              "admit",
-              "preempt_rc"
-            ],
-            [
               "cache_hit",
               "chunk"
             ],
@@ -75,16 +71,12 @@
             [
               "resume",
               "evict"
-            ],
-            [
-              "resume",
-              "preempt_rc"
             ]
           ]
         },
         "3": {
           "observed": 28,
-          "feasible": 84,
+          "feasible": 79,
           "missing": [
             [
               "admit",
@@ -122,16 +114,6 @@
               "chunk"
             ],
             [
-              "admit",
-              "evict",
-              "preempt_rc"
-            ],
-            [
-              "admit",
-              "preempt_rc",
-              "resume"
-            ],
-            [
               "cache_hit",
               "chunk",
               "chunk"
@@ -302,11 +284,6 @@
               "evict"
             ],
             [
-              "preempt_rc",
-              "resume",
-              "preempt_rc"
-            ],
-            [
               "resume",
               "cache_hit",
               "chunk"
@@ -355,16 +332,6 @@
               "resume",
               "evict",
               "evict"
-            ],
-            [
-              "resume",
-              "evict",
-              "preempt_rc"
-            ],
-            [
-              "resume",
-              "preempt_rc",
-              "resume"
             ]
           ]
         }
@@ -416,7 +383,19 @@
         "finish": 332,
         "preempt_rc": 11,
         "resume": 11
-      }
+      },
+      "transitions_witnessed": 11,
+      "transitions_declared": null,
+      "transitions_unwitnessed": [
+        [
+          "prefilling",
+          "evict"
+        ],
+        [
+          "prefilling",
+          "preempt_rc"
+        ]
+      ]
     },
     "findings": [],
     "seeded_faults": [
@@ -447,7 +426,7 @@
         "counters_seen": {
           "eviction_taken": 0
         },
-        "seconds": 43.9,
+        "seconds": 25.3,
         "detail": "AssertionError: unpinning block 0, which the cache does not hold"
       },
       {
@@ -477,7 +456,7 @@
         "counters_seen": {
           "eviction_taken": 31
         },
-        "seconds": 317.1,
+        "seconds": 179.3,
         "detail": "OutOfBlocks: all 4 blocks are held; the policy must evict or preempt b"
       },
       {
@@ -492,7 +471,7 @@
         "counters_seen": {
           "cache_hit": 1
         },
-        "seconds": 17.9,
+        "seconds": 10.6,
         "detail": "r01 diverged from canonical: [36089] != [32995]"
       },
       {
@@ -507,7 +486,7 @@
         "counters_seen": {
           "prefill_chunk": 2570
         },
-        "seconds": 419.1,
+        "seconds": 239.1,
         "detail": "UndeclaredTransition: observed the 2-gram ['decode', 'chunk'], which t"
       },
       {
@@ -524,7 +503,7 @@
           "preempt_fired": 3,
           "resume": 3
         },
-        "seconds": 1.3,
+        "seconds": 1.1,
         "detail": "r00 diverged from canonical: [271, 13874, 492, 87423] != [271, 13874, "
       },
       {
@@ -539,7 +518,7 @@
         "counters_seen": {
           "decode_step": 9
         },
-        "seconds": 5.6,
+        "seconds": 4.5,
         "detail": "r00 diverged from canonical: [2548] != [67308]"
       },
       {
@@ -554,23 +533,23 @@
         "counters_seen": {
           "attention_multi_split": 23
         },
-        "seconds": 333.8,
+        "seconds": 214.0,
         "detail": "golden bytes differ from the committed baseline at prompt_600, prompt_"
       },
       {
         "fault": "split_size_read_from_batch",
         "operator": "one code path reads split size from batch size",
         "verdict": "killed",
-        "mutation_took_effect": 86,
+        "mutation_took_effect": 28,
         "mechanism": "bitwise divergence",
         "requires": [
           "admit"
         ],
         "counters_seen": {
-          "admit": 10
+          "admit": 7
         },
-        "seconds": 10.1,
-        "detail": "r00 diverged from canonical: [74866, 106, 30844, 136933] != [5858, 13,"
+        "seconds": 1.3,
+        "detail": "r00 logit bytes diverged from canonical at emitted position 0, max abs"
       }
     ],
     "eviction_campaign": {

@@ -227,8 +227,11 @@ def mr5_occupancy(model, prompt, kv_tokens, block_size) -> Result:
     MR1 and fail this.
     """
     tile = 16  # BLOCK_M in the pinned registry
-    canonical, _ = run(model, [_request("r0", prompt)], blocks_for(kv_tokens * 4, block_size), block_size)
+    canonical, canonical_sched = run(
+        model, [_request("r0", prompt)], blocks_for(kv_tokens * 4, block_size), block_size
+    )
     expected = canonical["r0"]
+    canonical_rows = canonical_sched.emitted_logits.get("r0") or []
 
     cases = []
     passed = True
@@ -240,12 +243,23 @@ def mr5_occupancy(model, prompt, kv_tokens, block_size) -> Result:
             blocks_for(kv_tokens * 4, block_size),
             block_size,
         )
+        # Tokens first, then the decode-phase logit bytes. MR5 compared emitted
+        # ids only, so a cohabitant that shifted r0's logits below the
+        # top-1-to-top-2 gap passed it, which is the perturbation this relation
+        # exists to catch.
         identical = outputs.get("r0") == expected
+        rows_identical = True
+        for a, b in zip(canonical_rows, scheduler.emitted_logits.get("r0") or []):
+            if not torch.equal(a, b):
+                rows_identical = False
+                break
+        identical = identical and rows_identical
         passed &= identical
         cases.append({
             "filler_tokens": filler_len,
             "packed_tokens": len(prompt) + filler_len,
             "identical": identical,
+            "logit_bytes_identical": rows_identical,
         })
 
     return Result(
@@ -253,12 +267,58 @@ def mr5_occupancy(model, prompt, kv_tokens, block_size) -> Result:
         "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
         passed,
         f"{sum(1 for c in cases if c['identical'])}/{len(cases)} occupancy shifts left r0 "
-        f"bitwise unchanged, block_size={block_size}",
+        f"bitwise unchanged in tokens and decode-phase logit bytes, "
+        f"block_size={block_size}",
         cases,
     )
 
 
 # ---- MR8: temperature-0 tie-break -------------------------------------------
+
+
+def eos_finish(model, prompt, kv_tokens, block_size) -> Result:
+    """A request that stops on EOS produces what an unbounded one would.
+
+    `Scheduler` has accepted `eos_token_ids` since week 2 and its docstring says
+    "Requests that hit their limit or an EOS finish". No relation, campaign, or
+    benchmark ever passed one, so `generated[-1] in self.eos` had never been true
+    and half that disjunction was dead code with no counter able to say so.
+
+    The token to stop on is taken from a first unbounded run rather than guessed,
+    because a token the model never emits would leave this relation green and
+    still exercise nothing, which is the vacuous-pass shape this repository has
+    caught repeatedly. The relation asserts the EOS run is a strict prefix of the
+    unbounded one, ending at the chosen token, and requires the counter to fire.
+    """
+    blocks = blocks_for(kv_tokens, block_size)
+    unbounded, _ = run(model, [_request("e0", prompt, new_tokens=8)], blocks, block_size)
+    baseline = unbounded["e0"]
+    if len(baseline) < 3:
+        return Result("EOS", "EOS finishing matches an unbounded run", False,
+                      "the unbounded run emitted too few tokens to stop inside")
+
+    stop_at = baseline[2]
+    scheduler = Scheduler(model, num_blocks=blocks, block_size=block_size,
+                          eos_token_ids={stop_at})
+    scheduler.submit(_request("e0", prompt, new_tokens=8))
+    outputs = scheduler.run()
+    got = outputs["e0"]
+
+    expected = baseline[: baseline.index(stop_at) + 1]
+    identical = got == expected
+    fired = scheduler.counters["finish_eos"] > 0
+    require_fired(scheduler.counters, "finish_eos", what="the EOS relation")
+    return Result(
+        "EOS",
+        "a request stopping on EOS emits the prefix an unbounded run would",
+        identical and fired,
+        f"stopped on token {stop_at} after {len(got)} tokens, "
+        f"{'prefix matches' if identical else 'PREFIX DIFFERS'} the unbounded run "
+        f"({len(baseline)} tokens), finish_eos fired {scheduler.counters['finish_eos']}x, "
+        f"block_size={block_size}",
+        [{"stop_token": stop_at, "emitted": len(got), "unbounded": len(baseline),
+          "identical": identical, "finish_eos": scheduler.counters["finish_eos"]}],
+    )
 
 
 def mr8_tiebreak_under_permutation(model, prompts, kv_tokens, block_size) -> Result:

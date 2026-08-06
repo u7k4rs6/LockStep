@@ -63,7 +63,6 @@ TRANSITIONS: dict[tuple[State, Event], State] = {
     (State.PREFILLING, Event.DECODE): State.DECODING,
     (State.PREFILLING, Event.PREEMPT_RC): State.PREEMPTED,
     (State.PREFILLING, Event.EVICT): State.PREFILLING,
-    (State.ADMITTED, Event.PREEMPT_RC): State.PREEMPTED,
     (State.DECODING, Event.DECODE): State.DECODING,
     (State.DECODING, Event.PREEMPT_RC): State.PREEMPTED,
     (State.DECODING, Event.FINISH): State.DONE,
@@ -104,11 +103,30 @@ TRANSITIONS: dict[tuple[State, Event], State] = {
 # unreachable, because a request in DECODING has already been admitted and
 # nothing reserves blocks again.
 #
-# Four errors in this table now, caught by the same check: CACHE_HIT on the wrong
-# state, and three removals that were wrong. Every one was found by a real run
-# contradicting the declaration rather than by review. That is the argument for
-# checking a denominator against reality instead of trusting it.
+# Five errors in this table now. The fifth is different in kind from the other
+# four and is the reason `Coverage.observe_transitions` exists.
+#
+# The n-gram check is one-directional: it asserts that every observed n-gram is
+# legal, so the denominator can only ever be too large. Nothing asserted the
+# converse, that every declared transition is reachable, and (ADMITTED,
+# PREEMPT_RC) was not. It sat here inflating the denominator through every
+# coverage number this project published, and no run could have contradicted it,
+# because a transition that never fires produces no evidence of its own absence.
+#
+# It was found by witnessing instead: every declared transition must be taken by
+# some real run, or moved here with an argument. Two others were unwitnessed in
+# the first campaign, (PREFILLING, EVICT) and (PREFILLING, PREEMPT_RC), and a
+# campaign built to target them witnessed both, so they are rare rather than
+# dead. This one survived that campaign, and the engine argument above says why.
 UNREACHABLE_BY_DESIGN: dict[tuple[State, Event], str] = {
+    (State.ADMITTED, Event.PREEMPT_RC): (
+        "preemption fires only for a running request with kv_len != 0 and at "
+        "least one generated token. A request still in ADMITTED was admitted "
+        "this step, and _admit sets kv_len = 0; the only thing that raises it "
+        "before any chunk is a cache hit, which emits CACHE_HIT and moves the "
+        "request to PREFILLING first. So a request whose state is still ADMITTED "
+        "has kv_len == 0 and the preemption loop skips it"
+    ),
     (State.DECODING, Event.EVICT): (
         "a decoding request has been admitted and nothing reserves blocks again"
     ),

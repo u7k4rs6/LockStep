@@ -45,6 +45,7 @@ class Coverage:
     boundary_hits: dict[str, set] = field(default_factory=dict)
     preempt_depths: dict[int, int] = field(default_factory=dict)
     event_counts: dict[str, int] = field(default_factory=dict)
+    witnessed_transitions: set = field(default_factory=set)
 
     def __post_init__(self) -> None:
         for n in self.ngram_n:
@@ -54,8 +55,38 @@ class Coverage:
 
     # -- recording ------------------------------------------------------------
 
+    def observe_transitions(self, events: list[Event]) -> None:
+        """Record which declared (state, event) transitions actually fired.
+
+        The n-gram check is one-directional: it asserts observed transitions are
+        legal, so the denominator can only ever be too large. Nothing asserted
+        the converse, that every declared transition is reachable, so a spurious
+        entry inflates the denominator and depresses coverage silently and
+        forever. This is the other direction, and it needs a witness per
+        transition rather than an argument.
+        """
+        from engine.sched.lifecycle import INITIAL, TRANSITIONS
+
+        state = INITIAL
+        for event in events:
+            key = (state, event)
+            if key not in TRANSITIONS:
+                return  # the n-gram check reports this; do not double-report
+            self.witnessed_transitions.add(key)
+            state = TRANSITIONS[key]
+
+    def unwitnessed_transitions(self) -> list[tuple]:
+        """Declared transitions no run has ever taken."""
+        from engine.sched.lifecycle import TRANSITIONS
+
+        return sorted(
+            (s.value, e.value) for (s, e) in TRANSITIONS
+            if (s, e) not in self.witnessed_transitions
+        )
+
     def observe_events(self, events: list[Event]) -> None:
         """Record one request's event sequence, and its n-grams."""
+        self.observe_transitions(events)
         for event in events:
             self.event_counts[event.value] = self.event_counts.get(event.value, 0) + 1
         for n in self.ngram_n:
@@ -119,6 +150,17 @@ class Coverage:
             )
             lines.append(f"    {name:<32} {marks}")
 
+        unwitnessed = self.unwitnessed_transitions()
+        from engine.sched.lifecycle import TRANSITIONS
+        lines.append("")
+        lines.append(f"  declared transitions     "
+                     f"{len(TRANSITIONS) - len(unwitnessed)}/{len(TRANSITIONS)} "
+                     f"witnessed by this campaign unaided")
+        for state, event in unwitnessed:
+            lines.append(f"    not reached here       ({state}, {event})"
+                         "  <- see the witness table; a targeted probe proves "
+                         "reachability, it does not count as exploration")
+
         lines.append("")
         depths = self.preempt_depths
         top = max(depths) if depths else 0
@@ -146,4 +188,7 @@ class Coverage:
             "boundary_fraction": list(self.boundary_fraction()),
             "preemption_depth": dict(sorted(self.preempt_depths.items())),
             "event_counts": dict(sorted(self.event_counts.items())),
+            "transitions_witnessed": len(self.witnessed_transitions),
+            "transitions_declared": None,
+            "transitions_unwitnessed": self.unwitnessed_transitions(),
         }

@@ -119,6 +119,8 @@ class Scheduler:
         self.step_index = 0
         self.evictions = 0
         self.trajectory = TrajectoryHash()
+        # uid -> one fp16 logit row per emitted token, in emission order.
+        self.emitted_logits: dict[str, list] = {}
 
     def submit(self, request: Request) -> None:
         """Queue a request, refusing one that can never fit.
@@ -373,6 +375,16 @@ class Scheduler:
                 self.counters.hit("prefill_complete")
             row = logits[request.uid][-1]
             position = request.total_tokens() - 1
+            # The raw logit row at every emitted position, kept so a relation can
+            # compare decode-phase bits against canonical. MR1 compared logit
+            # bytes only for whole-prompt prefills at position 0; every other
+            # relation and the fuzz oracle compared emitted token ids, so a
+            # batch-dependent perturbation below the top-1-to-top-2 gap survived
+            # every check until it happened to flip a token, which is exactly the
+            # masking harness/mr/equivalence.py warns about in its own docstring.
+            self.emitted_logits.setdefault(request.uid, []).append(
+                row.detach().cpu().clone()
+            )
             if request.temperature <= 0:
                 token = philox.greedy(row)
             else:
@@ -409,6 +421,12 @@ class Scheduler:
             if done:
                 request.finished = True
                 self.counters.hit("finish")
+                # Which half of the disjunction fired. Without this the coverage
+                # report cannot tell that EOS finishing has never executed.
+                if request.generated and request.generated[-1] in self.eos:
+                    self.counters.hit("finish_eos")
+                else:
+                    self.counters.hit("finish_limit")
                 self._event(request.uid, Event.FINISH)
                 self.running.remove(request)
                 self.done.append(request)

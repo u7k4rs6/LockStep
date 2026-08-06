@@ -24,6 +24,7 @@ from harness.mr.equivalence import (  # noqa: E402
     decode_vs_prefill_kv,
     mr1_batch_composition,
     mr2_chunk_partition,
+    path_equivalence,
 )
 from harness.mr.relations import (  # noqa: E402
     mr6_cross_process,
@@ -33,6 +34,7 @@ from harness.mr.relations import (  # noqa: E402
 )
 from harness.mr.state import (  # noqa: E402
     boundary_cases,
+    eos_finish,
     mr3_preempt_resume,
     mr4_cache_cold_vs_warm,
     mr5_occupancy,
@@ -115,6 +117,9 @@ def main() -> int:
         print(f"block_size = {block_size}")
         short = uneven_prompts(vocab, 5)
         block_results = [
+            # First, because every relation below it and every observer in the
+            # project reads one of the two paths it compares.
+            path_equivalence(model, [long_prompt] + short[:2], block_size=block_size),
             decode_vs_prefill_kv(model, long_prompt, block_size=block_size),
             mr1_batch_composition(model, uneven_prompts(vocab, 32), block_size=block_size),
             mr2_chunk_partition(model, long_prompt, block_size=block_size),
@@ -122,6 +127,7 @@ def main() -> int:
             mr4_cache_cold_vs_warm(model, short[0], KV_TOKENS, block_size),
             mr5_occupancy(model, short[0], KV_TOKENS, block_size),
             mr8_tiebreak_under_permutation(model, short, KV_TOKENS, block_size),
+            eos_finish(model, short[0], KV_TOKENS, block_size),
             mr6_replay(model, requests,
                        num_blocks=paged_blocks(KV_TOKENS, block_size),
                        workloads=replay_workloads(vocab)),

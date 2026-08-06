@@ -46,8 +46,30 @@ first two both missed.
 | **I1 to I4** | the engine | itself, under a perturbed schedule | none, bitwise | any perturbation uniform across schedules |
 | **F1** | the engine | an fp64 CPU reference | max abs logit error 0.5 | anything inside the tolerance |
 | **golden bytes** | the engine | a committed baseline digest | none, bitwise | any change made before the baseline was written |
+| **path equivalence** | the observed implementation | the served one | none, bitwise | anything both implementations get wrong identically |
 
-The first two blind spots overlap exactly where a real fault lives. Reverse the
+The fourth row was missing for most of this project, and its absence was not a
+gap in coverage so much as a gap in the taxonomy's own logic. All three original
+observers call `model.forward`, the batch-1 contiguous path. Every request the
+scheduler serves goes through `model.forward_batch`, a separate implementation
+with its own packing, position indexing, per-sequence attention loop and
+`write_kv` calls. Nothing asserted the two agree.
+
+That is the one conjunction the other three cannot cover between them. A
+deterministic defect confined to `forward_batch` is invisible to I1 to I4,
+because canonical execution C(r) also runs `forward_batch` and both sides of
+every comparison move together; and invisible to F1 and golden bytes, because
+they never execute the code. Three observers with distinct blind spots still
+share one if they all read the same wrong file.
+
+`PATH-EQ` in `harness/mr/equivalence.py` now asserts `forward(x)` equals
+`forward_batch([x])` bitwise at every position, and the golden baseline was moved
+onto `forward_batch` so it observes the served path rather than resting on that
+assertion holding. Both pass: 3 of 3 prompts over 730 positions bitwise
+identical, and all four committed digests unchanged by the move, which is the
+same fact arrived at twice.
+
+The first three blind spots overlap exactly where a real fault lives. Reverse the
 fold loop in the split-combine CTA, descending instead of ascending, and every
 metamorphic relation still passes. Not because the relations are weak, but
 because the reversal is not a function of the schedule: the split count follows
@@ -125,8 +147,8 @@ repair, it is a new claim.
 
 | # | Claim | Value | Reproduce |
 |---|---|---|---|
-| 1 | Invariance under adversarial scheduling | see `harness/mr/run.py`; 55 of 55 relation runs bitwise identical across 5 block sizes | `python3 -m harness.mr.run` |
-| 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 17.9 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
+| 1 | Invariance under adversarial scheduling | **65 of 65** relation runs bitwise identical across 5 block sizes, 13 relations including path equivalence and EOS finishing | `python3 -m harness.mr.run` |
+| 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 10.6 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
 | 3 | Cost of determinism | 1.05x within lockstep; lockstep invariant is **4.7x** vLLM batch-invariant eager and **4.8x** with CUDA graphs | `python3 -m bench.throughput` |
 
 Claim 3, in full, on a committed 8-request 2972-token trace, median of 5. Four of
@@ -153,14 +175,53 @@ trace against an eager-only comparator.
 
 Both comparator configurations are published because the earlier benchmark
 hardcoded `enforce_eager=True` for vLLM, which handicapped it by exactly the
-feature this engine lacks. Measuring both turned out to matter less than
-expected, and the reason is itself worth reporting: **CUDA graphs give vLLM's
-batch-invariant mode no measurable benefit on this trace**, 0.22x either way,
-while they improve its default mode from 0.17x to 0.14x. That is consistent with
-vLLM's documentation, which says the batch-invariant attention operators do not
-support `FULL` or `FULL_DECODE_ONLY` cudagraph modes. So the eager-versus-eager
-comparison was not unfair for the row that matters; the number moved because the
-trace now crosses the split, not because the comparator was ungagged.
+feature this engine lacks.
+
+**CUDA graphs cost vLLM's batch-invariant mode its own speedup.** Enabling them
+moves vLLM's default mode from 0.446s to 0.358s, a 20 percent gain, and moves its
+batch-invariant mode from 0.587s to 0.579s, which is nothing. Determinism does
+not merely cost 1.3x here; it also forfeits the graph speedup that the
+unconstrained path keeps, so the gap between the two modes *widens* when graphs
+are on, from 1.32x to 1.62x. vLLM's documentation says the batch-invariant
+attention operators do not support `FULL` or `FULL_DECODE_ONLY` cudagraph modes,
+so this is consistent rather than surprising, but it is a real datapoint about
+the cost structure of determinism and it is not visible from an eager-only
+comparison. A reader deciding whether to turn batch invariance on in production
+should price in both the direct cost and the optimization it forecloses.
+
+A consequence for this project's own headline: the eager-versus-eager comparison
+was not unfair for the row that decides it, because graphs give the invariant row
+nothing. The number moved from 3.3x to 4.7x because the trace now crosses the
+split, not because the comparator was ungagged.
+
+### The kill criterion was crossed, and here it is
+
+`docs/01-PRD.md` section 11 set a kill criterion for this project before any of
+it was built: **"Below 15 percent of vLLM default after the CUDA-graph pass"**,
+with the prescribed response being to reframe explicitly as a
+correctness-reference engine and publish only ratios rather than absolute tokens
+per second.
+
+Measured on this trace:
+
+| baseline | lockstep invariant runs at |
+|---|---|
+| vLLM default, eager | 16.1 percent |
+| vLLM default, CUDA graphs | **13.0 percent** |
+
+**Against vLLM default with graphs, which is how anyone would actually run it,
+this is below the bar the project set for itself.** Stated here rather than left
+for a reader to divide 0.358 by 2.766 and notice that a threshold was set and
+quietly passed under. A claims table is worth what its least convenient entry is
+worth.
+
+Two qualifications, neither of which is an excuse. The criterion reads "after the
+CUDA-graph pass", and this engine never received one: CUDA graphs were cut in
+week 7 to fund the certifier, so the condition the criterion presupposes was
+never met and no claim is made about where the number would land with one. And
+the prescribed response was already in force before the measurement, since this
+file has published ratios and refused absolute tokens per second from the start.
+What was missing was the disclosure, which is the part that mattered.
 
 **Cost of determinism inside this engine**: **1.05x** against its own fast path,
 which differs in exactly one way, letting torch pick the GEMM. That measures the
@@ -215,6 +276,40 @@ behaviour on a laptop GPU, not a change in detection power. Time to detection is
 reported because the architecture doc asks for it, and it should be read as an
 order of magnitude rather than a measurement.
 
+## Coverage, with the denominator it is actually against
+
+From the campaign backing claim 2, against the corrected denominators:
+
+| metric | reached |
+|---|---|
+| lifecycle 2-grams | 15 of 25 |
+| lifecycle 3-grams | 28 of 79 |
+| boundary predicates | 17 of 20 |
+| declared transitions, **campaign unaided** | 11 of 13 |
+
+Those denominators are 25 and 79 rather than the 27 and 84 published earlier,
+because `(ADMITTED, PREEMPT_RC)` was declared and unreachable. Every coverage
+percentage this project reported before that correction was computed against a
+denominator that was too large.
+
+**Reachability is reported separately from exploration**, and the distinction
+matters more than the numbers. `python3 -m harness.fuzz.witness` runs the
+standard swarm campaign and a purpose-built probe as two populations:
+
+| | transitions |
+|---|---|
+| reached by the standard campaign unaided | 12 of 13 |
+| reachable at all, once a targeted probe is added | 13 of 13 |
+| declared unreachable, with a written argument | 2 |
+
+Only `(PREFILLING, PREEMPT_RC)` needs the probe, and it is genuinely rare rather
+than dead: it requires a resumed request re-prefilling in chunks while already
+holding generated tokens. **A transition reached only by a case built to reach it
+does not count toward the coverage number.** A probe proves a transition belongs
+in the denominator; it says nothing about whether the generator explores the
+space, and folding the two together would let any coverage figure be improved by
+writing more probes.
+
 ## What this does not claim
 
 - **No novelty on batch-invariant kernels.** Thinking Machines published the
@@ -239,8 +334,15 @@ order of magnitude rather than a measurement.
   fold order, and the batch-derived split size. Scoring against unreachable
   operators measures nothing, and ten is a thin denominator even so.
 - **Coverage is a percentage of a derived denominator**, not of an exhaustive
-  one. The denominator comes from a declared transition relation; it is checked
-  against reality but it is still a model.
+  one. The denominator comes from a declared transition relation. It is now
+  checked in both directions: every n-gram a run produces must be legal, and
+  every declared transition must have been taken by some real run or moved to
+  `UNREACHABLE_BY_DESIGN` with an argument. The second check was missing until
+  late and found one dead transition, `(ADMITTED, PREEMPT_RC)`, which had
+  inflated the denominator from its first day. Removing it took the 2-gram
+  denominator from 27 to 25 and the 3-gram from 84 to 79, so every coverage
+  percentage this project published before that point was computed against a
+  denominator that was too large. It is still a model.
 - **Execution-counter gating proves the path ran, not that the patch took
   effect.** These are different claims and the counters cannot tell them apart.
   A mutation operator that rebinds a name in the module defining it leaves an
@@ -262,8 +364,16 @@ order of magnitude rather than a measurement.
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
 thirteen times in this repository. Rows 1 to 8 were found by this project's own
-machinery or while fixing what it found; rows 9 to 12 were found by an outside
-audit; row 13 was found afterwards, by neither, from an anomaly in the results.
+machinery or while fixing what it found; rows 9 to 12b were found by an outside
+audit; row 13 came from an anomaly in the results and belongs to neither.
+
+Row 12b is numbered that way on purpose rather than made a fourteenth entry. The
+audit named `(ADMITTED, PREEMPT_RC)` outright, with the `kv_len` argument and the
+25 and 79 denominators worked out, so the witness check did not discover it. What
+the check did was reproduce that result from a different direction, mechanically,
+without being told the answer. That is worth more than a fourteenth row and less
+than a new finding, and counting it as new would inflate a table whose only value
+is that it does not.
 That distribution is the most useful thing in the table. Most instances were
 caught by a run contradicting a declaration. Several were not, and the reason
 each escaped is worth more than the fix:
@@ -283,6 +393,7 @@ each escaped is worth more than the fix:
 | 11 | A concurrency cap in the security config | `max_concurrency: 1` sat in `certify/config.json` from week 8 and no code path read it. Enforcing it later revealed it also made batching impossible, so the one setting that would have prevented finding 9 was both unenforced and wrong |
 | 12 | One edit applied to two files | It matched in one and silently no-op'd in the other, so an artifact shipped without the fields that prove its own batch witness fired. Caught by reading the artifact back, not by the edit reporting success |
 | 13 | An observable comparing repeated runs for identical output | Every comparison was repeat 0 against a later repeat, so "the engine is nondeterministic" and "the first batch differs and everything after it agrees" were indistinguishable. Structurally the same error as comparing a mutant only against canonical, in the file written to certify determinism |
+| 12b | A coverage denominator checked against reality | The check ran in one direction only. Observed transitions had to be legal, so the denominator could only be too large; nothing required a declared transition to be reachable. `(ADMITTED, PREEMPT_RC)` was not, and inflated every published coverage number, because a transition that never fires produces no evidence of its own absence. **Named by the audit, then independently reconfirmed by the witness check built in response to it** |
 
 The thirteenth is the one worth reading last, because it was invisible to
 everyone. `certify/run.py` compared repeat 0 against each later repeat and never

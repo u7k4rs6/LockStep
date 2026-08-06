@@ -39,7 +39,7 @@ import torch  # noqa: E402
 
 from engine.kernels import registry  # noqa: E402
 from engine.kv import paged  # noqa: E402
-from engine.model.qwen3 import Qwen3  # noqa: E402
+from engine.model.qwen3 import KVCache, Qwen3  # noqa: E402
 
 SPLIT = registry.SPLIT_SIZE
 
@@ -189,6 +189,76 @@ def decode_vs_prefill_kv(
         "decode-produced KV is bit-identical to prefill-produced KV",
         False,
         f"first divergence layer {layer} {tensor}[{position}], max abs {magnitude:.3e}",
+    )
+
+
+def path_equivalence(
+    model: Qwen3, prompts: list[list[int]],
+    block_size: int = paged.DEFAULT_BLOCK_SIZE,
+) -> Result:
+    """`forward(x)` must equal `forward_batch([x])` bitwise, per position.
+
+    The observers all watched a path the engine does not serve from. F1, the
+    golden baseline, and `bench/fidelity.py` call `model.forward`, the batch-1
+    contiguous path. Every request the scheduler serves goes through
+    `model.forward_batch`, a separate implementation with its own packing,
+    position indexing, per-sequence attention loop and `write_kv` calls. Nothing
+    asserted the two agree.
+
+    That is a hole the three-observer taxonomy could not see into. I1 to I4 miss
+    a defect confined to `forward_batch` because canonical execution C(r) also
+    runs `forward_batch`, so both sides of every comparison move together. F1 and
+    golden bytes miss it because they never execute the code. A deterministic,
+    schedule-uniform defect in the served path would therefore be invisible to
+    all three at once, which is exactly the conjunction the taxonomy was written
+    to rule out.
+
+    Checked at the logits, bitwise, for every position rather than only the last:
+    a defect in position indexing or in the packed offsets would show up at
+    interior positions first and might not reach the final row at all.
+    """
+    cases = []
+    passed = True
+
+    for index, prompt in enumerate(prompts):
+        cache = KVCache(model.cfg, len(prompt), model.device, block_size=block_size)
+        single = model.forward(
+            torch.tensor(prompt, dtype=torch.long, device=model.device), 0, cache
+        ).clone()
+        del cache
+
+        pool = _pool(model, [len(prompt)], block_size)
+        uid = "solo"
+        pool.create(uid)
+        pool.reserve(uid, len(prompt))
+        batched = model.forward_batch(pool, [(uid, prompt, 0)])[uid].clone()
+        del pool
+        torch.cuda.empty_cache()
+
+        identical = torch.equal(single, batched)
+        passed &= identical
+        row = None
+        if not identical:
+            rows = torch.nonzero((single != batched).any(dim=-1)).flatten()
+            row = int(rows[0])
+        cases.append({
+            "prompt_tokens": len(prompt),
+            "positions": single.shape[0],
+            "identical": identical,
+            "first_differing_position": row,
+            "max_abs": 0.0 if identical else float(
+                (single.to(torch.float64) - batched.to(torch.float64)).abs().max()
+            ),
+        })
+
+    return Result(
+        "PATH-EQ",
+        "forward and forward_batch produce identical logits for a lone request",
+        passed,
+        f"{sum(1 for c in cases if c['identical'])}/{len(cases)} prompts bitwise "
+        f"identical across both implementations, "
+        f"{sum(c['positions'] for c in cases)} positions, block_size={block_size}",
+        cases,
     )
 
 

@@ -217,6 +217,18 @@ def discover(base_url: str, engine: str) -> EngineInfo:
     return EngineInfo(engine, model, None, "not exposed by this engine")
 
 
+def _stable_id(token: str) -> int:
+    """A stable integer for a token an engine returned as a string.
+
+    Python's `hash` is salted per process by PYTHONHASHSEED, so a recorded
+    comparison could not be re-derived in a later run: the same token string
+    would map to a different integer and two artifacts of the same run would not
+    be comparable. Every other digest in this project is sha256 for exactly this
+    reason, and this call site was the last one that was not.
+    """
+    return int.from_bytes(hashlib.sha256(token.encode("utf-8")).digest()[:8], "big")
+
+
 def complete(base_url: str, model: str, tokens: list[int], max_tokens: int) -> Completion:
     """One greedy completion, reduced to the observable."""
     body = post(base_url, "/v1/completions", {
@@ -231,7 +243,7 @@ def complete(base_url: str, model: str, tokens: list[int], max_tokens: int) -> C
     lp = choice.get("logprobs") or {}
 
     ids = lp.get("tokens") or []
-    token_ids = [int(t) if isinstance(t, int) else hash(t) for t in ids]
+    token_ids = [int(t) if isinstance(t, int) else _stable_id(t) for t in ids]
     chosen = lp.get("token_logprobs") or []
     top = lp.get("top_logprobs") or []
 
@@ -239,7 +251,7 @@ def complete(base_url: str, model: str, tokens: list[int], max_tokens: int) -> C
     for entry in top:
         if isinstance(entry, dict):
             alternatives.append(sorted(
-                ((hash(k) if not isinstance(k, int) else k, float(v))
+                ((_stable_id(k) if not isinstance(k, int) else k, float(v))
                  for k, v in entry.items()),
                 key=lambda pair: (-pair[1], pair[0]),
             ))

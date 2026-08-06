@@ -118,6 +118,22 @@ def case_fails(model, case: Case) -> str | None:
         observed = outcome.outputs.get(spec.uid)
         if expected is not None and observed is not None and expected != observed:
             return f"{spec.uid} diverged from canonical: {observed} != {expected}"
+
+        # Then the decode-phase logit bytes, which token equality can mask for a
+        # long time. A batch-dependent perturbation below the top-1-to-top-2 gap
+        # changes no token until it lands near a tie, at which point the
+        # divergence surfaces far from its cause. This oracle compared token ids
+        # only, so I1's claims-table cell said "bitwise on fp16 logit bytes" while
+        # the campaign that exercises it was checking something weaker.
+        want = canonical.emitted_logits.get(spec.uid) or []
+        got = outcome.emitted_logits.get(spec.uid) or []
+        for index, (a, b) in enumerate(zip(want, got)):
+            if not torch.equal(a, b):
+                delta = float((a.to(torch.float64) - b.to(torch.float64)).abs().max())
+                return (
+                    f"{spec.uid} logit bytes diverged from canonical at emitted "
+                    f"position {index}, max abs {delta:.3e}, tokens still equal"
+                )
     return None
 
 

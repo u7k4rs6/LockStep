@@ -47,7 +47,7 @@ sys.path.insert(0, str(REPO_ROOT))
 
 import torch  # noqa: E402
 
-from engine.model.qwen3 import KVCache  # noqa: E402
+from engine.kv import paged  # noqa: E402
 
 BASELINE = Path(__file__).parent / "golden.json"
 
@@ -72,11 +72,28 @@ def logit_digest(model, prompt: list[int]) -> str:
     Bytes, not a rounded decimal view: the architecture doc defines
     bit-identical as identical raw fp16 logit bytes, so that is what is hashed.
     """
-    cache = KVCache(model.cfg, len(prompt), model.device)
-    ids = torch.tensor(prompt, dtype=torch.long, device=model.device)
-    logits = model.forward(ids, 0, cache)
+    # Through `forward_batch`, the path the scheduler actually serves from, not
+    # through `forward`. The baseline previously observed the batch-1 contiguous
+    # path while every served request went through the packed one, so a defect
+    # confined to the served implementation would have left the committed digests
+    # untouched. `harness/mr/equivalence.py::path_equivalence` asserts the two
+    # agree bitwise; this makes the baseline independent of that assertion
+    # holding rather than resting on it.
+    pool = paged.PagedKVCache(
+        num_blocks=-(-len(prompt) // paged.DEFAULT_BLOCK_SIZE) + 2,
+        num_layers=model.cfg.num_hidden_layers,
+        num_kv_heads=model.cfg.num_key_value_heads,
+        head_dim=model.cfg.head_dim,
+        device=model.device,
+        dtype=torch.float16,
+        block_size=paged.DEFAULT_BLOCK_SIZE,
+    )
+    uid = "golden"
+    pool.create(uid)
+    pool.reserve(uid, len(prompt))
+    logits = model.forward_batch(pool, [(uid, list(prompt), 0)])[uid]
     raw = logits.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes()
-    del logits
+    del logits, pool
     torch.cuda.empty_cache()
     return hashlib.sha256(raw).hexdigest()
 

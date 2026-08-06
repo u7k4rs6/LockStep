@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "verify",
-  "created_utc": "2026-08-05T18:48:42Z",
+  "created_utc": "2026-08-06T06:51:51Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -19,9 +19,9 @@
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": null,
-    "engine_revision": "bed028f2d38e-dirty",
+    "engine_revision": "44e3b4af741b-dirty",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "820e5c31150d33adbc663e7d77e8bd7e2a7fd9b8c4228c0043acd9e5b4e9b921"
+    "digest": "2ac5edaa150b9a30e7672e2227ab38c2640e40c6a54b12396cda04915f076b76"
   },
   "payload": {
     "block_sizes": [
@@ -36,6 +36,35 @@
       {
         "block_size": 8,
         "relations": [
+          {
+            "id": "PATH-EQ",
+            "statement": "forward and forward_batch produce identical logits for a lone request",
+            "passed": true,
+            "detail": "3/3 prompts bitwise identical across both implementations, 730 positions, block_size=8",
+            "cases": [
+              {
+                "prompt_tokens": 600,
+                "positions": 600,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 96,
+                "positions": 96,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 34,
+                "positions": 34,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              }
+            ]
+          },
           {
             "id": "KV-EQ",
             "statement": "decode-produced KV is bit-identical to prefill-produced KV",
@@ -478,32 +507,37 @@
             "id": "MR5",
             "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
             "passed": true,
-            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=8",
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged in tokens and decode-phase logit bytes, block_size=8",
             "cases": [
               {
                 "filler_tokens": 1,
                 "packed_tokens": 97,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 15,
                 "packed_tokens": 111,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 16,
                 "packed_tokens": 112,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 17,
                 "packed_tokens": 113,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 35,
                 "packed_tokens": 131,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               }
             ]
           },
@@ -527,6 +561,21 @@
                 "permutation": "interleaved",
                 "moved": [],
                 "identical": true
+              }
+            ]
+          },
+          {
+            "id": "EOS",
+            "statement": "a request stopping on EOS emits the prefix an unbounded run would",
+            "passed": true,
+            "detail": "stopped on token 220 after 2 tokens, prefix matches the unbounded run (8 tokens), finish_eos fired 1x, block_size=8",
+            "cases": [
+              {
+                "stop_token": 220,
+                "emitted": 2,
+                "unbounded": 8,
+                "identical": true,
+                "finish_eos": 1
               }
             ]
           },
@@ -725,6 +774,35 @@
       {
         "block_size": 16,
         "relations": [
+          {
+            "id": "PATH-EQ",
+            "statement": "forward and forward_batch produce identical logits for a lone request",
+            "passed": true,
+            "detail": "3/3 prompts bitwise identical across both implementations, 730 positions, block_size=16",
+            "cases": [
+              {
+                "prompt_tokens": 600,
+                "positions": 600,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 96,
+                "positions": 96,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 34,
+                "positions": 34,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              }
+            ]
+          },
           {
             "id": "KV-EQ",
             "statement": "decode-produced KV is bit-identical to prefill-produced KV",
@@ -1167,32 +1245,37 @@
             "id": "MR5",
             "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
             "passed": true,
-            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=16",
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged in tokens and decode-phase logit bytes, block_size=16",
             "cases": [
               {
                 "filler_tokens": 1,
                 "packed_tokens": 97,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 15,
                 "packed_tokens": 111,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 16,
                 "packed_tokens": 112,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 17,
                 "packed_tokens": 113,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 35,
                 "packed_tokens": 131,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               }
             ]
           },
@@ -1216,6 +1299,21 @@
                 "permutation": "interleaved",
                 "moved": [],
                 "identical": true
+              }
+            ]
+          },
+          {
+            "id": "EOS",
+            "statement": "a request stopping on EOS emits the prefix an unbounded run would",
+            "passed": true,
+            "detail": "stopped on token 220 after 2 tokens, prefix matches the unbounded run (8 tokens), finish_eos fired 1x, block_size=16",
+            "cases": [
+              {
+                "stop_token": 220,
+                "emitted": 2,
+                "unbounded": 8,
+                "identical": true,
+                "finish_eos": 1
               }
             ]
           },
@@ -1414,6 +1512,35 @@
       {
         "block_size": 32,
         "relations": [
+          {
+            "id": "PATH-EQ",
+            "statement": "forward and forward_batch produce identical logits for a lone request",
+            "passed": true,
+            "detail": "3/3 prompts bitwise identical across both implementations, 730 positions, block_size=32",
+            "cases": [
+              {
+                "prompt_tokens": 600,
+                "positions": 600,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 96,
+                "positions": 96,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 34,
+                "positions": 34,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              }
+            ]
+          },
           {
             "id": "KV-EQ",
             "statement": "decode-produced KV is bit-identical to prefill-produced KV",
@@ -1856,32 +1983,37 @@
             "id": "MR5",
             "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
             "passed": true,
-            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=32",
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged in tokens and decode-phase logit bytes, block_size=32",
             "cases": [
               {
                 "filler_tokens": 1,
                 "packed_tokens": 97,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 15,
                 "packed_tokens": 111,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 16,
                 "packed_tokens": 112,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 17,
                 "packed_tokens": 113,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 35,
                 "packed_tokens": 131,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               }
             ]
           },
@@ -1905,6 +2037,21 @@
                 "permutation": "interleaved",
                 "moved": [],
                 "identical": true
+              }
+            ]
+          },
+          {
+            "id": "EOS",
+            "statement": "a request stopping on EOS emits the prefix an unbounded run would",
+            "passed": true,
+            "detail": "stopped on token 220 after 2 tokens, prefix matches the unbounded run (8 tokens), finish_eos fired 1x, block_size=32",
+            "cases": [
+              {
+                "stop_token": 220,
+                "emitted": 2,
+                "unbounded": 8,
+                "identical": true,
+                "finish_eos": 1
               }
             ]
           },
@@ -2103,6 +2250,35 @@
       {
         "block_size": 64,
         "relations": [
+          {
+            "id": "PATH-EQ",
+            "statement": "forward and forward_batch produce identical logits for a lone request",
+            "passed": true,
+            "detail": "3/3 prompts bitwise identical across both implementations, 730 positions, block_size=64",
+            "cases": [
+              {
+                "prompt_tokens": 600,
+                "positions": 600,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 96,
+                "positions": 96,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 34,
+                "positions": 34,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              }
+            ]
+          },
           {
             "id": "KV-EQ",
             "statement": "decode-produced KV is bit-identical to prefill-produced KV",
@@ -2545,32 +2721,37 @@
             "id": "MR5",
             "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
             "passed": true,
-            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=64",
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged in tokens and decode-phase logit bytes, block_size=64",
             "cases": [
               {
                 "filler_tokens": 1,
                 "packed_tokens": 97,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 15,
                 "packed_tokens": 111,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 16,
                 "packed_tokens": 112,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 17,
                 "packed_tokens": 113,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 35,
                 "packed_tokens": 131,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               }
             ]
           },
@@ -2594,6 +2775,21 @@
                 "permutation": "interleaved",
                 "moved": [],
                 "identical": true
+              }
+            ]
+          },
+          {
+            "id": "EOS",
+            "statement": "a request stopping on EOS emits the prefix an unbounded run would",
+            "passed": true,
+            "detail": "stopped on token 220 after 2 tokens, prefix matches the unbounded run (8 tokens), finish_eos fired 1x, block_size=64",
+            "cases": [
+              {
+                "stop_token": 220,
+                "emitted": 2,
+                "unbounded": 8,
+                "identical": true,
+                "finish_eos": 1
               }
             ]
           },
@@ -2792,6 +2988,35 @@
       {
         "block_size": 128,
         "relations": [
+          {
+            "id": "PATH-EQ",
+            "statement": "forward and forward_batch produce identical logits for a lone request",
+            "passed": true,
+            "detail": "3/3 prompts bitwise identical across both implementations, 730 positions, block_size=128",
+            "cases": [
+              {
+                "prompt_tokens": 600,
+                "positions": 600,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 96,
+                "positions": 96,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              },
+              {
+                "prompt_tokens": 34,
+                "positions": 34,
+                "identical": true,
+                "first_differing_position": null,
+                "max_abs": 0.0
+              }
+            ]
+          },
           {
             "id": "KV-EQ",
             "statement": "decode-produced KV is bit-identical to prefill-produced KV",
@@ -3234,32 +3459,37 @@
             "id": "MR5",
             "statement": "padding and occupancy: a cohabitant that only shifts tile occupancy changes nothing",
             "passed": true,
-            "detail": "5/5 occupancy shifts left r0 bitwise unchanged, block_size=128",
+            "detail": "5/5 occupancy shifts left r0 bitwise unchanged in tokens and decode-phase logit bytes, block_size=128",
             "cases": [
               {
                 "filler_tokens": 1,
                 "packed_tokens": 97,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 15,
                 "packed_tokens": 111,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 16,
                 "packed_tokens": 112,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 17,
                 "packed_tokens": 113,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               },
               {
                 "filler_tokens": 35,
                 "packed_tokens": 131,
-                "identical": true
+                "identical": true,
+                "logit_bytes_identical": true
               }
             ]
           },
@@ -3283,6 +3513,21 @@
                 "permutation": "interleaved",
                 "moved": [],
                 "identical": true
+              }
+            ]
+          },
+          {
+            "id": "EOS",
+            "statement": "a request stopping on EOS emits the prefix an unbounded run would",
+            "passed": true,
+            "detail": "stopped on token 220 after 2 tokens, prefix matches the unbounded run (8 tokens), finish_eos fired 1x, block_size=128",
+            "cases": [
+              {
+                "stop_token": 220,
+                "emitted": 2,
+                "unbounded": 8,
+                "identical": true,
+                "finish_eos": 1
               }
             ]
           },
@@ -3482,7 +3727,7 @@
     "not_yet_runnable": {
       "MR9": "mask no-op, fidelity side. Needs an explicit pad region, which this engine never materializes: sequences are packed, not padded"
     },
-    "passed": 55,
-    "total": 55
+    "passed": 65,
+    "total": 65
   }
 }

@@ -31,6 +31,13 @@ PATHS: dict[str, str] = {
     # admission and lifecycle
     "admit": "a waiting request was admitted",
     "admit_refused": "the policy declined to admit a waiting request",
+    "finish_eos":
+        "a request finished because it emitted an EOS token, the half of the "
+        "finish disjunction that no relation or campaign ever exercised: every "
+        "caller left eos_token_ids empty, so `generated[-1] in self.eos` had "
+        "never once been true",
+    "finish_limit":
+        "a request finished by reaching max_new_tokens",
     "finish": "a request reached its limit or an EOS and released its blocks",
     # prefill and chunking
     "prefill_chunk": "a partial prefill chunk was computed",

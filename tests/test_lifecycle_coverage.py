@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engine.sched.lifecycle import (  # noqa: E402
     INITIAL,
+    UNREACHABLE_BY_DESIGN,
     TRANSITIONS,
     Event,
     State,
@@ -110,7 +111,15 @@ def test_a_resumed_request_can_be_preempted_mid_prefill():
     """
     assert (State.PREFILLING, Event.PREEMPT_RC) in TRANSITIONS
     assert (Event.CHUNK, Event.PREEMPT_RC) in feasible_ngrams(2)
-    assert (Event.RESUME, Event.PREEMPT_RC) in feasible_ngrams(2)
+
+    # But NOT resume -> preempt_rc. This assertion used to read the other way and
+    # was the over-correction that kept a dead transition alive: RESUME lands in
+    # ADMITTED, and preemption never fires from ADMITTED because _admit sets
+    # kv_len to 0 and the only thing that raises it first, a cache hit, emits
+    # CACHE_HIT and moves the request to PREFILLING. A resumed request is
+    # preemptable once it has chunked, which is what the assertion above says.
+    assert (Event.RESUME, Event.PREEMPT_RC) not in feasible_ngrams(2)
+    assert (State.ADMITTED, Event.PREEMPT_RC) in UNREACHABLE_BY_DESIGN
 
 
 def test_a_cache_hit_can_be_followed_by_an_eviction():
@@ -119,3 +128,29 @@ def test_a_cache_hit_can_be_followed_by_an_eviction():
     that a real run caught."""
     assert (State.PREFILLING, Event.EVICT) in TRANSITIONS
     assert (Event.CACHE_HIT, Event.EVICT) in feasible_ngrams(2)
+
+
+def test_every_declared_transition_has_a_witness_or_an_argument():
+    """Declared must equal reachable, and neither direction may be assumed.
+
+    The n-gram check asserts observed transitions are legal, so the denominator
+    can only be too large. This is the other direction. A transition that never
+    fires produces no evidence of its own absence, so no run could ever have
+    contradicted a spurious entry, and one sat here inflating every published
+    coverage number until it was checked by witnessing.
+
+    A transition belongs in TRANSITIONS only if some real run has taken it. If it
+    cannot be taken, it belongs in UNREACHABLE_BY_DESIGN with an argument. There
+    is no third category, and this test is what makes that true rather than
+    aspirational.
+    """
+    from engine.sched.lifecycle import TRANSITIONS, UNREACHABLE_BY_DESIGN
+
+    overlap = set(TRANSITIONS) & set(UNREACHABLE_BY_DESIGN)
+    assert not overlap, f"declared both legal and unreachable: {overlap}"
+
+    for key, reason in UNREACHABLE_BY_DESIGN.items():
+        assert len(reason) > 40, (
+            f"{key} is excluded without an argument; a one-word reason is how a "
+            "reachable transition gets quietly dropped to flatter a percentage"
+        )

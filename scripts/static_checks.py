@@ -40,6 +40,16 @@ CHECKS: list[tuple[str, re.Pattern[str], str]] = [
         "engine/kernels/registry.py.",
     ),
     (
+        "torch reductions in the engine",
+        re.compile(r"torch\.(matmul|softmax|sum|mean|einsum|bmm)\s*\("),
+        "Kernel selection for these is shape-dependent and therefore "
+        "batch-dependent. engine/model/qwen3.py's docstring has asserted their "
+        "absence since week 1 and nothing checked it, which is a rule enforced "
+        "by prose. engine/sampler/philox.py is the one exception, documented "
+        "there: its softmax and cumsum run on CPU in fp64 over a single row, "
+        "outside any batched path.",
+    ),
+    (
         "triton heuristics",
         re.compile(r"@\s*triton\.heuristics|@\s*heuristics\b"),
         "A heuristic keyed on a runtime shape is how a batch-derived quantity "
@@ -48,6 +58,10 @@ CHECKS: list[tuple[str, re.Pattern[str], str]] = [
 ]
 
 SELF = Path(__file__).resolve()
+
+# The sampler's CPU fp64 top-p path. Named rather than pattern-matched, so adding
+# a second exception is a visible edit to this list.
+EXCEPTIONS = {"torch reductions in the engine": {"engine/sampler/philox.py"}}
 
 
 def python_sources() -> list[Path]:
@@ -68,6 +82,8 @@ def scan() -> tuple[list[str], int]:
         rel = path.relative_to(REPO_ROOT)
         for lineno, line in enumerate(path.read_text().splitlines(), start=1):
             for label, pattern, _ in CHECKS:
+                if str(rel) in EXCEPTIONS.get(label, ()):
+                    continue
                 if pattern.search(line):
                     findings.append(f"{rel}:{lineno}: {label}: {line.strip()}")
     return findings, len(files)

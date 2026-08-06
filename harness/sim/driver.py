@@ -154,6 +154,9 @@ class Outcome:
     steps: int
     error: str | None = None
     depths: dict = field(default_factory=dict)
+    # uid -> one fp16 logit row per emitted token, so a relation can compare
+    # decode-phase bits against canonical rather than only emitted token ids.
+    emitted_logits: dict = field(default_factory=dict)
 
 
 def run_case(model, case: Case, audit: bool = True) -> Outcome:
@@ -194,6 +197,7 @@ def run_case(model, case: Case, audit: bool = True) -> Outcome:
     return Outcome(
         trajectory=scheduler.trajectory.hexdigest(),
         outputs={r.uid: list(r.generated) for r in scheduler.done},
+        emitted_logits=scheduler.emitted_logits,
         counters=scheduler.counters,
         events=scheduler.lifecycle,
         steps=scheduler.step_index,
