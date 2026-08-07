@@ -1,24 +1,4 @@
-"""Build the small stable fp64 cache: top-2 logits per position.
-
-This used to cache top-k logits so that per-position KL could be computed without
-re-running the fp64 pass. That compression is gone. The k sweep showed top-k KL
-converging far too slowly to ever be exact on a 151936-token vocabulary (27.4
-percent of KL missing at k=256, still 4.0 percent at k=8192, closing only about
-1.3x per doubling), so the cached artifact was buying a 68 MB lower bound in
-place of a number the fp64 pass produces exactly in about two minutes. It was
-solving a problem this project does not have.
-
-What remains is the one thing worth holding stable across runs: the fp64 top-2
-logits and their token ids, which are what the greedy-match and near-tie metrics
-read. Those are the metrics whose value should not drift silently between runs,
-and they are kilobytes.
-
-bench/fidelity.py recomputes the fp64 pass every run for exact full-vocabulary
-KL, and checks its streamed top-2 against this cache. That check is not
-redundant: it verifies the fp64 reference is reproducible run to run, which is
-exactly what the pinned thread counts are supposed to guarantee and which nothing
-else would notice if it stopped being true.
-"""
+"""Build the small stable fp64 cache: top-2 logits per position."""
 
 from __future__ import annotations
 

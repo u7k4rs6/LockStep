@@ -1,13 +1,4 @@
-"""The committed evidence must actually replay.
-
-The reproduce line in the divergence report was, for most of this project's life,
-a string: it named a path under a gitignored directory and a command that had
-never been written. Nothing caught that, because nothing asserted the reproduce
-target could be consumed. These tests are that assertion.
-
-They run against `evidence/`, not `results/`, because `evidence/` is what a
-reader who clones the repository gets.
-"""
+"""The committed evidence must actually replay."""
 
 from __future__ import annotations
 
@@ -28,11 +19,7 @@ CASES = sorted(EVIDENCE.glob("case-*.json"))
 
 
 def test_evidence_directory_is_committed():
-    """Not ignored, and not empty.
-
-    A published claim ships with the artifact that produced it. If this fails,
-    either the directory was re-ignored or nothing was ever promoted into it.
-    """
+    """Not ignored, and not empty."""
     assert EVIDENCE.is_dir(), "evidence/ is missing"
     artifacts = sorted(EVIDENCE.glob("*.json"))
     assert artifacts, "evidence/ holds no artifacts"
@@ -50,19 +37,12 @@ def test_case_artifact_loads_and_rebuilds(path: Path):
 
 @pytest.mark.parametrize("path", CASES, ids=lambda p: p.name)
 def test_case_round_trips_without_losing_a_field(path: Path):
-    """to_dict after from_dict must be identical.
-
-    A dropped field would make the replay run a different case and then report
-    agreement, which is worse than reporting nothing.
-    """
+    """to_dict after from_dict must be identical."""
     stored = load(path)["payload"]["minimized"]
     case = Case.from_dict(stored)
     again = Case.from_dict(case.to_dict())
     assert again == case
 
-    # Every key the artifact carries must survive the round trip, so a field
-    # added to Case without being added to to_dict fails here rather than
-    # silently degrading a published repro.
     for key, value in stored.items():
         assert key in case.to_dict(), f"{path.name}: to_dict drops {key!r}"
 
@@ -75,12 +55,7 @@ def test_case_artifact_carries_an_env_tuple(path: Path):
 
 
 def test_classify_reports_a_same_engine_difference_as_a_failure():
-    """The one case that must never be excused.
-
-    Same engine, same environment, different outcome, means execution is not a
-    pure function of the triple. Every other mismatch has an attribution; this
-    one must not acquire one by accident.
-    """
+    """The one case that must never be excused."""
     ok, detail = classify("OutOfBlocks: x", "", same_engine=True, same_env=True)
     assert ok is False
     assert "pure function" in detail
@@ -102,13 +77,7 @@ def test_classify_does_not_claim_attribution_it_does_not_have():
 
 
 def test_the_witness_case_is_not_vacuous():
-    """The witness must exercise what it claims to.
-
-    A witness with one short prompt and no schedule perturbation would pass
-    whatever the engine did, which is the failure this repository has caught
-    repeatedly. So: it crosses the 512-token split boundary, it chunks, it
-    preempts, and it shares a prefix.
-    """
+    """The witness must exercise what it claims to."""
     witness = EVIDENCE / "case-witness.json"
     if not witness.exists():
         pytest.skip("no witness recorded")
@@ -126,14 +95,7 @@ def test_the_witness_case_is_not_vacuous():
 
 
 def test_the_finding_path_composes(tmp_path):
-    """minimize, artifact, repro line, end to end without a GPU.
-
-    This path was dead for most of the project: `minimize` and `print_repro`
-    were imported, the divergence report named an artifact path, and no code
-    path produced one. Nothing failed, because nothing ran it. So this runs it,
-    against a synthetic failure predicate, and asserts the artifact it writes is
-    the artifact the printed reproduce line names.
-    """
+    """minimize, artifact, repro line, end to end without a GPU."""
     from harness.fuzz.campaign import Finding, print_repro
     from harness.minimize.ddmin import minimize
     from harness.sim.driver import RequestSpec
@@ -152,8 +114,6 @@ def test_the_finding_path_composes(tmp_path):
         label="synthetic",
     )
 
-    # Fails whenever r00 is present, so minimization has something real to do
-    # and a well-defined 1-minimal answer.
     minimization = minimize(case, lambda c: any(r.uid == "r00" for r in c.requests))
     assert minimization.reproduces
     assert len(minimization.case.requests) == 1
@@ -174,9 +134,6 @@ def test_the_finding_path_composes(tmp_path):
         "checks_run": minimization.checks_run,
     }).write(results_dir=tmp_path)
 
-    # The written artifact must be loadable by the replay command's loader, and
-    # rebuild to the case that was minimized. A repro that does not round trip
-    # is a repro line pointing at something unusable.
     written = load(artifact)
     assert Case.from_dict(written["payload"]["minimized"]) == minimization.case
 
@@ -185,13 +142,7 @@ def test_the_finding_path_composes(tmp_path):
 
 
 def test_the_reproduce_command_the_report_prints_actually_exists():
-    """The divergence report names a command. That command must run.
-
-    For most of this project the reproduce line said `lockstep replay <path>`
-    where neither the executable nor the path existed. The report was correct
-    against the spec and useless to a reader, and no test noticed because every
-    test checked the string rather than the thing it named.
-    """
+    """The divergence report names a command. That command must run."""
     import subprocess
 
     dispatcher = REPO_ROOT / "lockstep"
@@ -205,9 +156,6 @@ def test_the_reproduce_command_the_report_prints_actually_exists():
     assert result.returncode == 0
     assert "replay" in result.stdout
 
-    # Every command the spec names is accounted for, either wired to a module or
-    # explicitly reported as not built. Silence about a declared command is the
-    # failure mode this repository is about.
     from importlib import import_module
 
     spec_commands = {"run", "verify", "fuzz", "replay", "minimize",
@@ -218,7 +166,7 @@ def test_the_reproduce_command_the_report_prints_actually_exists():
 
     for name, module in dispatch.items():
         if module is not None:
-            import_module(module)  # a wired command must import
+            import_module(module)
 
 
 def runpy_load_commands() -> dict:
@@ -234,13 +182,7 @@ def runpy_load_commands() -> dict:
 
 
 def test_a_pinned_finding_names_the_commit_that_closed_it():
-    """A historical finding without a commit reads as a stale file.
-
-    `case-0003.json` predates `engine_revision`, so replaying it can only say
-    "did not reproduce", which a reader cannot distinguish from a broken
-    artifact. The provenance block is what makes it evidence: both SHAs, and the
-    verification that produced them.
-    """
+    """A historical finding without a commit reads as a stale file."""
     payload = load(EVIDENCE / "case-0003.json")["payload"]
     provenance = payload.get("provenance")
     assert provenance, "case-0003 carries no provenance"
@@ -248,8 +190,6 @@ def test_a_pinned_finding_names_the_commit_that_closed_it():
     for field in ("fixed_by", "last_revision_before_fix", "verified_by"):
         assert provenance.get(field), f"provenance is missing {field}"
 
-    # Full SHAs, not abbreviations: an abbreviation can become ambiguous as the
-    # history grows, and this is meant to outlive the repository's current size.
     assert len(provenance["fixed_by"]) == 40
     assert len(provenance["last_revision_before_fix"]) == 40
 
@@ -257,6 +197,4 @@ def test_a_pinned_finding_names_the_commit_that_closed_it():
                           engine_known=False, provenance=provenance)
     assert ok is True
     assert provenance["fixed_by"][:12] in detail
-    # The pin must outrank the weaker "cannot attribute" branch, which is what
-    # this artifact would otherwise fall through to.
     assert "not recorded" not in detail

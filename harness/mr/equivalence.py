@@ -1,30 +1,4 @@
-"""Decode-versus-prefill KV equivalence, MR1, and MR2.
-
-docs/02-technical-architecture.md section 4.1: "Recompute is the hard case. The
-original KV for generated tokens was produced by sequential decode steps;
-recompute reproduces it as a single prefill pass. So recompute correctness
-reduces to decode-versus-prefill equivalence per token, which is exactly chunk
-invariance. If chunk invariance holds, arbitrary preemption points are free."
-
-Section 4.3 adds the other consequence: "A cache hit returns stored bytes.
-Hit-versus-miss is therefore bit-identical if and only if chunk invariance holds,
-because the cached bits equal what recomputation would produce."
-
-So this file tests the property that decides weeks 4 through 8. It is checked at
-the **KV tensor level**, per layer, bitwise, rather than only through emitted
-tokens. Token equality can mask KV drift for many steps: a logit perturbation
-well below the top-1-to-top-2 gap changes nothing observable until it happens to
-land near a tie, at which point the divergence surfaces far from its cause. The
-KV tensors are where the drift actually lives, so that is where it is measured.
-
-Three ways of producing the same KV are compared:
-
-  1. one uninterrupted prefill of the whole prompt
-  2. token-at-a-time decode, each step seeing only the KV before it
-  3. chunked prefill under an arbitrary partition
-
-All three must agree bitwise for every layer and every position.
-"""
+"""Decode-versus-prefill KV equivalence, MR1, and MR2."""
 
 from __future__ import annotations
 
@@ -54,12 +28,7 @@ class Result:
 
 
 def _blocks_for(lengths: list[int], block_size: int) -> int:
-    """Blocks needed for a set of sequences.
-
-    Per sequence, not over the total: each rounds up to a whole block
-    independently, so summing the total first undercounts by up to one block
-    per sequence.
-    """
+    """Blocks needed for a set of sequences."""
     return sum(-(-length // block_size) for length in lengths) + 2
 
 
@@ -94,12 +63,7 @@ def read_kv(pool: paged.PagedKVCache, uid: str, layer: int, count: int) -> tuple
 def kv_by_partition(
     model: Qwen3, prompt: list[int], partition: list[int], block_size: int
 ) -> tuple[list[tuple], torch.Tensor]:
-    """Run `prompt` through the engine in the given chunk sizes.
-
-    A partition of [3, 1, 500] means three forward passes at positions 0, 3, and
-    4. `[1] * len(prompt)` is token-at-a-time decode; `[len(prompt)]` is a single
-    uninterrupted prefill. Returns per-layer (K, V) and the final-position logits.
-    """
+    """Run `prompt` through the engine in the given chunk sizes."""
     assert sum(partition) == len(prompt), "partition must cover the prompt exactly"
     pool = _pool(model, [len(prompt)], block_size)
     uid = "seq"
@@ -131,12 +95,7 @@ def first_kv_divergence(a: list[tuple], b: list[tuple]) -> tuple | None:
 
 
 def boundary_partitions(length: int, block_size: int) -> list[tuple[str, list[int]]]:
-    """Partitions landing exactly on, and one either side of, each boundary.
-
-    A random partition reaches a fencepost only by luck, and a fencepost is
-    exactly where an off-by-one lives: the architecture doc's coverage section
-    asks for every boundary predicate at value, value minus 1, and value plus 1.
-    """
+    """Partitions landing exactly on, and one either side of, each boundary."""
     cases: list[tuple[str, list[int]]] = []
 
     def add(label: str, first: int) -> None:
@@ -152,7 +111,6 @@ def boundary_partitions(length: int, block_size: int) -> list[tuple[str, list[in
     cases.append(("single uninterrupted prefill", [length]))
     cases.append(("token at a time", [1] * length))
 
-    # A partition whose every boundary is misaligned to both block and split.
     ragged, remaining, size = [], length, 7
     while remaining > 0:
         take = min(size, remaining)
@@ -161,9 +119,6 @@ def boundary_partitions(length: int, block_size: int) -> list[tuple[str, list[in
         size = size * 2 + 3
     cases.append(("ragged, misaligned to block and split", ragged))
     return cases
-
-
-# ---- the relations ----------------------------------------------------------
 
 
 def decode_vs_prefill_kv(
@@ -196,27 +151,7 @@ def path_equivalence(
     model: Qwen3, prompts: list[list[int]],
     block_size: int = paged.DEFAULT_BLOCK_SIZE,
 ) -> Result:
-    """`forward(x)` must equal `forward_batch([x])` bitwise, per position.
-
-    The observers all watched a path the engine does not serve from. F1, the
-    golden baseline, and `bench/fidelity.py` call `model.forward`, the batch-1
-    contiguous path. Every request the scheduler serves goes through
-    `model.forward_batch`, a separate implementation with its own packing,
-    position indexing, per-sequence attention loop and `write_kv` calls. Nothing
-    asserted the two agree.
-
-    That is a hole the three-observer taxonomy could not see into. I1 to I4 miss
-    a defect confined to `forward_batch` because canonical execution C(r) also
-    runs `forward_batch`, so both sides of every comparison move together. F1 and
-    golden bytes miss it because they never execute the code. A deterministic,
-    schedule-uniform defect in the served path would therefore be invisible to
-    all three at once, which is exactly the conjunction the taxonomy was written
-    to rule out.
-
-    Checked at the logits, bitwise, for every position rather than only the last:
-    a defect in position indexing or in the packed offsets would show up at
-    interior positions first and might not reach the final row at all.
-    """
+    """`forward(x)` must equal `forward_batch([x])` bitwise, per position."""
     cases = []
     passed = True
 

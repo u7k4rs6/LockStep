@@ -1,32 +1,4 @@
-"""Exact-prefix cache: block-aligned, hash-keyed, refcounted.
-
-PRD must-have: "Exact-prefix, block-aligned, dict keyed on token hash, refcounted
-blocks with copy-on-write."
-
-docs/02-technical-architecture.md section 4.3 is the reason this is sound and
-also the reason it is dangerous: "A cache hit returns stored bytes.
-Hit-versus-miss is therefore bit-identical if and only if chunk invariance holds,
-because the cached bits equal what recomputation would produce. Without chunk
-invariance, caching changes numerics."
-
-Week 3 proved chunk invariance in the compute path. What this file must not do is
-launder a *different* chunk boundary into a stored result: if a block's KV were
-written by a prefill chunked one way and later reused by a request that would
-have chunked it another way, the cache would be the thing that made the two
-differ. MR4 crosses that dimension deliberately rather than testing only cold
-versus warm.
-
-Keying is a hash chain, not a hash of the whole prefix. Block i's key is
-H(key of block i-1, tokens of block i), so a match at block i implies a match on
-every block before it. A flat per-block hash would collide across different
-histories that happen to share one block of tokens, and that is precisely the
-"one request reads another request's KV" class the security doc calls a security
-issue rather than a correctness bug.
-
-Only whole blocks are cached. A partial trailing block is never inserted: its
-remaining slots would be written by whoever reused it, so sharing it would let
-one sequence observe another's writes.
-"""
+"""Exact-prefix cache: block-aligned, hash-keyed, refcounted."""
 
 from __future__ import annotations
 
@@ -54,13 +26,7 @@ class CacheEntry:
 
 @dataclass
 class PrefixCache:
-    """Maps a block-aligned token prefix to the physical block holding its KV.
-
-    The cache holds one reference on every block it indexes, so an entry keeps
-    its block alive after the producing sequence has finished. Eviction is what
-    releases that reference, and choosing the victim is a policy decision that
-    lives in engine/sched/policy.py; this class only reports candidates.
-    """
+    """Maps a block-aligned token prefix to the physical block holding its KV."""
 
     block_size: int
     counters: object = None
@@ -70,11 +36,7 @@ class PrefixCache:
     )
 
     def keys_for(self, tokens: list[int]) -> list[tuple[bytes, tuple[int, ...]]]:
-        """The hash chain over whole blocks of `tokens`.
-
-        A trailing partial block is excluded, so the returned list covers exactly
-        len(tokens) // block_size blocks.
-        """
+        """The hash chain over whole blocks of `tokens`."""
         chain: list[tuple[bytes, tuple[int, ...]]] = []
         parent = ROOT_KEY
         whole = len(tokens) // self.block_size
@@ -85,12 +47,7 @@ class PrefixCache:
         return chain
 
     def lookup(self, tokens: list[int]) -> tuple[int, list[int]]:
-        """Longest block-aligned prefix present, as (token count, blocks).
-
-        Stops at the first miss rather than probing past it: the chain means a
-        later block cannot match unless every earlier one did, so probing on
-        would be looking for a key that cannot exist.
-        """
+        """Longest block-aligned prefix present, as (token count, blocks)."""
         self.stats["lookups"] += 1
         blocks: list[int] = []
         for key, chunk in self.keys_for(tokens):
@@ -98,7 +55,6 @@ class PrefixCache:
             if entry is None:
                 break
             if entry.tokens != chunk:
-                # sha256 collision, or a bug. Either way, do not serve it.
                 break
             entry.hits += 1
             blocks.append(entry.physical_block)
@@ -108,12 +64,7 @@ class PrefixCache:
         return len(blocks) * self.block_size, blocks
 
     def insert(self, tokens: list[int], block_ids: list[int], pool) -> int:
-        """Index every whole block of `tokens`, taking a reference on each.
-
-        Returns how many new entries were created. Blocks already indexed under
-        the same key are left alone: re-inserting would take a second reference
-        the cache would never release.
-        """
+        """Index every whole block of `tokens`, taking a reference on each."""
         created = 0
         for index, (key, chunk) in enumerate(self.keys_for(tokens)):
             if index >= len(block_ids):
@@ -130,13 +81,7 @@ class PrefixCache:
         return created
 
     def evictable_blocks(self, pool) -> list[int]:
-        """Indexed blocks that no live sequence is using.
-
-        A block whose refcount is exactly the cache's own single reference is
-        reclaimable. Anything higher is in use by a running sequence and evicting
-        it would be the "eviction eligible-set includes a running sequence"
-        mutation from architecture doc 10.1.
-        """
+        """Indexed blocks that no live sequence is using."""
         return sorted(
             entry.physical_block
             for entry in self.entries.values()

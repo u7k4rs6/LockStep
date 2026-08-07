@@ -1,18 +1,4 @@
-"""Rotary position embedding, elementwise.
-
-docs/02-technical-architecture.md section 4.2: "RoPE elementwise."
-
-Listed in the invariant kernel family for completeness rather than for risk:
-there is no reduction here, so there is no summation order to pin. Each output
-element depends on exactly two input elements and on the position, and on
-nothing else in the batch. It is written in Triton rather than as a torch
-expression so that every launch carrying a config comes from the pinned registry
-and the static grep over engine/ covers it. See engine/model/qwen3.py for the
-short list of torch operations the forward pass still uses and why each is safe.
-
-Qwen3 uses the HF half-rotation layout, not the interleaved one: element i pairs
-with element i + head_dim/2, and cos/sin are duplicated across the halves.
-"""
+"""Rotary position embedding, elementwise."""
 
 from __future__ import annotations
 
@@ -52,7 +38,6 @@ def _rope_kernel(
     lo = tl.load(base_in + offs * stride_xd, mask=mask, other=0.0).to(tl.float32)
     hi = tl.load(base_in + (offs + HALF) * stride_xd, mask=mask, other=0.0).to(tl.float32)
 
-    # cos/sin are stored duplicated across halves; the first half is enough.
     c = tl.load(Cos + token * stride_ct + offs, mask=mask, other=0.0).to(tl.float32)
     s = tl.load(Sin + token * stride_ct + offs, mask=mask, other=0.0).to(tl.float32)
 
@@ -77,12 +62,7 @@ def apply_rope(
     sin: torch.Tensor,
     config: str = "rope",
 ) -> torch.Tensor:
-    """Rotate `x` of shape [tokens, heads, head_dim] in place-equivalent form.
-
-    `cos` and `sin` are [tokens, head_dim/2], carrying one entry per rotation
-    pair. HF stores them duplicated to head_dim; the duplicate half is redundant
-    and is not read here.
-    """
+    """Rotate `x` of shape [tokens, heads, head_dim] in place-equivalent form."""
     cfg = registry.get(config)
     tokens, heads, head_dim = x.shape
     half = head_dim // 2

@@ -1,30 +1,4 @@
-"""Pinned Triton launch configurations. No autotuning, anywhere, ever.
-
-docs/02-technical-architecture.md section 5: "Triton autotuning. Timing-based, so
-the same binary can pick different configs across runs. Every config is pinned in
-a committed registry."
-
-Section 12 gate 4: a change to this file is a claims-affecting change and
-requires re-running the invariance suite before publishing any number. The file's
-sha256 is recorded in env.lock, so an artifact produced under a different
-registry is detectable rather than merely suspected.
-
-The selection rule, which is the whole point of the file:
-
-    A config is looked up by a *name*, and by nothing else.
-
-Names are compile-time constants at their call sites. No shape, and in
-particular no batch size, batch-max sequence length, or total token count, is an
-argument to `get`. There is therefore no code path by which a batch-derived
-quantity can reach a kernel config, because the lookup takes no such parameter.
-
-M-tiling deserves a note, since the architecture doc (section 4.2) permits it to
-vary: "Rows are independent, so M-tiling may vary freely; the K-loop and the KV
-traversal may not." We pin BLOCK_M anyway. Varying it is provably safe but
-requires the reader to reconstruct that proof; a constant requires nothing. The
-cost is that a batch-1 decode pads M from 1 to 16, which this regime can afford
-because it is launch-overhead bound rather than occupancy bound.
-"""
+"""Pinned Triton launch configurations. No autotuning, anywhere, ever."""
 
 from __future__ import annotations
 
@@ -42,12 +16,7 @@ class UnknownConfig(KeyError):
 
 @dataclass(frozen=True)
 class Config:
-    """One pinned launch configuration.
-
-    `constants` are passed to the kernel as `tl.constexpr`. `num_warps` and
-    `num_stages` are Triton launch parameters. `why` is not decoration: when this
-    file changes, the claims-table review reads these.
-    """
+    """One pinned launch configuration."""
 
     constants: MappingProxyType
     num_warps: int
@@ -69,17 +38,13 @@ def _cfg(why: str, num_warps: int, num_stages: int, **constants: int) -> Config:
     )
 
 
-# Model-shape constants for Qwen3-0.6B. These are properties of the weights, not
-# of any batch, so kernels may specialize on them freely.
 HEAD_DIM = 128
 HIDDEN_SIZE = 1024
 
-# The two numbers the architecture doc fixes by name (section 4.2).
-KV_TILE = 128  # "Constant KV tile (128)"
-SPLIT_SIZE = 512  # "Fixed split size (512), never a fixed split count"
+KV_TILE = 128
+SPLIT_SIZE = 512
 
 _REGISTRY: dict[str, Config] = {
-    # ---- GEMM. Fixed BLOCK_K, no split-K, including lm_head. ----
     "gemm.default": _cfg(
         "BLOCK_K=64 divides every K in this model (1024, 2048, 3072), so the "
         "K-loop trip count is a function of the weight shape alone. BLOCK_M=16 "
@@ -102,7 +67,6 @@ _REGISTRY: dict[str, Config] = {
         BLOCK_N=128,
         BLOCK_K=64,
     ),
-    # ---- RMSNorm. One CTA per row; the reduction never crosses a CTA. ----
     "rmsnorm.hidden": _cfg(
         "hidden_size 1024 fits one CTA tile, so the sum of squares is a single "
         "in-CTA tree reduction over a fixed 1024-wide tile with no cross-CTA "
@@ -118,7 +82,6 @@ _REGISTRY: dict[str, Config] = {
         num_stages=1,
         BLOCK_SIZE=128,
     ),
-    # ---- Softmax. One CTA per row, sequential fixed-size tiles. ----
     "softmax.vocab": _cfg(
         "151936 logits do not fit one tile, so the CTA walks ceil(151936/4096) "
         "= 38 tiles in ascending order. The trip count is a function of the "
@@ -128,7 +91,6 @@ _REGISTRY: dict[str, Config] = {
         num_stages=1,
         BLOCK_SIZE=4096,
     ),
-    # ---- Elementwise. No reduction, so nothing to order. ----
     "swiglu": _cfg(
         "silu(gate) * up over a flat index space. Invariant by construction "
         "since each output element reads one gate element and one up element; "
@@ -144,7 +106,6 @@ _REGISTRY: dict[str, Config] = {
         num_stages=1,
         BLOCK_PAIRS=64,
     ),
-    # ---- Attention. Fixed split size, fixed KV tile, fp32 partials. ----
     "attention.split": _cfg(
         "KV tile 128 and split size 512 are the architecture doc's numbers. Each "
         "program owns one 512-token span of one request's own KV and walks it in "
@@ -181,11 +142,7 @@ REGISTRY = MappingProxyType(_REGISTRY)
 
 
 def get(name: str) -> Config:
-    """Look up a pinned config by name.
-
-    Takes no shape argument, by design. If you find yourself wanting to pass one,
-    that is the constraint working: see the module docstring.
-    """
+    """Look up a pinned config by name."""
     try:
         return REGISTRY[name]
     except KeyError:

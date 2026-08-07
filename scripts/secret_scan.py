@@ -1,13 +1,4 @@
-"""Pre-commit secret scanner.
-
-docs/03-security-and-access.md section 4 asks for "gitleaks or equivalent". If
-gitleaks is on PATH this defers to it. Otherwise it runs the checks below, which
-are stdlib-only so that repo hygiene does not add a dependency to a dependency
-set the security doc deliberately keeps small.
-
-Scans staged content only, so a rewrite of history or an unstaged scratch file
-is not the scanner's business. Exits nonzero to block the commit.
-"""
+"""Pre-commit secret scanner."""
 
 from __future__ import annotations
 
@@ -17,8 +8,6 @@ import shutil
 import subprocess
 import sys
 
-# Provider-specific prefixes. These are unambiguous: a match is a finding, not a
-# heuristic, so no entropy gate is applied to them.
 PROVIDER_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("AWS access key id", re.compile(r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b")),
     ("Hugging Face token", re.compile(r"\bhf_[A-Za-z0-9]{34,}\b")),
@@ -30,8 +19,6 @@ PROVIDER_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("Private key block", re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH |PGP )?PRIVATE KEY")),
 ]
 
-# Generic `SECRET = "..."` assignments. High false-positive rate on its own, so a
-# match must also clear an entropy floor and dodge the placeholder list.
 GENERIC_ASSIGNMENT = re.compile(
     r"""(?ix)
     \b (?: api[_-]?key | secret | passwd | password | token | credential
@@ -40,13 +27,11 @@ GENERIC_ASSIGNMENT = re.compile(
     """
 )
 
-# Values that look like secrets structurally but are documentation.
 PLACEHOLDER = re.compile(
     r"(?i)^(?:x{4,}|\.{3,}|<[^>]+>|\$\{[^}]+\}|your[_-]|example|placeholder|"
     r"changeme|redacted|dummy|fake|test[_-]?only|none|null)"
 )
 
-# Binary and vendored paths the scanner should not read.
 SKIP_PATH = re.compile(r"(?i)\.(?:png|jpg|jpeg|gif|pdf|safetensors|bin|pt|npz|npy|lock)$")
 
 
@@ -80,14 +65,14 @@ def staged_content(path: str) -> str | None:
     try:
         return out.stdout.decode("utf-8")
     except UnicodeDecodeError:
-        return None  # binary; nothing text-shaped to scan
+        return None
 
 
 def scan_text(path: str, text: str) -> list[str]:
     findings: list[str] = []
     for lineno, line in enumerate(text.splitlines(), start=1):
         if len(line) > 4096:
-            continue  # minified or generated; not hand-authored secrets
+            continue
         for label, pattern in PROVIDER_PATTERNS:
             if pattern.search(line):
                 findings.append(f"{path}:{lineno}: {label}")

@@ -1,8 +1,4 @@
-"""Fuzz campaigns: swarm generation, coverage, seeded faults, minimization.
-
-Frontend spec 1.2: progress is a single updating line, not a scrolling wall;
-failures lead with the repro command; never a percentage without its denominator.
-"""
+"""Fuzz campaigns: swarm generation, coverage, seeded faults, minimization."""
 
 from __future__ import annotations
 
@@ -48,8 +44,6 @@ def observe(coverage: Coverage, case: Case, outcome) -> None:
 
     block = case.block_size
     for chunk in case.chunk_plan:
-        # Where the chunk *ends* relative to a block boundary, which is the
-        # quantity a rounding bug gets wrong.
         remainder = chunk % block
         if remainder == 0:
             coverage.observe_boundary("chunk end vs block size", "exact")
@@ -58,10 +52,6 @@ def observe(coverage: Coverage, case: Case, outcome) -> None:
         else:
             coverage.observe_boundary("chunk end vs block size", "above")
 
-    # The predicate is the true common prefix length against the block size,
-    # not the granted hit. Hits are whole blocks by construction, so classifying
-    # the hit itself would report "exact" always and never test anything. This
-    # is SGLang's prefix_len == block_size shape.
     if case.shared_prefix_len:
         if case.shared_prefix_len == block:
             coverage.observe_boundary("cache hit length vs block size", "exact")
@@ -93,12 +83,7 @@ def observe(coverage: Coverage, case: Case, outcome) -> None:
 
 
 def case_fails(model, case: Case) -> str | None:
-    """The oracle. Returns a reason, or None if the case is clean.
-
-    Two observers, per architecture doc 10.2: the internal audit, which catches
-    ledger damage that never reaches a token, and bitwise equality of each
-    request against its canonical batch-1 execution.
-    """
+    """The oracle. Returns a reason, or None if the case is clean."""
     outcome = run_case(model, case)
     if outcome.error:
         return outcome.error
@@ -119,12 +104,6 @@ def case_fails(model, case: Case) -> str | None:
         if expected is not None and observed is not None and expected != observed:
             return f"{spec.uid} diverged from canonical: {observed} != {expected}"
 
-        # Then the decode-phase logit bytes, which token equality can mask for a
-        # long time. A batch-dependent perturbation below the top-1-to-top-2 gap
-        # changes no token until it lands near a tie, at which point the
-        # divergence surfaces far from its cause. This oracle compared token ids
-        # only, so I1's claims-table cell said "bitwise on fp16 logit bytes" while
-        # the campaign that exercises it was checking something weaker.
         want = canonical.emitted_logits.get(spec.uid) or []
         got = outcome.emitted_logits.get(spec.uid) or []
         for index, (a, b) in enumerate(zip(want, got)):
@@ -160,9 +139,6 @@ def run_campaign(model, seeds, cases_per_seed, coverage, oracle, progress=True):
             if reason:
                 findings.append(Finding(case, reason, config.describe(),
                                         time.monotonic() - started))
-                # Printed as it happens, not held to the end. Frontend spec 1.2:
-                # failures lead. A campaign that only reports at the end makes a
-                # long run opaque and a killed run report nothing at all.
                 print(f"\n  FINDING {len(findings)}: {reason[:110]}")
                 print(f"    config {config.describe()}", flush=True)
             if progress:
@@ -180,8 +156,6 @@ def print_repro(finding: Finding, minimization, artifact_path: str) -> None:
     """The divergence report from frontend spec 1.3, with the minimality proof."""
     case = minimization.case
     print()
-    # A crash carries no digests, so it renders as a crash rather than as a
-    # divergence with placeholder hashes.
     is_crash = ":" in finding.detail and "diverged from canonical" not in finding.detail
     print(Divergence(
         request_uid=case.requests[0].uid if case.requests else "?",
@@ -242,10 +216,6 @@ def main() -> int:
     print()
     print(f"  clean campaign: {len(findings)} findings over {executed} cases")
 
-    # Minimize, write the case artifact, print the repro. This was three imports
-    # and a function nothing called: `minimize` and `print_repro` existed, the
-    # divergence report named an artifact path, and no code path produced one.
-    # A reproduce line is only true if something writes what it points at.
     for finding in findings:
         minimization = minimize(finding.case, lambda c: case_fails(model, c) is not None)
         artifact = Artifact(kind="case", env=envlock.capture(), payload={
@@ -291,11 +261,6 @@ def main() -> int:
             "eviction_passes_max_in_one_case": max_passes_seen,
             "pass_count_assertion_fired": assertion_fired,
             "findings": evict_findings,
-            # Recorded so the eviction phase's contribution to coverage is
-            # inspectable rather than inferred. Whether a named campaign is
-            # credited as exploration depends on whether it reaches n-grams
-            # outside the subsystem it targets, and that cannot be argued from an
-            # artifact that does not carry the numbers.
             "coverage": evict_coverage.as_dict(),
         }
         print(f"  cases run                      {len(cases)}")
@@ -318,12 +283,6 @@ def main() -> int:
             fault_coverage = Coverage()
             faults_module.SENTINELS.pop(fault.name, None)
 
-            # Generic swarm cases plus the eviction-targeted ones. A fault whose
-            # path is eviction barely executes under a uniform campaign: the
-            # "eviction eligible-set includes a running sequence" operator
-            # survived a generic campaign and died in 57s once eviction was
-            # actually reached, so the trial must drive the path the fault sits
-            # on rather than hope a uniform draw wanders into it.
             trial_cases = [
                 draw_case(draw_config(seed), model.cfg.vocab_size, index)
                 for seed in range(6) for index in range(4)
@@ -341,10 +300,6 @@ def main() -> int:
                         found.append(outcome.error)
                         break
                     try:
-                        # The same observer set the clean campaign uses. Dropping
-                        # the n-gram check here made the chunk-boundary operator
-                        # look like a survivor when it is caught by exactly that
-                        # observer.
                         observe(fault_coverage, case, outcome)
                     except Exception as exc:  # noqa: BLE001
                         found.append(f"{type(exc).__name__}: {exc}")
@@ -357,23 +312,6 @@ def main() -> int:
                 detected = time.monotonic() - started
                 detail = found[0][:70]
 
-            # Third observer: exact comparison against the committed baseline.
-            # It answers a question neither of the others can: I1 to I4 compare
-            # the engine against itself, so a perturbation uniform across
-            # schedules is invisible, and F1 compares within a tolerance wide
-            # enough to absorb one step of fold-order reassociation.
-            #
-            # Order matters for attribution, not for the verdict: whichever
-            # observer runs first gets credit for the kill. Golden bytes run
-            # ahead of F1 because they are cheap, so a mutant catchable by both
-            # is reported here. For the one operator where that could mislead,
-            # the reversed split-combine fold, F1 was measured separately:
-            # 6.669992e-02 clean against 6.669992e-02 mutated, so its statistic
-            # is identical and no threshold on it separates the two. The
-            # underlying logits do differ, by about 2.5 fp16 ulp and only at
-            # multi-split positions, which is below the quantization error F1
-            # already absorbs by design. The attribution is not an artifact of
-            # this ordering.
             if not found:
                 from harness.fuzz import golden
 
@@ -387,8 +325,6 @@ def main() -> int:
                     detected = time.monotonic() - started
                     detail = found[0][:70]
 
-            # If no invariance observer saw it, and the operator is one F1 can
-            # see, run fidelity against fp64 before calling it a survivor.
             if not found and fault.fidelity_observable:
                 from bench.fp64_reference import Fp64Reference, require_pinned_threads
                 from harness.fuzz.f1_observer import build_prompt, spot_check
@@ -410,7 +346,6 @@ def main() -> int:
                 except SystemExit as exc:
                     print(f"                     F1 observer skipped: {exc}")
 
-            # Gate: did the mutated path execute at all?
             missing = exercised.missing(*fault.requires) if fault.requires else []
             if missing and detected is None:
                 verdict = "not-exercised"
@@ -419,10 +354,6 @@ def main() -> int:
             else:
                 verdict = "survived"
 
-            # Which observer fired matters as much as the time. An undeclared
-            # transition is a claim about the lifecycle table, so a kill by that
-            # mechanism has to be re-verified whenever the table changes; an
-            # audit assertion or a bitwise divergence does not.
             if not detail:
                 mechanism = "-"
             elif detail.startswith("AuditFailure"):
@@ -442,8 +373,6 @@ def main() -> int:
 
             took_effect = faults_module.SENTINELS.get(fault.name, 0)
             if not took_effect:
-                # The patch never ran. Distinct from the path never running, and
-                # the execution counters cannot tell the difference.
                 verdict = "not-exercised"
 
             fault_results.append({

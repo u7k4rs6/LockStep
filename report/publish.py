@@ -1,21 +1,4 @@
-"""Promote an artifact from `results/` to `evidence/`, which is committed.
-
-PRD 1.1 requires every published number to ship with the artifact that produced
-it. `results/` is gitignored, so for most of this project's life that rule was
-satisfied locally and not at all from a fresh clone: the README cited numbers
-whose artifacts existed only on the machine that ran them, and the divergence
-report's reproduce line named a path a reader could not have.
-
-`evidence/` is the committed set. It is small on purpose. Promoting is a
-deliberate act, one artifact at a time, because an evidence directory that
-accumulates everything is `results/` with a different name and stops being a
-statement about which numbers are load-bearing.
-
-    python3 -m report.publish results/2026-08-05/fuzz-0003.json
-
-The destination name drops the date directory and keeps the kind and sequence, so
-a citation in the README is stable across reruns: `evidence/fuzz-0003.json`.
-"""
+"""Promote an artifact from `results/` to `evidence/`, which is committed."""
 
 from __future__ import annotations
 
@@ -35,8 +18,6 @@ def publish(source: Path, name: str | None = None) -> Path:
     """Copy one artifact into `evidence/`, refusing anything without an env."""
     artifact = json.loads(source.read_text())
     if not artifact.get("env"):
-        # Security doc section 7. A claim without an environment tuple is invalid
-        # by construction, so an artifact missing one must not become evidence.
         raise SystemExit(
             f"refusing to publish {source}: no env tuple. A claim without one is "
             "invalid by construction and committing it would make the evidence "

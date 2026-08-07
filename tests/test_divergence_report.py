@@ -53,11 +53,7 @@ def test_fits_on_one_screen():
 
 
 def test_leads_with_the_reproduce_command():
-    """Frontend spec 1.2: failures lead with the repro, not a stack trace.
-
-    The reproduce block is the last thing printed and therefore the first thing
-    visible above a shell prompt, and no line after it competes for attention.
-    """
+    """Frontend spec 1.2: failures lead with the repro, not a stack trace."""
     lines = SYNTHETIC.render(color=False).splitlines()
     assert lines[-2].strip() == "reproduce"
     assert lines[-1].strip().startswith("lockstep replay ")
@@ -75,10 +71,6 @@ def test_fenced_form_is_the_block_plus_fences():
     assert fenced[1:-1] == SYNTHETIC.render(color=False).splitlines()
 
 
-# Divergence fields are engine-generated single-line values. Control characters
-# are excluded from the strategy rather than skipped inside the test, because a
-# skip inside a Hypothesis test abandons the whole property rather than the one
-# example, which would silently stop checking the column budget at all.
 SINGLE_LINE = st.text(
     alphabet=st.characters(blacklist_categories=("Cc", "Cs", "Zl", "Zp"))
 )

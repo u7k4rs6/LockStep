@@ -1,7 +1,4 @@
-"""Reproduce a campaign finding, minimize it, and verify the minimization.
-
-Run:  python3 -m harness.minimize.demo --seed 20 --index N
-"""
+"""Reproduce a campaign finding, minimize it, and verify the minimization."""
 
 from __future__ import annotations
 

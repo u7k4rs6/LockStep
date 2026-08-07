@@ -1,13 +1,4 @@
-"""SwiGLU activation, elementwise.
-
-Not named in the architecture doc's kernel list, because it carries no reduction
-and therefore no invariance risk: out[i] depends on gate[i] and up[i] and nothing
-else, so it is invariant under any batching by construction.
-
-It is written in Triton anyway so that the fused activation is one launch from
-the pinned registry rather than three torch launches, and so that the static grep
-over engine/ covers the whole activation path rather than most of it.
-"""
+"""SwiGLU activation, elementwise."""
 
 from __future__ import annotations
 

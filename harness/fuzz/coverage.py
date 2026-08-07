@@ -1,18 +1,4 @@
-"""Coverage: lifecycle n-grams, boundary predicates, preemption depth.
-
-docs/02-technical-architecture.md section 8.2 names all three and says why:
-"Coverage is what proves exploration rather than sampling the easy middle."
-
-The n-gram denominator comes from engine/sched/lifecycle.py by search over the
-declared transition relation, and every observed n-gram is checked against it. An
-n-gram the table did not predict is a failure of the table, reported loudly,
-because a denominator that can silently omit reachable transitions is how a
-campaign reaches 100 percent without exploring anything.
-
-Boundary predicates are required at value, value minus one, and value plus one,
-which is the shape architecture doc 8.2 asks for and the shape SGLang's open bug
-sits at.
-"""
+"""Coverage: lifecycle n-grams, boundary predicates, preemption depth."""
 
 from __future__ import annotations
 
@@ -25,8 +11,6 @@ class UndeclaredTransition(AssertionError):
     """A run produced an n-gram the state machine says is impossible."""
 
 
-# Each predicate is required at three values. The names are the reader's, not the
-# engine's: what a person tuning a server would recognize.
 BOUNDARY_PREDICATES = {
     "chunk end vs block size": ("below", "exact", "above"),
     "cache hit length vs block size": ("below", "exact", "above"),
@@ -53,25 +37,16 @@ class Coverage:
         for name in BOUNDARY_PREDICATES:
             self.boundary_hits.setdefault(name, set())
 
-    # -- recording ------------------------------------------------------------
 
     def observe_transitions(self, events: list[Event]) -> None:
-        """Record which declared (state, event) transitions actually fired.
-
-        The n-gram check is one-directional: it asserts observed transitions are
-        legal, so the denominator can only ever be too large. Nothing asserted
-        the converse, that every declared transition is reachable, so a spurious
-        entry inflates the denominator and depresses coverage silently and
-        forever. This is the other direction, and it needs a witness per
-        transition rather than an argument.
-        """
+        """Record which declared (state, event) transitions actually fired."""
         from engine.sched.lifecycle import INITIAL, TRANSITIONS
 
         state = INITIAL
         for event in events:
             key = (state, event)
             if key not in TRANSITIONS:
-                return  # the n-gram check reports this; do not double-report
+                return
             self.witnessed_transitions.add(key)
             state = TRANSITIONS[key]
 
@@ -111,7 +86,6 @@ class Coverage:
     def observe_preempt_depth(self, depth: int) -> None:
         self.preempt_depths[depth] = self.preempt_depths.get(depth, 0) + 1
 
-    # -- reporting ------------------------------------------------------------
 
     def ngram_fraction(self, n: int) -> tuple[int, int]:
         return len(self.observed_ngrams[n]), len(feasible_ngrams(n))

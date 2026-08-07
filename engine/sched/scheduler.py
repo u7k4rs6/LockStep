@@ -1,25 +1,4 @@
-"""Naive continuous batching. Every decision goes through the policy seam.
-
-Week 2 scope from the PRD: requests join and leave the running batch. Chunked
-prefill, preemption, and the prefix cache are week 4 and are not here; the policy
-interface already names them so that adding them is filling in a decision point
-rather than inventing one.
-
-The step structure, which is what a schedule is a sequence of:
-
-    1. Ask the policy which waiting requests to admit. Admitted requests prefill
-       their whole prompt this step.
-    2. Every already-running request decodes one token.
-    3. Requests that hit their limit or an EOS finish and release their blocks.
-
-Prefill and decode ride in the same packed batch, which is what makes this
-continuous batching rather than a queue of phases, and which is what puts a
-batch-dependent M in front of every GEMM.
-
-Nothing here chooses. `admit` is the policy's. The order of the running set is
-insertion order, which is a property of the recorded schedule rather than a
-decision; the trajectory hash covers it so a reordering cannot pass unnoticed.
-"""
+"""Naive continuous batching. Every decision goes through the policy seam."""
 
 from __future__ import annotations
 
@@ -51,10 +30,6 @@ class Request:
     generated: list[int] = field(default_factory=list)
     finished: bool = False
 
-    # Positions whose KV is in the pool. Prefill and decode both advance it,
-    # which is what lets one code path serve both: a decode step is a prefill of
-    # exactly one token at the end of the context. Preemption sets it back to
-    # whatever survived, and recompute simply prefills the gap.
     kv_len: int = 0
     preempt_count: int = 0
     cache_hit_tokens: int = 0
@@ -92,11 +67,6 @@ class Scheduler:
         self.eos = eos_token_ids or set()
         self.audit_enabled = audit
         self.counters = Counters()
-        # The engine owns its own lifecycle event stream. Recording it in a
-        # policy would mean a policy that declines to record produces a
-        # different coverage report from one that does, and would emit ADMIT
-        # where the state machine says RESUME because a policy cannot see that a
-        # request was previously preempted.
         self.lifecycle: dict[str, list] = {}
 
         self.pool = paged.PagedKVCache(
@@ -119,24 +89,10 @@ class Scheduler:
         self.step_index = 0
         self.evictions = 0
         self.trajectory = TrajectoryHash()
-        # uid -> one fp16 logit row per emitted token, in emission order.
         self.emitted_logits: dict[str, list] = {}
 
     def submit(self, request: Request) -> None:
-        """Queue a request, refusing one that can never fit.
-
-        Found by the fuzzer against the unmutated engine, minimized to a single
-        61-token request with max_new_tokens=4 against a 2-block pool at
-        block_size 32: 65 tokens needs 3 blocks, so the request could never be
-        admitted, but it sat in the queue until nothing was running and the
-        scheduler raised "N requests waiting, M blocks free, and nothing running
-        to free them". That message named free blocks the request could never
-        have used, which pointed at pressure rather than at the real cause.
-
-        A request larger than the whole pool is not a pressure condition and no
-        amount of eviction or preemption will help, so it is refused at the door
-        with the arithmetic that decides it.
-        """
+        """Queue a request, refusing one that can never fit."""
         needed = self._blocks_needed(request)
         if needed > self.pool.num_blocks:
             raise OversizedRequest(
@@ -167,19 +123,7 @@ class Scheduler:
         return -(-total // self.pool.block_size)
 
     def _reserve_with_eviction(self, uid: str, tokens: int) -> None:
-        """Reserve blocks, evicting cached-but-unused ones under pressure.
-
-        Which block to evict is a policy decision (architecture doc section 6),
-        so the candidate set comes from the cache and the choice comes from the
-        policy. The candidate set is only blocks whose sole remaining holder is
-        the cache index; including a block a running sequence holds is mutation
-        operator 10.1's "eviction eligible-set includes a running sequence".
-        """
-        # The loop is bounded by the candidate count at entry, not by an argument
-        # that the set shrinks. Each pass evicts exactly one block and no pass
-        # creates a candidate, so more passes than there were candidates means
-        # the invariant broke. A hostile schedule probing this surface should get
-        # a loud assertion, not a hang the campaign reports as a timeout.
+        """Reserve blocks, evicting cached-but-unused ones under pressure."""
         max_passes = len(self.cache.evictable_blocks(self.pool)) + 1 if self.cache else 1
         passes = 0
         while True:
@@ -222,16 +166,6 @@ class Scheduler:
         if self.cache is not None:
             hit_tokens, blocks = self.cache.lookup(request.prompt)
 
-            # A hit covering the whole prompt leaves nothing to compute, and a
-            # request with nothing to compute has no logits to sample from: the
-            # KV for the last position exists, but the forward pass that would
-            # have produced its logits never ran. So the last block is always
-            # recomputed. This costs one block of prefill and is why a full-prompt
-            # hit is not a no-op.
-            #
-            # It cannot change the result: recomputing that block reproduces the
-            # cached KV exactly, which is chunk invariance, the same property
-            # that makes the cache sound in the first place.
             if hit_tokens >= len(request.prompt) and blocks:
                 hit_tokens -= self.pool.block_size
                 blocks = blocks[:-1]
@@ -255,14 +189,7 @@ class Scheduler:
         self.pool.sequences[request.uid].length = request.kv_len
 
     def _preempt(self, request: Request) -> None:
-        """Recompute preemption: drop the KV, keep the tokens.
-
-        The request goes back to the front of the waiting queue with its
-        generated tokens intact and kv_len reset, so re-admission rebuilds the
-        whole context in one prefill. That is only bitwise sound because
-        decode-produced KV equals prefill-produced KV, which harness/mr/
-        equivalence.py proves at the tensor level.
-        """
+        """Recompute preemption: drop the KV, keep the tokens."""
         self.pool.release(request.uid)
         request.kv_len = 0
         request.preempt_count += 1
@@ -293,11 +220,6 @@ class Scheduler:
             state = self._state()
 
         if not self.running:
-            # Nothing could be admitted and nothing is running. Every waiting
-            # request fits the pool in principle, since submit() refuses those
-            # that do not, so this is genuine fragmentation or a policy that
-            # will not admit. Naming the smallest waiting request makes the
-            # difference visible.
             smallest = min(self._blocks_needed(r) for r in self.waiting)
             raise paged.OutOfBlocks(
                 f"{len(self.waiting)} requests waiting, smallest needs {smallest} blocks, "
@@ -305,10 +227,6 @@ class Scheduler:
                 f"{self._state().reclaimable_blocks} reclaimable, nothing running to free more"
             )
 
-        # Preemption, before any work is packed. A preempted request loses its
-        # blocks and its KV; recompute rebuilds them from the context, which is
-        # sound exactly because decode-produced KV is bit-identical to
-        # prefill-produced KV (architecture doc 4.1).
         for request in list(self.running):
             if request.kv_len == 0 or not request.generated:
                 continue
@@ -326,9 +244,6 @@ class Scheduler:
             self.step_index += 1
             return True
 
-        # Prefill and decode ride in the same packed batch, through one code
-        # path: a decode step is a prefill of one token at the end of the
-        # context, so there is no second path for it to diverge from.
         work: list[tuple[str, list[int], int]] = []
         for request in self.running:
             context = request.context()
@@ -369,19 +284,11 @@ class Scheduler:
             request.kv_len = start + len(tokens)
             self.pool.sequences[request.uid].length = request.kv_len
             if request.kv_len < len(request.context()):
-                # Mid-context: this was a partial chunk, so nothing is emitted.
                 continue
             if request.kv_len == len(request.prompt) and not request.generated:
                 self.counters.hit("prefill_complete")
             row = logits[request.uid][-1]
             position = request.total_tokens() - 1
-            # The raw logit row at every emitted position, kept so a relation can
-            # compare decode-phase bits against canonical. MR1 compared logit
-            # bytes only for whole-prompt prefills at position 0; every other
-            # relation and the fuzz oracle compared emitted token ids, so a
-            # batch-dependent perturbation below the top-1-to-top-2 gap survived
-            # every check until it happened to flip a token, which is exactly the
-            # masking harness/mr/equivalence.py warns about in its own docstring.
             self.emitted_logits.setdefault(request.uid, []).append(
                 row.detach().cpu().clone()
             )
@@ -421,8 +328,6 @@ class Scheduler:
             if done:
                 request.finished = True
                 self.counters.hit("finish")
-                # Which half of the disjunction fired. Without this the coverage
-                # report cannot tell that EOS finishing has never executed.
                 if request.generated and request.generated[-1] in self.eos:
                     self.counters.hit("finish_eos")
                 else:
@@ -431,8 +336,6 @@ class Scheduler:
                 self.running.remove(request)
                 self.done.append(request)
                 if self.cache is not None:
-                    # Index whole blocks before releasing, so the cache takes its
-                    # reference while the blocks are still alive.
                     self.cache.insert(
                         request.context()[: request.kv_len],
                         self.pool.sequences[request.uid].block_ids,

@@ -1,33 +1,4 @@
-"""Qwen3-0.6B forward pass on invariant kernels only.
-
-Week 1 runs a single sequence, but the kernel shapes are the ones the
-architecture doc requires rather than a simpler stand-in that would have to be
-replaced: fixed-BLOCK_K GEMMs with no split-K including lm_head, one CTA per row
-for RMSNorm, elementwise RoPE, and the fixed-split attention family. Paged KV,
-batching, and the scheduler are week 2 and are deliberately absent; the KV cache
-here is one contiguous tensor per layer.
-
-Torch operations used in the forward pass, and why each is safe under I1:
-
-  * `embed[token_ids]`: a gather. No arithmetic, no reduction.
-  * `h + o` for residual: elementwise add over matching shapes.
-  * `.view` / `.reshape` / `.contiguous`: layout only.
-
-Every operation that reduces goes through engine/kernels. There is no torch
-`matmul`, `softmax`, `mean`, or `sum` anywhere in this path, because those are
-the ops whose kernel selection is shape-dependent and therefore batch-dependent.
-
-Numerics deviations from HF `Qwen3ForCausalLM`, all deliberate, all in the
-direction of the fp64 reference that F1 measures against:
-
-  * RMSNorm keeps fp32 through the weight multiply; HF rounds to fp16 first.
-  * cos/sin tables are built in fp64 on CPU and held in fp32; HF casts them to
-    the activation dtype, so at fp16 it rotates by a 10-bit-mantissa angle.
-
-HF is a sanity check, never ground truth, because it is not shape-invariant
-(architecture doc section 7). These deviations are why the HF token-match number
-in bench/fidelity.py is a sanity check rather than a target of 100 percent.
-"""
+"""Qwen3-0.6B forward pass on invariant kernels only."""
 
 from __future__ import annotations
 
@@ -48,8 +19,6 @@ from engine.kernels.swiglu import swiglu
 
 ENGINE_DTYPE = torch.float16
 
-# Elements per slice when measuring the weight cast. 16.8M elements is 67 MB in
-# fp32, which bounds the temporary regardless of the widest tensor in the model.
 CAST_REPORT_CHUNK = 1 << 24
 
 
@@ -61,13 +30,7 @@ def write_kv(
     k: torch.Tensor,
     v: torch.Tensor,
 ) -> None:
-    """Scatter freshly computed K and V into their paged slots.
-
-    Written position by block rather than as one slice, because a sequence's
-    logical positions are contiguous while its physical blocks are not. The
-    scatter is a pure function of (start_pos, block table), so it carries no
-    batch-derived quantity.
-    """
+    """Scatter freshly computed K and V into their paged slots."""
     table = pool.sequences[uid].block_ids
     written = 0
     total = k.shape[0]
@@ -77,9 +40,6 @@ def write_kv(
         take = min(pool.block_size - slot, total - written)
         physical = table[logical]
         if layer == 0:
-            # Checked once per position rather than once per layer: the block
-            # table is the same for every layer, so checking 28 times would cost
-            # 28x for the same answer.
             pool.assert_exclusive(uid, physical)
         pool.k[layer][physical, slot : slot + take] = k[written : written + take]
         pool.v[layer][physical, slot : slot + take] = v[written : written + take]
@@ -121,14 +81,7 @@ class Qwen3Config:
 
 
 class KVCache:
-    """A single-sequence view onto a PagedKVCache, for batch-1 paths.
-
-    Week 1's contiguous per-layer tensors are gone; the pool is the storage now.
-    This wrapper exists so that batch-1 callers (bench/fidelity.py, the ablation
-    harness) do not each have to build a pool and a block table by hand, and so
-    that they exercise the same paged read path the scheduler uses rather than a
-    second one kept alive for convenience.
-    """
+    """A single-sequence view onto a PagedKVCache, for batch-1 paths."""
 
     def __init__(
         self,
@@ -164,12 +117,7 @@ class KVCache:
 def _rope_tables(
     cfg: Qwen3Config, max_len: int, device: torch.device
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    """cos and sin of shape [max_len, head_dim/2], built in fp64 on CPU.
-
-    Held in fp32. The tables are a function of position and rope_theta alone, so
-    they are computed once and are identical for every request; building them in
-    fp64 removes the table itself as a source of error in the F1 measurement.
-    """
+    """cos and sin of shape [max_len, head_dim/2], built in fp64 on CPU."""
     half = cfg.head_dim // 2
     exponent = torch.arange(0, half, dtype=torch.float64) * 2.0 / cfg.head_dim
     inv_freq = 1.0 / (cfg.rope_theta**exponent)
@@ -199,37 +147,11 @@ class Qwen3:
         self.cos, self.sin = _rope_tables(self.cfg, max_len, self.device)
         self.sm_scale = 1.0 / math.sqrt(self.cfg.head_dim)
 
-    # -- loading --------------------------------------------------------------
 
     def _load(self, path: Path) -> dict[str, torch.Tensor]:
-        """Load safetensors and cast to the engine dtype.
-
-        `safetensors` is a transitive dependency of transformers, which the
-        security doc scopes to "loading and tokenizer only"; this is that use.
-        No pickle format is ever opened: the pinned revision publishes
-        safetensors and scripts/download_weights.py refuses a lockfile that names
-        a .bin.
-
-        The checkpoint is bf16. bf16 carries 7 mantissa bits and fp16 carries 10,
-        so the cast is exact for every value inside fp16's normal range; values
-        below it would flush, and `weight_cast_report` counts them so the number
-        is measured rather than asserted.
-
-        Tied embeddings: the config sets `tie_word_embeddings`, and this
-        checkpoint nonetheless ships a separate `lm_head.weight` holding a
-        bitwise-identical copy of `model.embed_tokens.weight`. Materializing both
-        costs 311 MB of fp16 VRAM for a duplicate, which is not affordable next to
-        a paged KV budget on 8 GB. The duplicate is dropped and lm_head is aliased
-        to the embedding, but only after the two are verified identical, because
-        aliasing on the strength of a config flag alone would silently use the
-        wrong weights on any checkpoint where they had diverged.
-        """
+        """Load safetensors and cast to the engine dtype."""
         from safetensors import safe_open
 
-        # safe_open reads one tensor at a time. load_file materializes the whole
-        # 1.5 GB checkpoint as a dict before anything is cast, which put a
-        # 1.5 GB floor under peak RSS for no reason: the loader only ever needs
-        # one tensor live at a time.
         handle = safe_open(str(path), framework="pt", device="cpu")
         names = list(handle.keys())
         self.checkpoint_dtype = str(handle.get_tensor(names[0]).dtype)
@@ -251,21 +173,6 @@ class Qwen3:
                 )
             names.remove("lm_head.weight")
 
-        # Measured while streaming, one tensor at a time, and the raw checkpoint
-        # is released as we go.
-        #
-        # In fp64 over a whole tensor this measurement was the single largest
-        # host allocation in the project: the 151936 x 1024 embedding produced
-        # five 1.24 GB fp64 temporaries at once and drove peak RSS to 5318 MiB,
-        # more than the fp64 reference pass itself ever used. Two changes fix it
-        # without moving a digit of the result.
-        #
-        # fp32 instead of fp64: fp32 carries 8 exponent and 23 mantissa bits, so
-        # it represents every bf16 (8 and 7) and every fp16 (5 and 10) value
-        # exactly. The comparison is therefore still exact, at half the width.
-        #
-        # Chunked over the leading dimension: no temporary exceeds a bounded
-        # size regardless of how wide the vocabulary gets.
         elements = 0
         inexact = 0
         max_abs = 0.0
@@ -309,35 +216,23 @@ class Qwen3:
         return weights
 
     def weight_cast_report(self) -> dict[str, object]:
-        """How much the checkpoint -> fp16 cast cost, measured across all weights.
-
-        The fp64 reference is built from the *fp16* values this engine holds, so
-        this error sits deliberately outside the F1 number: F1 measures the
-        forward pass, not the weight cast. Reporting it separately is what keeps
-        that choice honest rather than convenient.
-        """
+        """How much the checkpoint -> fp16 cast cost, measured across all weights."""
         return dict(self._cast_report)
 
     def _w(self, name: str) -> torch.Tensor:
         return self.weights[name]
 
-    # -- forward --------------------------------------------------------------
 
     def forward(
         self, token_ids: torch.Tensor, start_pos: int, cache: KVCache
     ) -> torch.Tensor:
-        """Run `token_ids` at positions [start_pos, start_pos + len), return logits.
-
-        Prefill passes start_pos=0 with the whole prompt; a decode step passes
-        one token at the current length. Chunked prefill in week 4 passes an
-        arbitrary interior offset, and I2 says the bits must not care.
-        """
+        """Run `token_ids` at positions [start_pos, start_pos + len), return logits."""
         cfg = self.cfg
         seq_len = token_ids.shape[0]
         kv_len = start_pos + seq_len
         assert kv_len <= cache.max_len, f"kv_len {kv_len} exceeds cache {cache.max_len}"
 
-        h = self._w("model.embed_tokens.weight")[token_ids]  # gather, no arithmetic
+        h = self._w("model.embed_tokens.weight")[token_ids]
         cos = self.cos[start_pos:kv_len]
         sin = self.sin[start_pos:kv_len]
 
@@ -358,7 +253,6 @@ class Qwen3:
                 seq_len, cfg.num_key_value_heads, cfg.head_dim
             )
 
-            # Qwen3 normalizes per head before rotation, unlike Qwen2.
             q = rmsnorm(q, self._w(f"{p}.self_attn.q_norm.weight"), cfg.rms_norm_eps, "rmsnorm.head")
             k = rmsnorm(k, self._w(f"{p}.self_attn.k_norm.weight"), cfg.rms_norm_eps, "rmsnorm.head")
 
@@ -402,20 +296,7 @@ class Qwen3:
         pool: "paged.PagedKVCache",
         work: list[tuple[str, list[int], int]],
     ) -> dict[str, torch.Tensor]:
-        """Run several sequences in one launch. Returns logits per uid.
-
-        `work` is a list of (uid, token_ids, start_pos). Tokens from every
-        sequence are packed into one flat batch, so the GEMMs see an M that
-        depends on what else is resident. That is exactly the dependence I1
-        forbids from reaching a kernel config, and the reason the GEMM looks up
-        its config by name: M changes the grid, never the blocking.
-
-        Attention runs per sequence rather than over the packed batch. That is
-        not a concession: each sequence has its own block table, its own kv_len,
-        and its own causal structure, and a fused kernel would have to take a
-        batch-max sequence length to size anything shared. Looping keeps every
-        reduction a function of one request's own state.
-        """
+        """Run several sequences in one launch. Returns logits per uid."""
         cfg = self.cfg
         packed = torch.tensor(
             [t for _, tokens, _ in work for t in tokens], dtype=torch.long, device=self.device
@@ -493,18 +374,11 @@ class Qwen3:
             for i, (uid, _, _) in enumerate(work)
         }
 
-    # -- decode ---------------------------------------------------------------
 
     def generate_greedy(
         self, prompt_ids: list[int], max_new_tokens: int, eos_token_ids: set[int] | None = None
     ) -> tuple[list[int], list[torch.Tensor]]:
-        """Greedy batch-1 decode. Returns generated ids and the logits per step.
-
-        Ties break by lowest token ID, matching the sampler rule in the PRD's
-        must-have table so that greedy here and temperature-0 sampling later
-        cannot disagree. `torch.argmax` already returns the first maximal index,
-        which is that rule; it is asserted rather than assumed in the tests.
-        """
+        """Greedy batch-1 decode. Returns generated ids and the logits per step."""
         cache = KVCache(self.cfg, self.max_len, self.device)
         ids = torch.tensor(prompt_ids, dtype=torch.long, device=self.device)
 

@@ -1,14 +1,4 @@
-"""`engine/` must never import from `harness/`.
-
-The ablation's non-invariant probes live under `harness/` deliberately: one of
-them uses `tl.atomic_add`, which is exactly what the static gate in
-scripts/static_checks.py greps `engine/` to forbid. That separation is only worth
-anything if it cannot be crossed by accident, so the direction of the dependency
-is asserted here rather than left as a convention.
-
-Checked by parsing imports rather than by importing, so a cycle or a missing
-optional dependency cannot make the check silently pass.
-"""
+"""`engine/` must never import from `harness/`."""
 
 from __future__ import annotations
 
@@ -33,8 +23,6 @@ def imports_of(path: Path) -> set[str]:
                 found.add(alias.name.split(".")[0])
         elif isinstance(node, ast.ImportFrom):
             if node.level:
-                # A relative import cannot leave the package it starts in by
-                # name, so it can never reach harness/ from engine/.
                 continue
             if node.module:
                 found.add(node.module.split(".")[0])

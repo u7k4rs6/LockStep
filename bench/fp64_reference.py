@@ -1,33 +1,4 @@
-"""The fp64 CPU reference forward pass.
-
-docs/02-technical-architecture.md section 7: the fidelity reference, and never an
-invariance oracle.
-
-Three decisions worth stating, because each is a place a fidelity number can be
-quietly inflated:
-
-1. **The reference uses the fp16 weight values the engine holds, upcast to
-   fp64.** Not the bf16 checkpoint. This isolates forward-pass numerics, which is
-   what F1 claims to measure, from the weight cast, which `Qwen3` reports
-   separately. Mixing them would let a clean cast flatter a noisy forward pass.
-
-2. **The reference computes the mathematically correct attention**, a single fp64
-   softmax over the whole causal row. It does not mirror the engine's split
-   structure. The engine's splitting is a numerics artifact to be measured, not a
-   definition to be matched.
-
-3. **Thread counts are pinned and asserted.** MKL and OpenMP pick reduction trees
-   by thread count, so an unpinned reference is itself nondeterministic. All
-   three of OMP_NUM_THREADS, MKL_NUM_THREADS, and torch's intraop pool are
-   checked, because the first two are backend-specific environment variables
-   while `torch.get_num_threads()` is what actually governs the pool whichever
-   backend is underneath.
-
-The class exposes `hidden` and `logits_for` separately rather than one `prefill`
-returning full logits. A 727-position prompt at fp64 full vocab is 884 MB, and
-the caller needs the engine's rows alongside it; splitting lets the caller walk
-the vocabulary in row chunks and keep the peak near 80 MB.
-"""
+"""The fp64 CPU reference forward pass."""
 
 from __future__ import annotations
 
@@ -39,16 +10,11 @@ import torch
 
 from engine.model.qwen3 import ENGINE_DTYPE, Qwen3Config
 
-LM_HEAD_CHUNK = 16384  # vocab rows upcast at a time; 16384*1024*8 B = 134 MB
+LM_HEAD_CHUNK = 16384
 
 
 def require_pinned_threads() -> dict[str, int]:
-    """Refuse to run a reference whose reduction order is unpinned.
-
-    MKL_NUM_THREADS has to be exported before torch is imported to bind, so this
-    checks the environment rather than trusting a late assignment, and then
-    cross-checks torch's actual intraop pool against it.
-    """
+    """Refuse to run a reference whose reduction order is unpinned."""
     values = {name: os.environ.get(name) for name in ("OMP_NUM_THREADS", "MKL_NUM_THREADS")}
     missing = [name for name, raw in values.items() if not (raw and raw.isdigit() and int(raw) >= 1)]
     if missing:
@@ -73,14 +39,7 @@ def require_pinned_threads() -> dict[str, int]:
 
 
 def stable_softmax(x: torch.Tensor) -> torch.Tensor:
-    """Explicit max-subtract softmax over the last dimension, CPU only.
-
-    Not `torch.softmax`, and the device assertion is not paranoia: torch.softmax
-    on CUDA in fp64 returns probabilities off by as much as 0.5 at row widths 513
-    and 769 with two or more rows (tests/test_torch_softmax_hazard.py pins the
-    repro). Ground truth silently computed on a broken path is the worst failure
-    this project could have, so the reference refuses to leave the CPU.
-    """
+    """Explicit max-subtract softmax over the last dimension, CPU only."""
     assert x.device.type == "cpu", (
         "the fp64 reference runs on CPU; torch.softmax fp64 on CUDA is wrong at "
         "some row widths, and moving ground truth to the GPU for speed would "
@@ -100,15 +59,9 @@ class Fp64Reference:
         weights_dir = Path(weights_dir)
         self.cfg = Qwen3Config.from_file(weights_dir / "config.json")
 
-        # One tensor at a time, for the same reason the engine loader does it:
-        # load_file would hold the entire 1.5 GB checkpoint alongside the fp16
-        # copy being built from it.
         handle = safe_open(str(weights_dir / "model.safetensors"), framework="pt", device="cpu")
         names = list(handle.keys())
 
-        # Same tied-embedding handling as the engine: the checkpoint ships a
-        # bitwise-identical duplicate of the embedding as lm_head, and holding
-        # both costs 311 MB for nothing.
         if (
             self.cfg.tie_word_embeddings
             and "lm_head.weight" in names
@@ -202,11 +155,7 @@ class Fp64Reference:
         return self._rmsnorm(h, "model.norm.weight")
 
     def logits_for(self, hidden_rows: torch.Tensor) -> torch.Tensor:
-        """Full-vocab fp64 logits for the given hidden rows.
-
-        Chunked over the vocabulary so the fp64 upcast of the 151936 x 1024
-        lm_head never needs 1.24 GB resident.
-        """
+        """Full-vocab fp64 logits for the given hidden rows."""
         weight = self.w["lm_head.weight"]
         out = torch.empty((hidden_rows.shape[0], weight.shape[0]), dtype=torch.float64)
         for start in range(0, weight.shape[0], LM_HEAD_CHUNK):

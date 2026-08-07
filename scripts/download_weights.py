@@ -1,14 +1,4 @@
-"""Fetch Qwen3-0.6B at the revision pinned in weights.lock, and verify it.
-
-docs/03-security-and-access.md section 1: "Pin by revision SHA. Verify checksums.
-Never load `.bin` pickles when a safetensors revision exists." Section 4: weights
-are gitignored with a download script and checksums committed instead.
-
-Stdlib-only by choice. `huggingface_hub` would work, but downloading from an
-explicit `resolve/<sha>/` URL makes the pin visible in the code rather than
-delegated to a library's revision-resolution behaviour, and it keeps the direct
-dependency set exactly as the security doc names it.
-"""
+"""Fetch Qwen3-0.6B at the revision pinned in weights.lock, and verify it."""
 
 from __future__ import annotations
 

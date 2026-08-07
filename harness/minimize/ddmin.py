@@ -1,18 +1,4 @@
-"""Three-stage ddmin, with minimality verified rather than asserted.
-
-Zeller and Hildebrandt, IEEE TSE 2002, applied in the three staged passes
-architecture doc 8.4 names: requests, then schedule events, then prompt tokens.
-
-"Minimized from 847 events to 12" means nothing on its own. Two things are
-checked mechanically and both are printed with the repro:
-
-  reproduces   the minimized case still fails on a fresh replay
-  minimal      removing any single remaining element makes it pass
-
-The second is 1-minimality, which is what ddmin guarantees and what can be
-checked exhaustively at this size. It is not the same as globally minimal, and
-the output says so rather than implying more than was verified.
-"""
+"""Three-stage ddmin, with minimality verified rather than asserted."""
 
 from __future__ import annotations
 
@@ -48,13 +34,7 @@ def _size(case: Case) -> dict:
 
 
 def _greedy_trim(items: list, still_fails, keep_at_least: int = 0) -> list:
-    """Remove elements one at a time while the case keeps failing.
-
-    ddmin alone cannot reach 1-minimality here: its loop requires at least two
-    elements, so a single remaining cache refusal or chunk entry is never tried
-    for removal even when it is irrelevant. That is exactly what the
-    1-minimality check reported, twice. This pass closes it by construction.
-    """
+    """Remove elements one at a time while the case keeps failing."""
     current = list(items)
     changed = True
     while changed:
@@ -85,13 +65,13 @@ def _ddmin(items: list, still_fails) -> list:
         chunks = [current[i:i + chunk_size] for i in range(0, len(current), chunk_size)]
 
         reduced = False
-        for chunk in chunks:                       # try each subset alone
+        for chunk in chunks:
             if len(chunk) < len(current) and still_fails(chunk):
                 current, granularity, reduced = chunk, 2, True
                 break
         if reduced:
             continue
-        for chunk in chunks:                       # try each complement
+        for chunk in chunks:
             complement = [x for x in current if x not in chunk]
             if complement and still_fails(complement):
                 current = complement
@@ -107,16 +87,7 @@ def _ddmin(items: list, still_fails) -> list:
 
 
 def minimize(case: Case, fails, max_rounds: int = 6) -> Minimization:
-    """Reduce `case` while `fails(case)` stays true, in three staged passes.
-
-    The three passes are run to a fixed point rather than once each. Running them
-    once leaves removable elements behind, because reducing prompt tokens in
-    stage 3 can make a schedule event kept in stage 2 redundant, and stage 2 has
-    already finished by then. The first version of this did exactly that and the
-    1-minimality check caught it, reporting that a cache refusal and a chunk
-    entry could still be removed. Iterating is the fix; the check is what found
-    it.
-    """
+    """Reduce `case` while `fails(case)` stays true, in three staged passes."""
     before = _size(case)
     checks = 0
 
@@ -136,15 +107,12 @@ def minimize(case: Case, fails, max_rounds: int = 6) -> Minimization:
 
 def _one_pass(case: Case, probe) -> Case:
     """One sweep of the three stages: requests, schedule events, prompt tokens."""
-    # Stage 1: requests.
     def with_requests(subset):
         return case.shrunk(requests=tuple(subset))
 
     requests = _reduce(list(case.requests), lambda s: probe(with_requests(s)), 1)
     case = case.shrunk(requests=tuple(requests))
 
-    # Stage 2: schedule events. Preemptions and cache refusals are the schedule;
-    # the chunk plan is reduced as a third list in the same stage.
     def with_preempts(subset):
         return case.shrunk(preempt_at=tuple(subset))
 
@@ -163,7 +131,6 @@ def _one_pass(case: Case, probe) -> Case:
     chunks = _reduce(list(case.chunk_plan), lambda s: probe(with_chunks(s)))
     case = case.shrunk(chunk_plan=tuple(chunks))
 
-    # Stage 3: prompt tokens, one request at a time.
     for index, spec in enumerate(case.requests):
         def with_tokens(subset, index=index):
             specs = list(case.requests)
@@ -183,13 +150,7 @@ def _one_pass(case: Case, probe) -> Case:
 
 
 def _verify(case: Case, fails, before: dict, checks: int) -> "Minimization":
-    """Check the two things a minimization claim rests on.
-
-    `reproduces` is that the reduced case still fails on a fresh replay.
-    `one_minimal` is that removing any single remaining element makes it pass,
-    checked exhaustively. That is 1-minimality, which is what ddmin guarantees;
-    it is not global minimality and the output says so rather than implying more.
-    """
+    """Check the two things a minimization claim rests on."""
     reproduces = fails(case)
 
     one_minimal = True

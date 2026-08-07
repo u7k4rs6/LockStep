@@ -1,11 +1,4 @@
-"""The coverage denominator is derived, and it is checked against reality.
-
-A hand-written feasible set can reach 100 percent by having omitted the hard
-transitions, and nothing in the number would show it. Two properties make the
-derived one trustworthy: it comes from the declared transition relation by
-search, and any n-gram a real run produces that the relation calls impossible
-fails loudly rather than being silently dropped.
-"""
+"""The coverage denominator is derived, and it is checked against reality."""
 
 from __future__ import annotations
 
@@ -41,14 +34,12 @@ def test_the_denominator_is_smaller_than_the_naive_product():
 def test_ngrams_grow_with_n_and_are_all_realizable():
     two, three = feasible_ngrams(2), feasible_ngrams(3)
     assert len(three) > len(two)
-    # Every 3-gram's leading pair must itself be a feasible 2-gram.
     for gram in three:
         assert gram[:2] in two
 
 
 def test_an_undeclared_transition_is_an_error_not_a_silent_drop():
     coverage = Coverage()
-    # FINISH is terminal, so nothing may follow it.
     with pytest.raises(UndeclaredTransition, match="impossible"):
         coverage.observe_events([Event.ADMIT, Event.FINISH, Event.DECODE])
 
@@ -64,8 +55,7 @@ def test_a_real_sequence_is_accepted():
 
 
 def test_cache_hit_happens_once_immediately_after_admission():
-    """The engine applies a hit during admission, at most once, so the table
-    must permit admit -> cache_hit and forbid cache_hit -> cache_hit."""
+    """The engine applies a hit during admission, at most once, so the table"""
     assert (State.ADMITTED, Event.CACHE_HIT) in TRANSITIONS
     assert (State.WAITING, Event.CACHE_HIT) not in TRANSITIONS
     assert (Event.ADMIT, Event.CACHE_HIT) in feasible_ngrams(2)
@@ -78,9 +68,7 @@ def test_terminal_state_has_no_outgoing_transitions():
 
 
 def test_transitions_removed_by_design_are_really_unreachable():
-    """The denominator shrank when these were removed, which is the direction
-    that flatters a coverage number, so the engine rules behind each removal are
-    asserted here rather than trusted."""
+    """The denominator shrank when these were removed, which is the direction"""
     import inspect
 
     from engine.sched.lifecycle import UNREACHABLE_BY_DESIGN
@@ -91,8 +79,6 @@ def test_transitions_removed_by_design_are_really_unreachable():
 
     source = inspect.getsource(Scheduler)
 
-    # Eviction runs only inside _reserve_with_eviction, and only _admit calls it,
-    # so a request already decoding can never observe one.
     assert source.count("_reserve_with_eviction(") == 2, (
         "reserve-with-eviction is called from somewhere new; a decoding request "
         "may now be able to observe an eviction, and (DECODING, EVICT) belongs "
@@ -101,49 +87,22 @@ def test_transitions_removed_by_design_are_really_unreachable():
 
 
 def test_a_resumed_request_can_be_preempted_mid_prefill():
-    """chunk -> preempt_rc is reachable, and the table must say so.
-
-    After a resume the request re-prefills its whole context in chunks while
-    already holding generated tokens, so the guard that skips preemption for a
-    request with no generated token does not exclude it. An earlier version of
-    the table removed this transition on exactly that mistaken reasoning, and the
-    observed-versus-feasible check caught it within one campaign.
-    """
+    """chunk -> preempt_rc is reachable, and the table must say so."""
     assert (State.PREFILLING, Event.PREEMPT_RC) in TRANSITIONS
     assert (Event.CHUNK, Event.PREEMPT_RC) in feasible_ngrams(2)
 
-    # But NOT resume -> preempt_rc. This assertion used to read the other way and
-    # was the over-correction that kept a dead transition alive: RESUME lands in
-    # ADMITTED, and preemption never fires from ADMITTED because _admit sets
-    # kv_len to 0 and the only thing that raises it first, a cache hit, emits
-    # CACHE_HIT and moves the request to PREFILLING. A resumed request is
-    # preemptable once it has chunked, which is what the assertion above says.
     assert (Event.RESUME, Event.PREEMPT_RC) not in feasible_ngrams(2)
     assert (State.ADMITTED, Event.PREEMPT_RC) in UNREACHABLE_BY_DESIGN
 
 
 def test_a_cache_hit_can_be_followed_by_an_eviction():
-    """Eviction runs inside _admit, after the hit is applied, so the engine
-    emits cache_hit -> evict. Removing this was the fourth error in the table
-    that a real run caught."""
+    """Eviction runs inside _admit, after the hit is applied, so the engine"""
     assert (State.PREFILLING, Event.EVICT) in TRANSITIONS
     assert (Event.CACHE_HIT, Event.EVICT) in feasible_ngrams(2)
 
 
 def test_every_declared_transition_has_a_witness_or_an_argument():
-    """Declared must equal reachable, and neither direction may be assumed.
-
-    The n-gram check asserts observed transitions are legal, so the denominator
-    can only be too large. This is the other direction. A transition that never
-    fires produces no evidence of its own absence, so no run could ever have
-    contradicted a spurious entry, and one sat here inflating every published
-    coverage number until it was checked by witnessing.
-
-    A transition belongs in TRANSITIONS only if some real run has taken it. If it
-    cannot be taken, it belongs in UNREACHABLE_BY_DESIGN with an argument. There
-    is no third category, and this test is what makes that true rather than
-    aspirational.
-    """
+    """Declared must equal reachable, and neither direction may be assumed."""
     from engine.sched.lifecycle import TRANSITIONS, UNREACHABLE_BY_DESIGN
 
     overlap = set(TRANSITIONS) & set(UNREACHABLE_BY_DESIGN)

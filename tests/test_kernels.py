@@ -1,14 +1,4 @@
-"""Kernel correctness, plus the row-count invariance the registry claims.
-
-Two kinds of test here. Correctness against a torch fp64 reference is the
-ordinary kind. The other kind checks that a row's output does not depend on how
-many other rows were in the launch, which is I1 in miniature: the full
-metamorphic suite is week 2 and later, but a kernel that fails this now would
-fail it then, and finding that out here costs one launch instead of a scheduler.
-
-These are not the invariance claim. They cover single kernels with no scheduler,
-no KV cache, and no cohabitant requests.
-"""
+"""Kernel correctness, plus the row-count invariance the registry claims."""
 
 from __future__ import annotations
 
@@ -41,13 +31,7 @@ def randn(*shape, dtype=torch.float16):
 
 
 def assert_within_fp16_rounding(got: torch.Tensor, want: torch.Tensor, ulps: float = 1.0):
-    """Assert `got` is `want` to within `ulps` fp16 units in the last place.
-
-    An absolute tolerance would be either meaningless at magnitude 1e-3 or vacuous
-    at magnitude 1e3. fp16 carries 10 explicit mantissa bits, so one ULP is
-    x * 2**-10; the floor covers values in the subnormal range where that formula
-    goes to zero.
-    """
+    """Assert `got` is `want` to within `ulps` fp16 units in the last place."""
     smallest = torch.finfo(torch.float16).smallest_normal
     tolerance = ulps * (want.abs().clamp_min(smallest) * 2**-10)
     error = (got - want).abs()
@@ -56,9 +40,6 @@ def assert_within_fp16_rounding(got: torch.Tensor, want: torch.Tensor, ulps: flo
         f"worst element: got {got.flatten()[worst]:.6e} want {want.flatten()[worst]:.6e} "
         f"= {float((error / tolerance).max()):.2f} ULP"
     )
-
-
-# ---- GEMM -------------------------------------------------------------------
 
 
 def test_gemm_matches_fp64():
@@ -70,12 +51,7 @@ def test_gemm_matches_fp64():
 
 
 def test_gemm_bias_is_added():
-    """Checked against fp64, not against the no-bias result minus the bias.
-
-    Those differ: the accumulator rounds to fp16 once with the bias folded in and
-    once without, and at the ~1e3 magnitudes a 1024-deep dot product reaches, the
-    fp16 spacing is 0.5, so a unit-scale bias is not recoverable by subtraction.
-    """
+    """Checked against fp64, not against the no-bias result minus the bias."""
     x = randn(16, 1024)
     w = randn(128, 1024)
     b = randn(128)
@@ -90,11 +66,7 @@ def test_gemm_bias_is_added():
 
 @pytest.mark.parametrize("config", ["gemm.default", "gemm.lm_head"])
 def test_gemm_row_output_is_independent_of_row_count(config):
-    """The same row, alone and inside a 64-row launch, must be bit-identical.
-
-    This is what "no batch-derived quantity reaches a kernel config" buys. A
-    split-K implementation would fail here as soon as the heuristic switched.
-    """
+    """The same row, alone and inside a 64-row launch, must be bit-identical."""
     w = randn(256, 1024)
     rows = randn(64, 1024)
 
@@ -107,9 +79,6 @@ def test_gemm_row_output_is_independent_of_row_count(config):
 def test_gemm_is_bitwise_repeatable():
     x, w = randn(64, 1024), randn(512, 1024)
     assert torch.equal(linear(x, w), linear(x, w))
-
-
-# ---- RMSNorm ----------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -140,9 +109,6 @@ def test_rmsnorm_rejects_a_row_wider_than_its_pinned_tile():
         rmsnorm(randn(2, 1024), randn(1024), 1e-6, "rmsnorm.head")
 
 
-# ---- log-softmax ------------------------------------------------------------
-
-
 def test_log_softmax_matches_fp64_over_the_full_vocab():
     x = randn(5, 151936)
     got = log_softmax(x).to(torch.float64)
@@ -159,14 +125,9 @@ def test_log_softmax_row_output_is_independent_of_row_count():
 
 
 def test_log_softmax_sums_to_one():
-    """1e-5 is the honest bound: the kernel emits fp32 log-probs, and summing
-    151936 of them after exp accumulates roughly |log p| * eps_fp32 relative
-    error, which lands near 1e-6 at this vocabulary size."""
+    """1e-5 is the honest bound: the kernel emits fp32 log-probs, and summing"""
     probs = log_softmax(randn(4, 151936)).to(torch.float64).exp().sum(dim=-1)
     assert (probs - 1.0).abs().max() < 1e-5
-
-
-# ---- RoPE -------------------------------------------------------------------
 
 
 def test_rope_matches_the_half_rotation_reference():
@@ -193,9 +154,6 @@ def test_rope_at_position_zero_is_the_identity():
     assert torch.equal(apply_rope(x, cos, sin), x)
 
 
-# ---- SwiGLU -----------------------------------------------------------------
-
-
 def test_swiglu_matches_fp64():
     gate, up = randn(7, 3072), randn(7, 3072)
     got = swiglu(gate, up).to(torch.float64)
@@ -204,31 +162,15 @@ def test_swiglu_matches_fp64():
     assert_within_fp16_rounding(got, want, ulps=2.0)
 
 
-# ---- Attention --------------------------------------------------------------
-
-
 def stable_softmax_fp64(x: torch.Tensor) -> torch.Tensor:
-    """Explicit max-subtract softmax, because torch.softmax cannot be trusted here.
-
-    `torch.softmax(dim=-1)` on CUDA in fp64 returns wrong results at row widths
-    513 and 769 for two or more rows, off by as much as 0.5 in probability. See
-    tests/test_torch_softmax_hazard.py for the pinned repro. This helper is the
-    reason the attention tests are trustworthy at kv_len=513, which is precisely
-    a split-boundary case this suite has to cover.
-    """
+    """Explicit max-subtract softmax, because torch.softmax cannot be trusted here."""
     m = x.max(dim=-1, keepdim=True).values
     e = (x - m).exp()
     return e / e.sum(dim=-1, keepdim=True)
 
 
-
 def page(k, v, shuffle_seed=None):
-    """Lay contiguous [kv_len, heads, dim] K/V into a paged pool.
-
-    Returns (k_cache, v_cache, block_table, kv_len). With `shuffle_seed`, the
-    physical blocks are permuted, which is the realistic state after a pool has
-    been allocated and freed a few times and is what the invariance test needs.
-    """
+    """Lay contiguous [kv_len, heads, dim] K/V into a paged pool."""
     from engine.kv.paged import DEFAULT_BLOCK_SIZE as BLOCK_SIZE
 
     kv_len, heads, dim = k.shape
@@ -267,8 +209,7 @@ def naive_attention_fp64(q, k, v, q_start, sm_scale):
 
 @pytest.mark.parametrize("kv_len", [1, 64, 128, 129, 511, 512, 513, 1024, 1500])
 def test_attention_matches_fp64_across_split_boundaries(kv_len):
-    """512 is the split size and 128 the KV tile, so kv_len at and around both
-    multiples is where a fencepost in the split bounds would show up."""
+    """512 is the split size and 128 the KV tile, so kv_len at and around both"""
     n_heads, n_kv_heads, head_dim = 16, 8, 128
     sm_scale = head_dim**-0.5
 
@@ -300,12 +241,7 @@ def test_attention_decode_step_matches_fp64():
 
 
 def test_attention_query_row_is_independent_of_the_query_tile_it_lands_in():
-    """One query at position p, alone, must equal that row of a full prefill.
-
-    Prefill-versus-decode equivalence over the *KV cache* is chunk invariance and
-    is week 3's claim; this is the weaker statement that query-row tiling alone
-    does not move a row, which the pinned BLOCK_M is supposed to guarantee.
-    """
+    """One query at position p, alone, must equal that row of a full prefill."""
     n_heads, n_kv_heads, head_dim = 16, 8, 128
     kv_len = 600
     sm_scale = head_dim**-0.5
@@ -340,12 +276,7 @@ def test_attention_refuses_a_kv_length_past_the_pinned_ceiling():
 
 @pytest.mark.parametrize("kv_len", [64, 512, 600, 1024])
 def test_attention_is_bit_identical_under_a_shuffled_block_table(kv_len):
-    """Paging must move bytes, never the order they are combined in.
-
-    The same logical sequence laid out in ascending physical blocks and in a
-    permuted set must produce identical bits. If this fails, the gather has
-    become order-dependent and every downstream invariance claim is void.
-    """
+    """Paging must move bytes, never the order they are combined in."""
     n_heads, n_kv_heads, head_dim = 16, 8, 128
     sm_scale = head_dim**-0.5
     k = randn(kv_len, n_kv_heads, head_dim)

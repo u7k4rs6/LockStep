@@ -1,12 +1,4 @@
-"""env.lock carries no identity, and no artifact escapes without one.
-
-docs/03-security-and-access.md section 4: "Confirm it does not include hostname,
-username, or absolute home paths. Strip them in the emitter." Section 7: "Every
-artifact embeds env.lock. A claim without an environment tuple is invalid by
-construction."
-
-Both are properties of the emitter, so both are tested rather than reviewed.
-"""
+"""env.lock carries no identity, and no artifact escapes without one."""
 
 from __future__ import annotations
 
@@ -38,13 +30,10 @@ def test_emitter_refuses_to_release_a_leaked_field():
     """The guard has to fire, not merely exist."""
     lock = envlock.capture()
 
-    # Branch one: a term drawn from this machine's identity.
     poisoned = replace(lock, gpu_name=f"gpu-{socket.gethostname()}")
     with pytest.raises(envlock.EnvLockLeak, match="identifying information"):
         envlock._assert_scrubbed(poisoned)
 
-    # Branch two: a home path belonging to nobody here, which the term list
-    # cannot know about and the path pattern must catch on its own.
     poisoned = replace(lock, cpu_model="built under /home/someone-else/src")
     with pytest.raises(envlock.EnvLockLeak, match="absolute home path"):
         envlock._assert_scrubbed(poisoned)
@@ -91,12 +80,7 @@ def test_loading_an_artifact_without_an_env_tuple_is_an_error(tmp_path):
 
 
 def test_registry_get_takes_only_a_name():
-    """The structural guarantee that no batch-derived quantity reaches a config.
-
-    `registry.get` accepting a second parameter would be the exact door through
-    which a shape could arrive, and nothing else in the codebase would notice.
-    This asserts the door stays shut rather than relying on nobody opening it.
-    """
+    """The structural guarantee that no batch-derived quantity reaches a config."""
     import inspect
 
     from engine.kernels import registry

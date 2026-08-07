@@ -1,40 +1,4 @@
-"""The concurrency ladder: does divergence scale with batch width?
-
-The factorial failed to separate its factors, and the reason is worth stating
-plainly because it is a limit of black-box testing rather than a bug in the
-script. Holding the *filler count* fixed does not hold the *batch geometry*
-fixed. vLLM batches whatever is in flight at each decode step, so arrival jitter
-reshuffles the step-level composition between repeats no matter how many requests
-the client sends. Every cell, the baseline included, had batch composition
-varying underneath it, which is why the baseline diverged too.
-
-What a black box can still do is vary the *amount* of cohabitation and look for a
-dose-response. That is this file. Each rung holds the cohabitant count fixed for
-all repeats and only changes between rungs:
-
-    rung 0   sequential, one request in flight    the negative control
-    rung 1   0 fillers, concurrent                the case's own requests only
-    rung 2   1 filler
-    rung 3   4 fillers
-    rung 4   13 fillers
-    rung 5   31 fillers
-
-The reading, decided before the run:
-
-  * clean at rung 0 and degrading as width grows: cohabitation is implicated, and
-    vLLM's claim covers exactly that ("independent of the batch size or the order
-    of requests in a batch")
-  * already diverging at rung 0: not batching at all, and the finding is about
-    something else entirely, most likely this harness
-  * flat across every rung including rung 0: run-to-run nondeterminism unrelated
-    to width, which the claim's first clause covers and its second does not
-
-Rung 0 matters most. The withdrawn sequential certification was 7 of 7 clean, but
-it ran on older code, so it cannot serve as a control for the current one. This
-reproduces that condition on the current code path, which is the only way a
-difference between sequential and concurrent is attributable to concurrency
-rather than to everything else that changed in between.
-"""
+"""The concurrency ladder: does divergence scale with batch width?"""
 
 from __future__ import annotations
 
@@ -47,9 +11,6 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-# (fixed filler width, sequential, label). Cache is held warm throughout so the
-# cache is not a variable; the factorial already showed warm and cold behave the
-# same, so warm is chosen for being the cheaper of the two.
 RUNGS = [
     (0, True, "rung 0: sequential, one in flight"),
     (0, False, "rung 1: concurrent, no fillers"),

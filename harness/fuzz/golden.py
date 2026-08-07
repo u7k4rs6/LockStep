@@ -1,39 +1,4 @@
-"""The third observer: exact comparison against a committed baseline.
-
-The other two cannot see everything, and the gap between them is precise:
-
-  * **I1 to I4** compare the engine against *itself* across schedules. A
-    perturbation that is uniform across schedules is invisible by construction,
-    because both sides of every comparison move together.
-  * **F1** compares against fp64 within a tolerance. Against the reversed fold
-    its statistic, the maximum absolute logit error, is identical to every digit
-    (6.669992e-02 either way), so no threshold on it separates the two. The
-    logits themselves do differ: measured per position, exactly 0 across the 512
-    single-split positions and up to 3.906250e-02 across the multi-split ones,
-    about 2.5 fp16 ulp, which is below the quantization error F1 already absorbs.
-    That is F1 working as designed, not F1 miscalibrated.
-  * **Golden bytes**, here, compare against a committed baseline exactly. This is
-    the observer that distinguishes "the engine changed" from "the engine is
-    inconsistent" and from "the engine is inaccurate".
-
-The reversed split-combine mutant survived the first two and is what this file
-was built for. It is not a redundant check: the three answer different questions.
-"Does the engine agree with itself across schedules" and "is the engine within t
-of fp64" both have correct negative answers here. Only "is this the same engine
-that produced the published numbers" has an exact one.
-
-Measured against that mutant, the corpus behaves the way the corpus was designed
-to: the 600 and 520 token digests change and the 48 and 17 token digests do not.
-The boundary between changed and unchanged falls exactly on the 512-token split
-threshold, which is evidence the observer is seeing the mechanism rather than
-seeing noise. A corpus where all four changed, or none did, would be a weaker
-result even if the verdict were the same.
-
-The baseline is committed (`harness/fuzz/golden.json`, a few KB of hashes) rather
-than regenerated, because a baseline the run recomputes is not a baseline. A
-legitimate numerics change requires regenerating it deliberately, which is a
-claims-affecting act and shows up in review as one.
-"""
+"""The third observer: exact comparison against a committed baseline."""
 
 from __future__ import annotations
 
@@ -51,9 +16,6 @@ from engine.kv import paged  # noqa: E402
 
 BASELINE = Path(__file__).parent / "golden.json"
 
-# Short and fixed. Two prompts long enough to cross the 512 split boundary, so a
-# fault in the split-combine fold has something to perturb, and two short ones so
-# the single-split path is covered too.
 CORPUS_LENGTHS = (600, 520, 48, 17)
 CORPUS_SEED = 90210
 
@@ -67,18 +29,7 @@ def corpus(vocab: int) -> list[list[int]]:
 
 
 def logit_digest(model, prompt: list[int]) -> str:
-    """sha256 over the raw fp16 logit bytes for every position in the prompt.
-
-    Bytes, not a rounded decimal view: the architecture doc defines
-    bit-identical as identical raw fp16 logit bytes, so that is what is hashed.
-    """
-    # Through `forward_batch`, the path the scheduler actually serves from, not
-    # through `forward`. The baseline previously observed the batch-1 contiguous
-    # path while every served request went through the packed one, so a defect
-    # confined to the served implementation would have left the committed digests
-    # untouched. `harness/mr/equivalence.py::path_equivalence` asserts the two
-    # agree bitwise; this makes the baseline independent of that assertion
-    # holding rather than resting on it.
+    """sha256 over the raw fp16 logit bytes for every position in the prompt."""
     pool = paged.PagedKVCache(
         num_blocks=-(-len(prompt) // paged.DEFAULT_BLOCK_SIZE) + 2,
         num_layers=model.cfg.num_hidden_layers,

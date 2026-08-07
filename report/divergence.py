@@ -1,14 +1,4 @@
-"""The divergence report.
-
-Frontend spec 1.3: "This is the most important thing the CLI ever prints. It is
-what gets pasted into a GitHub issue." Constraints, verbatim: fits in 80 columns,
-fits on one screen, contains no information the reader must scroll to find, and
-is directly pasteable into an issue without editing.
-
-Built in week 1, before anything diverges, because deciding what a finding *is*
-before having one is the point. The fields below are the definition of a finding:
-if a future divergence cannot fill them in, it is not yet minimized.
-"""
+"""The divergence report."""
 
 from __future__ import annotations
 
@@ -18,15 +8,14 @@ from dataclasses import dataclass
 
 WIDTH = 80
 INDENT = "  "
-SIDE_LABEL_WIDTH = 23  # aligns "expected (canonical)" and "observed (fuzzed)"
-META_LABEL_WIDTH = 11  # aligns "trigger", "schedule", "env"
+SIDE_LABEL_WIDTH = 23
+META_LABEL_WIDTH = 11
 ELLIPSIS = "…"
 
-# Frontend spec 1.2: color carries exactly three states and nothing else.
 ANSI = {
-    "divergence": "\033[38;5;160m",  # --divergence #C11B2F
-    "signal": "\033[38;5;130m",  # --signal     #B54A00, boundary condition hit
-    "lock": "\033[38;5;29m",  # --lock       #1E5A52, invariance held
+    "divergence": "\033[38;5;160m",  # --divergence
+    "signal": "\033[38;5;130m",  # --signal
+    "lock": "\033[38;5;29m",  # --lock
     "reset": "\033[0m",
 }
 
@@ -44,11 +33,7 @@ def _paint(text: str, key: str, enabled: bool) -> str:
 
 
 def abbreviate_hash(digest: str, head: int = 4, tail: int = 2) -> str:
-    """`8f3a…c1`. Short enough to align, long enough to eyeball a mismatch.
-
-    The full digests are in the artifact; this line is for the human deciding
-    whether two runs differ, which one glance at four hex characters settles.
-    """
+    """`8f3a…c1`. Short enough to align, long enough to eyeball a mismatch."""
     digest = digest.strip().lower()
     if len(digest) <= head + tail + 1:
         return digest
@@ -63,11 +48,7 @@ def _fit(text: str, width: int) -> str:
 
 
 def _row(label: str, value: str, label_width: int, paint: str | None = None) -> str:
-    """One `label   value` row, fitted to 80 columns.
-
-    Fitting happens before painting so that ANSI escapes never count against the
-    column budget; a colored line and a NO_COLOR line wrap identically.
-    """
+    """One `label value` row, fitted to 80 columns."""
     body_width = WIDTH - len(INDENT) - label_width
     body = _fit(value, body_width)
     if paint:
@@ -77,11 +58,7 @@ def _row(label: str, value: str, label_width: int, paint: str | None = None) -> 
 
 @dataclass
 class Divergence:
-    """A minimized bitwise divergence between two executions of one request.
-
-    `expected` is canonical execution C(r) per the architecture doc section 2:
-    batch size 1, single uninterrupted prefill, cold cache, no speculation.
-    """
+    """A minimized bitwise divergence between two executions of one request."""
 
     request_uid: str
     position: int
@@ -89,13 +66,9 @@ class Divergence:
     schedule_events: int
     env_fingerprint: str
     replay_artifact: str
-    # A bitwise divergence carries two digests. A crash carries neither, because
-    # the run that would have produced logits raised instead. Placeholder digests
-    # in a document whose whole purpose is to be pasted into an issue are worse
-    # than no digests, so the crash form omits the lines rather than filling them.
     expected_sha256: str | None = None
     observed_sha256: str | None = None
-    failure_class: str = "divergence"   # divergence | crash
+    failure_class: str = "divergence"
     exception_type: str | None = None
     first_differing_byte: int | None = None
     schedule_events_before_minimization: int | None = None
@@ -133,14 +106,7 @@ class Divergence:
         return text
 
     def render(self, color: bool | None = None, fenced: bool = False) -> str:
-        """The 80-column block.
-
-        `fenced=True` wraps the block in a Markdown code fence, which is what
-        the issue-paste path uses; `for_issue()` is that path. Unfenced, GitHub
-        renders the bare block as a paragraph followed by an accidental code
-        block, so only the fenced form is pasteable unedited. Frontend spec 1.3
-        now shows both.
-        """
+        """The 80-column block."""
         painted = color_enabled() if color is None else color
 
         lines = [_paint(self._header(), "divergence", painted), ""]
@@ -159,8 +125,6 @@ class Divergence:
                 ),
             ]
         else:
-            # No digests exist: the run raised before producing logits. The
-            # exception type is what a reader needs instead.
             lines.append(_row("class", f"crash, {self.exception_type}", SIDE_LABEL_WIDTH))
 
         lines += [
@@ -182,21 +146,13 @@ class Divergence:
         return f"```\n{block}\n```" if fenced else block
 
     def for_issue(self) -> str:
-        """The form that goes into a GitHub issue: fenced, uncolored.
-
-        Separate from `render` so that the issue path cannot accidentally inherit
-        terminal colouring or the unfenced layout.
-        """
+        """The form that goes into a GitHub issue: fenced, uncolored."""
         return self.render(color=False, fenced=True)
 
     def __str__(self) -> str:
         return self.render(color=False)
 
 
-# A synthetic case, so the layout can be inspected before anything diverges.
-# The trigger is the SGLang block-boundary condition named in the PRD, prefix_len
-# exactly equal to block_size, which is the poster child the architecture doc's
-# coverage section asks the boundary predicates to be built around.
 EXAMPLE = Divergence(
     request_uid="r02",
     position=131,
@@ -212,8 +168,6 @@ EXAMPLE = Divergence(
 )
 
 
-# The crash variant, for the same reason the divergence example exists: the
-# layout is decided before there is a real one to print.
 EXAMPLE_CRASH = Divergence(
     request_uid="r00",
     position=61,

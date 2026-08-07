@@ -1,14 +1,4 @@
-"""Chunk invariance at the KV tensor level, plus batch composition.
-
-These are the suite versions of what harness/mr/ reports as a table. They run on
-short prompts so the suite stays fast; harness/mr/run.py runs the same relations
-on a 600-token prompt that reaches the 512 split boundary.
-
-Architecture doc 4.1: recompute correctness reduces to decode-versus-prefill
-equivalence per token, which is exactly chunk invariance. If this file goes red,
-weeks 4 through 8 are built on sand, so it fails the suite rather than only a
-report.
-"""
+"""Chunk invariance at the KV tensor level, plus batch composition."""
 
 from __future__ import annotations
 
@@ -58,10 +48,10 @@ def test_decode_produced_kv_equals_prefill_produced_kv(model, prompt, block_size
 @pytest.mark.parametrize(
     "partition",
     [
-        [15, 55], [16, 54], [17, 53],   # block_size 16 and either side
-        [1, 69], [69, 1],               # extremes
-        [7, 17, 23, 23],                # misaligned to every boundary
-        [64, 6], [63, 7], [65, 5],      # block_size 64 and either side
+        [15, 55], [16, 54], [17, 53],
+        [1, 69], [69, 1],
+        [7, 17, 23, 23],
+        [64, 6], [63, 7], [65, 5],
     ],
 )
 def test_any_chunk_partition_leaves_kv_and_logits_unchanged(model, prompt, partition):

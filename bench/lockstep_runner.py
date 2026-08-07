@@ -1,21 +1,4 @@
-"""Run one lockstep configuration in its own process and print its wall time.
-
-The parent process previously held the model for the whole benchmark, roughly
-1.7 GB resident plus whatever the KV pool and activations cached. Interleaving
-then scattered lockstep measurements through the run, so external measurements
-routinely started behind that allocation.
-
-It is not a subtle effect. With `torch.cuda.empty_cache()` after each lockstep
-sample, which the benchmark did call, a following vLLM sample ran about twice as
-slow. Without it, vLLM failed to start at all and never recovered for the rest of
-the run. Even the samples that looked clean were slower than the same
-configuration measured with nothing else resident: 0.565s against 0.465s.
-
-So every measurement now runs in its own process and the parent holds no device
-memory between samples. That is the only version of isolation that survives
-interleaving, and interleaving is what removes the drift bias, so the two fixes
-are not independent.
-"""
+"""Run one lockstep configuration in its own process and print its wall time."""
 
 from __future__ import annotations
 
@@ -44,16 +27,6 @@ def main() -> int:
     if not spec["invariant"]:
         qwen3.linear = torch_linear
     try:
-        # One untimed pass first. Every sample is now its own process, so without
-        # this the timed region pays Triton's JIT compilation of every kernel on
-        # first launch, and the cost lands on whichever samples happen to run
-        # before the compile cache is warm. That produced a 1.54x spread on the
-        # fast path and the impossible result that invariant mode measured faster
-        # than the mode it constrains.
-        #
-        # Fixing measurement isolation introduced this, exactly as fixing drift
-        # introduced the contamination isolation was written to remove. Each fix
-        # was correct and each moved the bias somewhere new.
         warmup = Scheduler(model, num_blocks=512, block_size=16, audit=False)
         for index, (prompt, new_tokens) in enumerate(trace):
             warmup.submit(Request(uid=f"w{index:02d}", prompt=list(prompt),

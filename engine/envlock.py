@@ -1,14 +1,4 @@
-"""env.lock: the environment tuple every published claim is scoped to.
-
-docs/02-technical-architecture.md section 1: "No claim in this project is
-portable across this tuple." docs/03-security-and-access.md section 7: "A claim
-without an environment tuple is invalid by construction."
-
-Section 4 of the security doc requires that the emitted tuple carry no hostname,
-username, or absolute home path. That is enforced here by `_assert_scrubbed`
-rather than left to review, because the emitter runs on the developer's machine
-and review is the thing that fails first.
-"""
+"""env.lock: the environment tuple every published claim is scoped to."""
 
 from __future__ import annotations
 
@@ -38,7 +28,7 @@ class EnvLock:
     """A pinned environment. Serialized into every result artifact."""
 
     gpu_name: str
-    gpu_arch: str  # "sm_89"
+    gpu_arch: str
     gpu_memory_bytes: int
     driver_version: str
     cuda_version: str
@@ -53,23 +43,10 @@ class EnvLock:
     torch_intraop_threads: int
     kernel_registry_sha256: str
     corpus_sha256: str | None
-    # The engine that produced the artifact, not just the environment it ran in.
-    # Without it, a replay that does not reproduce is ambiguous between "the
-    # environment differs" and "the bug was fixed", and those are opposite
-    # conclusions. `lockstep replay` reports which one it is by comparing this.
     engine_revision: str = UNKNOWN
 
     def fingerprint(self) -> str:
-        """The short form that terminates every bitwise claim line.
-
-        Frontend spec 1.2: never print a bitwise claim without the environment
-        tag. Frontend spec 1.3 shows the exact shape:
-        `sm_89 / cu12.4 / triton 3.x / torch 2.x`.
-
-        The torch local version suffix ("+cu124") is dropped here because the
-        CUDA version is already the second field; the full string stays in the
-        artifact, which is what a mismatch is checked against.
-        """
+        """The short form that terminates every bitwise claim line."""
         torch_version = self.torch_version.split("+")[0]
         return (
             f"{self.gpu_arch} / cu{self.cuda_version} / "
@@ -89,13 +66,7 @@ class EnvLock:
 
 
 def _engine_revision() -> str:
-    """The commit this engine is at, marked dirty if the tree has changes.
-
-    Read via git rather than recorded by hand, and degrading to "unknown" rather
-    than guessing when this is not a checkout. A dirty tree is reported as such
-    because a claim produced from uncommitted code is not reproducible from the
-    revision it names, and silently dropping the marker would hide that.
-    """
+    """The commit this engine is at, marked dirty if the tree has changes."""
     import subprocess
 
     try:
@@ -140,9 +111,6 @@ def _driver_version() -> str:
         text = Path("/proc/driver/nvidia/version").read_text()
     except OSError:
         return UNKNOWN
-    # "NVRM version: NVIDIA UNIX Open Kernel Module for x86_64  595.84  Release
-    # Build ...". The wording varies between the proprietary and open modules, so
-    # match the first dotted number on the NVRM line rather than a fixed phrase.
     for line in text.splitlines():
         if line.startswith("NVRM version:"):
             match = re.search(r"\b(\d+\.\d+(?:\.\d+)?)\b", line)
@@ -174,7 +142,6 @@ def _scrub_terms() -> list[str]:
         value = os.environ.get(var)
         if value:
             terms.append(value)
-    # Deduplicate, drop anything too short to be a meaningful match.
     return sorted({t for t in terms if len(t) >= 3})
 
 
@@ -191,13 +158,7 @@ def _assert_scrubbed(lock: EnvLock) -> None:
 
 
 def capture(corpus_sha256: str | None = None) -> EnvLock:
-    """Snapshot the current environment.
-
-    `corpus_sha256` ties a fidelity number to the prompt corpus that produced it.
-    Callers that do not touch a corpus leave it None rather than passing a
-    human-readable placeholder: a placeholder string can be published inside an
-    artifact and read as a real value, whereas null cannot be mistaken for one.
-    """
+    """Snapshot the current environment."""
     import numpy
     import torch
 
@@ -222,9 +183,6 @@ def capture(corpus_sha256: str | None = None) -> EnvLock:
         python_version=platform.python_version(),
         os_kernel=f"{platform.system()} {platform.release()} {platform.machine()}",
         cpu_model=_cpu_model(),
-        # All three, because OMP_NUM_THREADS and MKL_NUM_THREADS are
-        # backend-specific environment variables while torch's intraop pool is
-        # what actually governs reduction order whichever backend is underneath.
         omp_num_threads=os.environ.get("OMP_NUM_THREADS"),
         mkl_num_threads=os.environ.get("MKL_NUM_THREADS"),
         torch_intraop_threads=torch.get_num_threads(),

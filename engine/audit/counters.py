@@ -1,34 +1,11 @@
-"""Execution counters over every path under claim.
-
-Three times now a path has looked tested and never executed: a corpus that never
-reached a second attention split, a chunk-size row that never chunked, and an
-admission check that made the eviction path unreachable. Each was caught by
-noticing afterwards. This makes it a mechanism.
-
-Every relation asserts not only its outcome but that the paths it exists to
-exercise had nonzero counts. A relation that passes without firing its own
-mechanism is a failure, not a pass.
-
-The counters are also the fuzzer's coverage substrate, so the coverage report and
-the vacuity guards read the same numbers. A coverage denominator derived from
-somewhere else than the thing being counted is how a coverage number ends up
-describing a denominator someone chose.
-
-Counters are observation only. They are incremented after a decision is taken,
-never read by one, and nothing in a kernel config path can see them: a counter
-that fed back into a decision would be a batch-derived quantity by another name.
-"""
+"""Execution counters over every path under claim."""
 
 from __future__ import annotations
 
 from collections import Counter as _Counter
 from dataclasses import dataclass, field
 
-# Every path under claim, with the one-line statement of what firing it means.
-# The fuzzer's coverage report enumerates this dict rather than a hand-written
-# list, so a path added here is covered by both without a second edit.
 PATHS: dict[str, str] = {
-    # admission and lifecycle
     "admit": "a waiting request was admitted",
     "admit_refused": "the policy declined to admit a waiting request",
     "finish_eos":
@@ -39,28 +16,23 @@ PATHS: dict[str, str] = {
     "finish_limit":
         "a request finished by reaching max_new_tokens",
     "finish": "a request reached its limit or an EOS and released its blocks",
-    # prefill and chunking
     "prefill_chunk": "a partial prefill chunk was computed",
     "prefill_complete": "a prefill finished and the request began decoding",
     "decode_step": "a single-token decode step was computed",
     "chunk_boundary_mid_block": "a chunk ended part-way through a KV block",
     "chunk_boundary_mid_split": "a chunk ended part-way through an attention split",
     "chunk_boundary_on_block": "a chunk ended exactly on a block boundary",
-    # attention shape
     "attention_multi_split": "attention ran with two or more splits",
     "attention_single_split": "attention ran within one split",
-    # preemption
     "preempt_fired": "a running request was preempted for recompute",
     "preempt_depth_2": "a request was preempted for the second time",
     "preempt_depth_3_plus": "a request was preempted a third time or beyond",
     "resume": "a preempted request was re-admitted and recomputed",
-    # prefix cache
     "cache_hit": "a prefix hit was found and honoured",
     "cache_hit_refused": "a prefix hit was found and the policy declined it",
     "cache_miss": "a lookup found no usable prefix",
     "cache_insert": "whole blocks were indexed after a request finished",
     "cache_full_prompt_trimmed": "a whole-prompt hit gave its last block back",
-    # allocator
     "eviction_taken": "a cached block was reclaimed under pressure",
     "eviction_pass": "one pass of the reserve-with-eviction loop",
     "block_reclaimed_at_zero": "a block's last reference went away and it was freed",
@@ -70,12 +42,7 @@ PATHS: dict[str, str] = {
 
 @dataclass
 class Counters:
-    """Per-run execution counts. Created by the Scheduler, shared with the pool.
-
-    Not a module global: a global would make one test's counts visible to the
-    next and would not survive the cross-process replay, where two interpreters
-    must produce identical trajectories.
-    """
+    """Per-run execution counts. Created by the Scheduler, shared with the pool."""
 
     counts: _Counter = field(default_factory=_Counter)
 
@@ -117,11 +84,7 @@ class VacuousRun(AssertionError):
 
 
 def require_fired(counters: Counters, *paths: str, what: str = "this relation") -> None:
-    """Assert the mechanism actually ran. The generalization of the hand checks.
-
-    MR3 reported "7 of 10 actually preempted" and MR4 reported "12 of 12
-    registering real hits" by hand. This is that, for every relation.
-    """
+    """Assert the mechanism actually ran. The generalization of the hand checks."""
     missing = counters.missing(*paths)
     if missing:
         raise VacuousRun(

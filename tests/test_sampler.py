@@ -1,8 +1,4 @@
-"""The sampler is keyed on (seed, uid, position) and ties break by token ID.
-
-docs/02-technical-architecture.md I4, and section 5's named failure modes: "RNG
-keyed on global step" and "Unstable sorts in top-p".
-"""
+"""The sampler is keyed on (seed, uid, position) and ties break by token ID."""
 
 from __future__ import annotations
 
@@ -31,15 +27,11 @@ def test_changing_any_key_component_changes_the_draw():
 
 
 def test_no_global_stream_to_advance():
-    """Drawing for one request cannot move another request's draw.
-
-    A stateful generator would fail this the moment the interleaving changed,
-    which is the cross-request coupling I4 forbids.
-    """
+    """Drawing for one request cannot move another request's draw."""
     interleaved = []
     for position in range(4):
         interleaved.append(philox.uniform(0, "a", position))
-        philox.uniform(0, "b", position)  # a cohabitant drawing in between
+        philox.uniform(0, "b", position)
     alone = [philox.uniform(0, "a", position) for position in range(4)]
     assert interleaved == alone
 
@@ -87,11 +79,7 @@ def test_top_p_with_a_tiny_p_takes_the_argmax_and_breaks_ties_by_id():
 
 
 def test_top_p_nucleus_membership_does_not_depend_on_sort_luck():
-    """Tied probabilities must be ordered by token ID, not by sort arrival.
-
-    With four exactly-tied logits and p=0.5, the nucleus holds two of them, and
-    which two must be the two lowest token IDs every time.
-    """
+    """Tied probabilities must be ordered by token ID, not by sort arrival."""
     logits = torch.tensor([4.0, 4.0, 4.0, 4.0])
     picks = {
         philox.top_p(logits, seed=s, uid="r", position=0, p=0.5) for s in range(50)

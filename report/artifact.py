@@ -1,13 +1,4 @@
-"""Result artifacts.
-
-Frontend spec 1.1: "Every command that produces a claim writes a JSON artifact
-to `results/` with `env.lock` embedded. `report` consumes only those artifacts,
-never live state, so the report is always reproducible from committed data."
-
-Security doc section 7: a claim without an environment tuple is invalid by
-construction, so `env` is not an optional field and there is no writer path that
-omits it.
-"""
+"""Result artifacts."""
 
 from __future__ import annotations
 
@@ -30,12 +21,7 @@ _SEQ = re.compile(r"-(\d{4})\.json$")
 
 @dataclass
 class Artifact:
-    """One claim-producing run, serialized.
-
-    `kind` names the command that produced it ("fidelity", "invariance"). The
-    file path is `results/<UTC date>/<kind>-NNNN.json`, matching the shape the
-    frontend spec's divergence report prints as a reproduce target.
-    """
+    """One claim-producing run, serialized."""
 
     kind: str
     payload: dict
@@ -77,22 +63,7 @@ class DirtyTree(SystemExit):
 
 
 def require_clean_tree(allow_dirty: bool = False) -> dict:
-    """Refuse to produce a claim artifact from a tree that is not committed.
-
-    Three separate re-runs in this project were launched to replace artifacts
-    carrying a `-dirty` engine_revision, and all three produced artifacts that
-    were themselves dirty, because a file had been edited between the decision
-    and the launch. Each time it was noticed afterwards, by reading the artifact.
-
-    The rule that every claim ships with the revision that produced it was in the
-    docs from week 1 and enforced by remembering to follow it, which is the same
-    shape as `max_concurrency` sitting unread in the security config and the CLI
-    the frontend spec declared but nobody built. This is the mechanism.
-
-    `allow_dirty` exists because iterating without it would be unbearable, and it
-    is recorded in the artifact when used, so a dirty artifact is a deliberate
-    act with a trace rather than an accident nobody noticed.
-    """
+    """Refuse to produce a claim artifact from a tree that is not committed."""
     import subprocess
 
     root = Path(__file__).resolve().parent.parent

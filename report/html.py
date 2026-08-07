@@ -1,16 +1,4 @@
-"""The single-file HTML report.
-
-Frontend spec section 2. One self-contained file, inline CSS, a few dozen lines
-of vanilla JS at most, opening from `file://` with no server and no network,
-because the person evaluating it will double-click it.
-
-It consumes only committed result artifacts, never live state, so the page is
-always reproducible from data that is already on disk with `env.lock` embedded.
-
-The one place boldness is spent is the invariance strip: a dense band of ticks,
-one per executed relation run, that reads as texture when nothing happened and
-breaks visibly when something did. Everything else stays quiet and tabular.
-"""
+"""The single-file HTML report."""
 
 from __future__ import annotations
 
@@ -28,13 +16,8 @@ from report.fonts import css as font_css, embedded_bytes  # noqa: E402
 RESULTS = REPO_ROOT / "results"
 EVIDENCE = REPO_ROOT / "evidence"
 
-# Inlined ahead of the rest of the stylesheet so the first paint already has the
-# faces and nothing reflows partway down a numeric table.
 FONT_CSS = font_css()
 
-# The boundary predicates `certify.run.boundary_workloads` generates, named
-# symbolically rather than at a concrete page size, since the whole point is that
-# they are generated against the engine's own.
 SGLANG_CASES = (
     "prefix_len == page_size - 1",
     "prefix_len == page_size",
@@ -173,14 +156,7 @@ document.querySelectorAll('.tick').forEach(function (tick) {
 
 
 def latest(kind: str) -> dict | None:
-    """Prefer committed evidence over local results.
-
-    The report is the published artifact, so it reads the published inputs. A
-    number that appears here and cannot be traced to a file in `evidence/` is a
-    number a reader cannot check, which is the gap this ordering closes.
-    `results/` remains the fallback so the report still builds mid-iteration,
-    before an artifact has been promoted.
-    """
+    """Prefer committed evidence over local results."""
     published = sorted(EVIDENCE.glob(f"{kind}-*.json"))
     if published:
         return json.loads(published[-1].read_text())
@@ -226,7 +202,6 @@ def build(out: Path) -> Path:
     dp = fidelity.get("payload", {})
     tp = throughput.get("payload", {})
 
-    # One tick per relation run across every block size.
     runs = []
     for entry in vp.get("runs", []):
         for relation in entry.get("relations", []):
@@ -277,7 +252,6 @@ def build(out: Path) -> Path:
 </section>
 """)
 
-    # Claim 1
     total = vp.get("total", 0)
     passed = vp.get("passed", 0)
     boundary_rows = "".join(
@@ -315,7 +289,6 @@ def build(out: Path) -> Path:
 </section>
 """)
 
-    # Claim 2
     fault_rows = "".join(
         f"<tr><td>{esc(f.get('operator'))}</td>"
         f"<td class='{'held' if f.get('verdict') == 'killed' else 'bad'}'>{esc(f.get('verdict'))}</td>"
@@ -344,7 +317,6 @@ def build(out: Path) -> Path:
 </section>
 """)
 
-    # Claim 3
     rows = tp.get("rows", [])
     measured = [r for r in rows if r.get("measured")]
     base = next((r["seconds"] for r in measured if r["config"] == "lockstep, fast mode"), None)
@@ -375,7 +347,6 @@ def build(out: Path) -> Path:
 </section>
 """)
 
-    # Certification
     if certification:
         cp = certification.get("payload", {})
         cert_rows = "".join(
@@ -419,8 +390,6 @@ def build(out: Path) -> Path:
 </section>
 """)
 
-    # SGLang. Written as the template it would be filled into, with the reason
-    # every cell is empty stated above it rather than left as an absence.
     parts.append(f"""
 <section>
   <h2>SGLang: not certified, and why</h2>

@@ -1,22 +1,4 @@
-"""Reachability witnesses for declared lifecycle transitions.
-
-Separate from the campaign on purpose. The coverage report answers "what does the
-standard swarm campaign explore unaided", and a purpose-built probe must never
-inflate that number: a transition reached only by a case designed to reach it
-says nothing about whether the generator explores the space.
-
-This answers the other question, which is whether a declared transition is
-reachable at all. A transition the campaign never takes is either rare or dead,
-and the difference decides whether it belongs in the denominator. Two of the
-three unwitnessed after a 132-case campaign turned out to be rare, and the third
-was dead and had been inflating the denominator since the table was written.
-
-    python3 -m harness.fuzz.witness
-
-Reports, per declared transition: reached by the standard campaign, reached only
-by a targeted probe, or reached by neither, which is a claim that it should be
-moved to UNREACHABLE_BY_DESIGN with an argument.
-"""
+"""Reachability witnesses for declared lifecycle transitions."""
 
 from __future__ import annotations
 
@@ -36,13 +18,7 @@ from harness.sim.driver import Case, RequestSpec, run_case  # noqa: E402
 
 
 def targeted_cases(vocab: int, seed: int = 4242) -> list[Case]:
-    """Cases shaped at the transitions a uniform campaign reaches rarely.
-
-    Shape A drives a resumed request re-prefilling in chunks while it already
-    holds generated tokens, which is the only way a request is preemptable
-    mid-prefill. Shape B drives cache hits under allocation pressure, so eviction
-    runs inside `_admit` after a hit has been applied.
-    """
+    """Cases shaped at the transitions a uniform campaign reaches rarely."""
     rng = random.Random(seed)
     cases: list[Case] = []
 
@@ -92,9 +68,6 @@ def gather(model, cases) -> Coverage:
         except Exception:  # noqa: BLE001 - a crash is the campaign's business
             continue
         for events in outcome.events.values():
-            # observe_events, not observe_transitions: n-gram coverage is the
-            # headline figure claim 1 reports, so both populations have to carry
-            # it or the split cannot be stated for the number that matters.
             coverage.observe_events(events)
     return coverage
 

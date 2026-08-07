@@ -1,17 +1,4 @@
-"""Static gates on kernels under claim.
-
-docs/02-technical-architecture.md section 12, gate 4: "no `tl.atomic_` in kernels
-under claim, no autotune decorators, kernel config registry unchanged without an
-accompanying claims-table review."
-
-The first two are checked here. The third is a CI policy over commits, not a
-property of a working tree, so it is not implemented in week 1; the input it
-needs, the registry digest in env.lock, exists.
-
-These are greps by intent, not by implementation: the architecture doc says CI
-"greps for `tl.atomic_`", and a grep is what a reader can rerun by hand and
-trust. The AST would be more precise and less checkable.
-"""
+"""Static gates on kernels under claim."""
 
 from __future__ import annotations
 
@@ -22,7 +9,6 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# "Kernels under claim" is every kernel the invariance claims run through.
 KERNEL_ROOTS = [REPO_ROOT / "engine"]
 
 CHECKS: list[tuple[str, re.Pattern[str], str]] = [
@@ -59,8 +45,6 @@ CHECKS: list[tuple[str, re.Pattern[str], str]] = [
 
 SELF = Path(__file__).resolve()
 
-# The sampler's CPU fp64 top-p path. Named rather than pattern-matched, so adding
-# a second exception is a visible edit to this list.
 EXCEPTIONS = {"torch reductions in the engine": {"engine/sampler/philox.py"}}
 
 

@@ -1,29 +1,4 @@
-"""F1: the engine's fp16 logits against the fp64 CPU reference.
-
-docs/02-technical-architecture.md section 7 names the reported metrics and
-section 7.1 states the pass criterion this script decides.
-
-KL is exact, over the full 151936-token vocabulary, at every position. There is
-no compressed variant. An earlier version cached top-k fp64 logits so KL could be
-computed without re-running the fp64 pass; the measured sweep showed top-k KL
-missing 27.4 percent of the true value at k=256 and still 4.0 percent at k=8192,
-closing only about 1.3x per doubling, so the cache was buying a loose lower bound
-in place of a number the fp64 pass produces exactly in about two minutes. Both
-passes now run in the same process and KL is accumulated in row chunks, so
-nothing large is written or held.
-
-**The near-tie threshold is derived, not chosen.** A greedy argmax flips when the
-error on the top-1-minus-top-2 logit *difference* exceeds the fp64 gap between
-them, so that difference-error is measured directly in this run and its 99.9th
-percentile becomes the threshold. Positions whose fp64 gap falls below it are
-near ties: rounding alone can reorder them, so a mismatch there carries no
-information. A mismatch *above* it cannot be explained by measured rounding and
-is a real signal. The previous hardcoded 1e-2 was below the median of this
-distribution, which made it indefensible.
-
-HF is a sanity check, never ground truth, because it is not shape-invariant
-(architecture doc section 7).
-"""
+"""F1: the engine's fp16 logits against the fp64 CPU reference."""
 
 from __future__ import annotations
 
@@ -52,13 +27,7 @@ DEFAULT_REFERENCE = REPO_ROOT / "reference"
 HISTOGRAM_EDGES = [0.0, 1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 1e-1, 1.0, float("inf")]
 ROW_CHUNK = 64
 
-# Relative logit error is deliberately absent. A logit has no meaningful zero,
-# so dividing by one is not a scale: an unfloored ratio reported 1.45e6, and the
-# floor that "fixed" it discarded 21 percent of the values to make the metric
-# behave, which is a tell rather than a justification. Absolute logit error and
-# exact KL already cover fidelity, and both survive scrutiny unqualified.
 
-# The rule, stated once here and printed in the output. See the module docstring.
 NEAR_TIE_QUANTILE = 0.999
 
 
@@ -164,7 +133,6 @@ def main() -> int:
           f"max abs {cast['max_abs_error']:.3e}")
     print("                    reported separately: F1 measures the forward pass, not the cast")
 
-    # -- B5: coverage of the paths the measurement is supposed to exercise ----
     split_counts = [attention_splits(len(ids)) for ids in cache["prompt_token_ids"]]
     max_splits = max(split_counts)
     multi = sum(1 for s in split_counts if s >= 2)
@@ -180,14 +148,9 @@ def main() -> int:
             "needs a prompt longer than that."
         )
 
-    # -- memory ceiling, asserted before the pass rather than discovered -------
     longest = max(len(ids) for ids in cache["prompt_token_ids"])
     heads = engine.cfg.num_attention_heads
     vocab = engine.cfg.vocab_size
-    # The two transients that scale: the fp64 attention score matrix, which is
-    # quadratic in prompt length, and one row-chunk of full-vocab logits on each
-    # side of the comparison. Three live copies each is what the arithmetic below
-    # actually holds at once.
     attention_scratch = longest * longest * heads * 8 * 3
     logit_scratch = ROW_CHUNK * vocab * 8 * 4
     anon_now, _ = memprobe.rss_split()
@@ -206,7 +169,6 @@ def main() -> int:
         projected, args.memory_ceiling_mib * memprobe.MIB, "the fp64 reference pass"
     )
 
-    # -- the two passes, streamed together ------------------------------------
     abs_hist = [0] * (len(HISTOGRAM_EDGES) - 1)
     abs_max = 0.0
     abs_sum = 0.0
@@ -232,16 +194,14 @@ def main() -> int:
 
         for start in range(0, seq_len, ROW_CHUNK):
             stop = min(start + ROW_CHUNK, seq_len)
-            ref_rows = reference.logits_for(hidden[start:stop])  # [chunk, vocab] fp64
+            ref_rows = reference.logits_for(hidden[start:stop])
             eng_rows = eng_logits[start:stop].to(torch.float64).cpu()
             eng_lp = eng_log_probs[start:stop].to(torch.float64).cpu()
 
-            # Exact KL(P_ref || Q_engine) over the whole vocabulary.
             ref_lp = ref_rows - torch.logsumexp(ref_rows, dim=-1, keepdim=True)
             p = ref_lp.exp()
             kl_parts.append((p * (ref_lp - eng_lp)).sum(dim=-1))
 
-            # Logit error, over the whole vocabulary rather than a top-k slice.
             err = (eng_rows - ref_rows).abs()
             abs_max = max(abs_max, float(err.max()))
             abs_sum += float(err.sum())
@@ -255,7 +215,6 @@ def main() -> int:
             streamed_top2_val.append(values)
             streamed_top2_idx.append(indices.to(torch.int32))
 
-            # The quantity that actually flips a greedy argmax.
             eng_at_top2 = torch.gather(eng_rows, 1, indices)
             top2_err_parts.append(
                 ((eng_at_top2[:, 0] - eng_at_top2[:, 1]) - (values[:, 0] - values[:, 1])).abs()
@@ -279,7 +238,6 @@ def main() -> int:
     top2_err = torch.cat(top2_err_parts)
     engine_argmax = torch.cat(engine_top1)
 
-    # -- the fp64 pass must reproduce the cached top-2 exactly ----------------
     streamed_idx = torch.cat(streamed_top2_idx)
     streamed_val = torch.cat(streamed_top2_val)
     idx_match = bool(torch.equal(streamed_idx, cache["top2_indices"]))
@@ -294,7 +252,6 @@ def main() -> int:
             "moves between runs invalidates every number in this report."
         )
 
-    # -- logit error ----------------------------------------------------------
     print()
     print(f"logit error, engine fp16 vs fp64 reference, full vocabulary ({abs_count} values)")
     print(f"  absolute   max {abs_max:.6e}  mean {abs_sum / abs_count:.6e}")
@@ -305,7 +262,6 @@ def main() -> int:
     for label, count in histogram(abs_hist):
         print(f"    {label:<16} {bar(count, abs_count):<24} {count:>12}")
 
-    # -- KL -------------------------------------------------------------------
     kl_stats = quantiles(kl)
     print()
     print(f"per-position KL(fp64 reference || engine), nats, exact over the full")
@@ -313,7 +269,6 @@ def main() -> int:
     print(f"  mean {kl_stats['mean']:.6e}  median {kl_stats['median']:.6e}  "
           f"p99 {kl_stats['p99']:.6e}  max {kl_stats['max']:.6e}")
 
-    # -- greedy match with a derived threshold --------------------------------
     ref_top1 = cache["top2_indices"][:, 0].to(torch.int64)
     gap = (cache["top2_logits"][:, 0] - cache["top2_logits"][:, 1]).to(torch.float64)
     err_stats = quantiles(top2_err)
@@ -340,24 +295,11 @@ def main() -> int:
           f"(p{NEAR_TIE_QUANTILE * 100:g} of that error)")
     print("  near-tie test is exact:               it reads only fp64 top-1 and top-2,")
     print("                                        both cached uncompressed")
-    # The tuning-proof number: the tightest threshold at which the match rate is
-    # still 100 percent. Reporting only the derived one invites "the threshold was
-    # chosen so the rate came out 100 percent", whether or not that happened.
-    # The comparison is `gap >= threshold`, so a threshold equal to the largest
-    # mismatching gap would still include that mismatch and the rate would not be
-    # 100 percent. The minimum is therefore the next representable double above
-    # it, via nextafter rather than a fudge factor: an earlier version multiplied
-    # by (1 + 1e-9), which is 1.28e-11 at this magnitude where one ULP is 1.7e-18,
-    # so it was arbitrary and printed at six decimals as the same number as the
-    # gap it had to exceed.
     largest_mismatch_gap = float(mismatch_gaps.max()) if mismatch_gaps.numel() else 0.0
     minimum_perfect = math.nextafter(largest_mismatch_gap, math.inf)
     perfect_kept = int((gap >= minimum_perfect).sum())
     perfect_matched = int((agree & (gap >= minimum_perfect)).sum())
 
-    # At the p99.9 threshold, 0.1 percent of positions have a difference-error
-    # exceeding it, so a mismatch above the threshold is not impossible, merely
-    # unlikely. Stating the expectation is what makes observing zero meaningful.
     expected_exceedances = (1.0 - NEAR_TIE_QUANTILE) * float(gap.numel())
 
     print()
@@ -380,8 +322,6 @@ def main() -> int:
     print(f"  observed                                                    "
           f"{clean_total - clean_match}")
 
-    # Rank discipline: a mismatch that is not a top1/top2 swap is a different
-    # class of failure and rounding does not explain it.
     ref_top2 = cache["top2_indices"][:, 1].to(torch.int64)
     swaps = int((engine_argmax[mismatch] == ref_top2[mismatch]).sum())
     print(f"  every mismatch a top1/top2 swap       {swaps}/{mismatch.numel()}")
@@ -399,7 +339,6 @@ def main() -> int:
         sensitivity.append({"threshold": t, "match": matched, "total": kept})
         print(f"    gap >= {t:<10.4e}  {matched}/{kept}{tag}")
 
-    # -- pass criterion, architecture doc 7.1 ---------------------------------
     checks = [
         ("no mismatch above the derived threshold", clean_match == clean_total),
         ("every mismatch is a top1/top2 swap", swaps == mismatch.numel()),
@@ -476,12 +415,7 @@ def main() -> int:
 
 
 def hf_sanity_check(model: Qwen3, args: argparse.Namespace) -> dict[str, object]:
-    """Greedy decode, engine versus HF. Exercises the decode path, not prefill.
-
-    HF is not shape-invariant and is not ground truth. A mismatch here is a lead,
-    not a verdict. It is here because a prefill-only comparison would never touch
-    the single-token KV-cache path.
-    """
+    """Greedy decode, engine versus HF. Exercises the decode path, not prefill."""
     import gc
 
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -499,8 +433,6 @@ def hf_sanity_check(model: Qwen3, args: argparse.Namespace) -> dict[str, object]
     gc.collect()
     torch.cuda.empty_cache()
 
-    # .to("cuda") rather than device_map="cuda": device_map pulls in accelerate,
-    # which is not in the dependency set the security doc fixes.
     hf = (
         AutoModelForCausalLM.from_pretrained(str(args.weights), torch_dtype=torch.float16)
         .to("cuda")

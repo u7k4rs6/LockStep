@@ -1,23 +1,4 @@
-"""Cost of determinism, as ratios.
-
-PRD headline 3: "Invariant mode versus this engine's own fast mode, then as a
-fraction of vLLM `VLLM_BATCH_INVARIANT=1` and SGLang deterministic mode. Same
-GPU, same model, same committed trace, median of 5 runs. Comparing against their
-deterministic modes rather than only vanilla is what makes the number
-undismissable."
-
-Absolute tokens per second is not published. This engine has no CUDA graphs and
-makes no attempt to be fast; an absolute number invites the dismissal the PRD's
-risk table names, and the ratio is the quantity a reader actually needs.
-
-The workload is committed: `committed_trace` in this file holds it, seeded and
-fixed, and every configuration runs the same one.
-
-External engines run out of a separate virtual environment, because vLLM pins
-torch versions that would fight the locked environment this project's claims are
-scoped to. `--external-python` points at it. If it is absent, the external rows
-are reported as not measured rather than estimated or omitted.
-"""
+"""Cost of determinism, as ratios."""
 
 from __future__ import annotations
 
@@ -44,27 +25,11 @@ from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 RUNS = 5
 
-# Below this, a measurement is contaminated rather than merely tight. The idle
-# device on this machine reports about 7300 MiB free; a lockstep process holding
-# its model and KV pool leaves far less, and an external engine asking for 0.55
-# of what remains then measures a different thing or fails outright.
 MIN_FREE_VRAM_MIB = 5000
 
 
 def committed_trace(vocab: int, seed: int = 20260805) -> list[tuple[list[int], int]]:
-    """The one workload every configuration runs. Committed, not generated live.
-
-    **Four of the eight prompts cross the 512-token attention split boundary.**
-    The first version of this trace topped out at 192 prompt tokens against a
-    512-token model length, so no request ever reached a second split and the
-    benchmark for a project about split-combine invariance never executed the
-    split-combine fold. The cost being measured was therefore the cost of
-    everything except the mechanism the engine exists to constrain.
-
-    Lengths are a fixed list rather than a draw, so the shape is inspectable
-    without running anything, and the token contents come from a seeded
-    generator so the trace is reproducible from this file alone.
-    """
+    """The one workload every configuration runs. Committed, not generated live."""
     generator = torch.Generator().manual_seed(seed)
     lengths = [64, 544, 96, 600, 80, 520, 112, 700]
     return [
@@ -74,15 +39,7 @@ def committed_trace(vocab: int, seed: int = 20260805) -> list[tuple[list[int], i
 
 
 def time_lockstep(python: Path, trace, invariant: bool) -> float | None:
-    """Seconds for the whole trace, in a fresh process. `invariant=False` is fast.
-
-    Out of process, like the external engines, and for the same reason. Holding
-    the model in the parent meant every interleaved external measurement started
-    behind our allocation: about 2x slower with `empty_cache()`, and a total
-    failure to launch without it. The fast path differs in exactly one way, by
-    letting torch pick the GEMM; attention and the scheduler are identical, so
-    the ratio isolates the GEMM constraint rather than two different engines.
-    """
+    """Seconds for the whole trace, in a fresh process. `invariant=False` is fast."""
     script = REPO_ROOT / "bench" / "lockstep_runner.py"
     payload = json.dumps({
         "invariant": invariant,
@@ -109,9 +66,6 @@ def time_external(python: Path, engine: str, deterministic: bool, trace,
         "weights": str(WEIGHTS),
         "trace": [[list(p), n] for p, n in trace],
     })
-    # vLLM shells out to ninja when it compiles its custom ops, and a venv-local
-    # ninja is not on PATH by default, so the engine core dies at startup with a
-    # FileNotFoundError that reads like an unsupported GPU.
     env = dict(os.environ, PATH=f"{python.parent}:{os.environ.get('PATH', '')}")
     try:
         out = subprocess.run(
@@ -125,12 +79,7 @@ def time_external(python: Path, engine: str, deterministic: bool, trace,
 
 
 def gpu_state() -> dict:
-    """Clock, temperature and power at the moment of a measurement.
-
-    Recorded per sample rather than per run. Drift was previously reconstructed
-    after the fact from a ratio moving 1.75x between two runs, which only worked
-    because the shift was large; a subtler one would have been invisible.
-    """
+    """Clock, temperature and power at the moment of a measurement."""
     try:
         out = subprocess.run(
             ["nvidia-smi",
@@ -141,10 +90,6 @@ def gpu_state() -> dict:
         )
         sm, temp, power, util, free, used = (
             x.strip() for x in out.stdout.strip().split(","))
-        # Free VRAM per sample. Its absence is what left a 2.20x spread ambiguous
-        # between warmup and this process's own residual allocation: interleaving
-        # scatters in-process lockstep measurements through the run, so a vLLM
-        # sample can start behind several GB held by our torch context.
         return {"sm_mhz": int(float(sm)), "temp_c": int(float(temp)),
                 "power_w": float(power), "util_pct": int(float(util)),
                 "vram_free_mib": int(float(free)), "vram_used_mib": int(float(used))}
@@ -163,9 +108,6 @@ def main() -> int:
     args = parser.parse_args()
     provenance = require_clean_tree(args.allow_dirty)
 
-    # Vocabulary only. Instantiating the model here would put roughly 1.7 GB on
-    # the device for the whole benchmark and contaminate every external sample,
-    # which is the bias this file was rewritten to remove.
     vocab = json.loads((WEIGHTS / "config.json").read_text())["vocab_size"]
     trace = committed_trace(vocab)
     total_tokens = sum(len(p) + n for p, n in trace)
@@ -179,14 +121,6 @@ def main() -> int:
     print("  ratios only; absolute tokens per second is not a claim this project makes")
     print()
 
-    # Every measurement as an independent unit, then shuffled, so configurations
-    # are interleaved rather than blocked. Blocking by configuration was the
-    # earlier design and it maps any drift over the run straight onto the
-    # A-versus-B ratio: all of A ran while the machine was cool and all of B
-    # after it was not. Two runs of identical code then disagreed by 1.75x on
-    # every eager configuration while the graphed ones held, which was enough to
-    # refute a published claim. Interleaving makes drift hit both arms roughly
-    # equally, so a cross-mode ratio is a measurement rather than a caveat.
     units: list[tuple[str, object]] = []
     for label, invariant in (("lockstep, fast mode", False),
                              ("lockstep, invariant", True)):
@@ -205,8 +139,6 @@ def main() -> int:
             for _ in range(args.runs):
                 units.append((label, ("external", engine, deterministic, graphs)))
 
-    # Seeded, so the interleaving is a property of the committed code rather than
-    # of the day it ran, and a rerun executes the same order.
     random.Random(20260806).shuffle(units)
 
     samples: dict[str, list[float]] = {}
@@ -255,12 +187,6 @@ def main() -> int:
             "gpu_state": observed.get(label, []),
         })
 
-    # Both graph modes for vLLM. Eager against eager is the like-for-like
-    # comparison, since this engine has no graphs; graphed is what vLLM actually
-    # runs in production and is the number a reader deciding between the two
-    # would use. Publishing only the first flatters this engine by degrading the
-    # comparator, and publishing only the second hides that the gap is partly a
-    # feature this engine simply does not have.
     by = {r["config"]: r["seconds"] for r in rows if r["measured"]}
     baseline = by["lockstep, fast mode"]
 
@@ -275,11 +201,6 @@ def main() -> int:
         print(f"  {row['config']:<40} {row['seconds'] / baseline:>8.2f}x"
               f"   spread {spread:4.2f}x{flag}")
 
-    # Absolute standing is the headline. The within-engine cost of determinism
-    # is deliberately NOT printed as a side-by-side against vLLM's: this engine's
-    # fast path is already constrained in ways vLLM's is not, so the two ratios
-    # measure different things and pairing them implies a comparison that does
-    # not hold.
     lock = by["lockstep, invariant"] / by["lockstep, fast mode"]
     derived = {"lockstep_invariant_over_fast": lock}
     print()

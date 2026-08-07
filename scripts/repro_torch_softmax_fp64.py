@@ -1,10 +1,4 @@
-"""Standalone repro: torch.softmax is wrong in fp64 on CUDA at some row widths.
-
-Deliberately imports nothing from lockstep and touches no other CUDA work, so it
-can be pasted into a pytorch issue and run as-is.
-
-Run:  python3 scripts/repro_torch_softmax_fp64.py
-"""
+"""Standalone repro: torch.softmax is wrong in fp64 on CUDA at some row widths."""
 
 import torch
 
@@ -62,7 +56,6 @@ def main():
     print(f"   logsumexp    float64 CUDA : "
           f"{float((torch.logsumexp(x, -1) - torch.logsumexp(x.cpu(), -1).cuda()).abs().max()):.3e}")
 
-    # Non-contiguous input: a transposed view of the same values.
     wide = base[:8, :513].t().contiguous().t()
     print(f"   softmax on a non-contiguous view: "
           f"{float((torch.softmax(wide, -1) - torch.softmax(wide.cpu(), -1).cuda()).abs().max()):.3e}")

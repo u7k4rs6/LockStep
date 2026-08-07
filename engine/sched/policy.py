@@ -1,29 +1,4 @@
-"""The seam. Every scheduler decision is a call into a policy object.
-
-docs/02-technical-architecture.md section 6: "The single most important
-architectural decision: `sched/policy.py` is the seam. Every scheduler decision
-(admit, chunk boundary, preempt or not, which block to evict, whether to honor a
-cache hit) is a call into a policy object. Production uses a heuristic policy;
-the fuzzer supplies an adversarial one; replay supplies a recorded one. Because
-execution is a pure function of (W, sigma, seeds), ddmin is exact rather than
-best-effort. This is the entire differentiator versus live-server trace fuzzing.
-Do not let scheduling logic leak outside this seam."
-
-The interface is defined in full in week 2 even though week 2 only calls two of
-its methods. That is deliberate. The seam is worth nothing if it is widened later
-to fit whatever the scheduler happens to need in week 4: the fuzzer's power comes
-from every decision being enumerable *now*, and a method added after the
-scheduler already made that decision inline is a decision that was made outside
-the seam first.
-
-Decisions not yet reachable raise `NotYetScheduled` in the default policy rather
-than returning a plausible default, so that a caller wiring up chunked prefill in
-week 4 gets an error instead of a silent policy that was never reviewed.
-
-`Decision` values are what a recorded schedule is made of. They are plain data
-and must stay comparable and hashable so `replay` can assert it is replaying the
-same sigma it recorded, and so ddmin can slice a schedule.
-"""
+"""The seam. Every scheduler decision is a call into a policy object."""
 
 from __future__ import annotations
 
@@ -63,23 +38,13 @@ class Decision:
 
 @dataclass(frozen=True)
 class SchedulerState:
-    """What a policy is allowed to see when it decides.
-
-    Deliberately a snapshot rather than the live engine. A policy that could
-    reach into the engine could read a batch-derived quantity and route it into a
-    kernel config, which is the thing the whole design forbids; passing a frozen
-    view makes that a visible act rather than an accident.
-    """
+    """What a policy is allowed to see when it decides."""
 
     step: int
     waiting: tuple[str, ...]
     running: tuple[str, ...]
     free_blocks: int
     total_blocks: int
-    # Blocks the prefix cache holds that no live sequence is using. They are
-    # capacity, not occupancy: admission that counted only free_blocks would
-    # refuse a request the pool could serve by evicting, which makes the whole
-    # eviction path unreachable.
     reclaimable_blocks: int = 0
 
 
@@ -92,14 +57,7 @@ class Policy:
         raise NotImplementedError
 
     def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
-        """How many prompt tokens to prefill in this step.
-
-        Must return at least 1 and at most `remaining`. The engine imposes no
-        alignment: a policy may return any value in that range, including ones
-        that land mid-block and mid-split, because I2 says the bits must not
-        care. A policy that only ever returned multiples of the block size would
-        make the suite green without testing anything.
-        """
+        """How many prompt tokens to prefill in this step."""
         raise NotImplementedError
 
     def should_preempt(self, state: SchedulerState, uid: str) -> bool:
@@ -116,12 +74,7 @@ class Policy:
 
 
 class DefaultPolicy(Policy):
-    """The production heuristic. Trivial in week 2, and that is the point.
-
-    Admit in arrival order while blocks remain. There is no cleverness to hide a
-    bug behind yet, which makes it a good baseline for the fuzzer to diverge from
-    later.
-    """
+    """The production heuristic. Trivial in week 2, and that is the point."""
 
     name = "default"
 
@@ -134,27 +87,15 @@ class DefaultPolicy(Policy):
         return blocks_needed <= state.free_blocks + state.reclaimable_blocks
 
     def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
-        """Prefill the whole remainder. The production heuristic does not chunk.
-
-        Chunking exists to bound step latency, which is week 7's concern. The
-        seam is exercised regardless: FixedChunkPolicy and ScriptedChunkPolicy
-        drive it in the tests, which is the point of the decision living here.
-        """
+        """Prefill the whole remainder. The production heuristic does not chunk."""
         return remaining
 
     def should_preempt(self, state: SchedulerState, uid: str) -> bool:
-        """Never, by default. Preemption is a response to pressure, and the
-        default policy admits only what fits, so it never creates any."""
+        """Never, by default. Preemption is a response to pressure, and the"""
         return False
 
     def evict_victim(self, state: SchedulerState, candidates: tuple[int, ...]) -> int:
-        """Lowest block id among the candidates.
-
-        Not least-recently-used: recency is wall-clock-shaped state, and a
-        replayed schedule would have to reproduce it to reproduce the eviction.
-        Lowest-id is a pure function of the candidate set, which keeps eviction
-        inside (workload, schedule, seeds).
-        """
+        """Lowest block id among the candidates."""
         return min(candidates)
 
     def honor_cache_hit(self, state: SchedulerState, uid: str, hit_length: int) -> bool:
@@ -163,11 +104,7 @@ class DefaultPolicy(Policy):
 
 
 class RecordingPolicy(Policy):
-    """Wraps another policy and records every decision it makes.
-
-    The recorded list is the sigma that `ReplayPolicy` re-executes and that MR6
-    asserts is identical across runs.
-    """
+    """Wraps another policy and records every decision it makes."""
 
     def __init__(self, inner: Policy):
         self.inner = inner
@@ -186,13 +123,7 @@ class RecordingPolicy(Policy):
 
 
 class ReplayPolicy(Policy):
-    """Replays a recorded sigma exactly, and refuses to improvise.
-
-    If the engine asks something the recording does not answer, that is a
-    divergence between the recorded run and this one, and it fails loudly rather
-    than falling back to a heuristic and producing a run that merely resembles
-    the original.
-    """
+    """Replays a recorded sigma exactly, and refuses to improvise."""
 
     name = "replay"
 
@@ -217,12 +148,7 @@ class FixedChunkPolicy(DefaultPolicy):
 
 
 class ScriptedChunkPolicy(DefaultPolicy):
-    """Prefill along an explicitly given partition.
-
-    Used by MR2 to drive partitions that land exactly on, and one either side of,
-    the block size, the split size, and the sequence end. Those boundaries are
-    where a fencepost lives, and a random partition reaches them only by luck.
-    """
+    """Prefill along an explicitly given partition."""
 
     def __init__(self, partitions: dict[str, list[int]], max_running: int = 32):
         super().__init__(max_running=max_running)
@@ -237,12 +163,7 @@ class ScriptedChunkPolicy(DefaultPolicy):
 
 
 class PreemptAtStepPolicy(DefaultPolicy):
-    """Preempt one named request at one named decode step, exactly once.
-
-    MR3 sweeps the preemption point rather than sampling it, so the relation
-    needs to place the preemption at a chosen step rather than hope a heuristic
-    lands there.
-    """
+    """Preempt one named request at one named decode step, exactly once."""
 
     def __init__(self, uid: str, at_step: int, max_running: int = 32):
         super().__init__(max_running=max_running)
@@ -259,13 +180,7 @@ class PreemptAtStepPolicy(DefaultPolicy):
 
 
 class PreemptAtStepsPolicy(DefaultPolicy):
-    """Preempt one request at several named steps, for depth sweeps.
-
-    Preemption depth is a coverage dimension in architecture doc 8.2, up to 3.
-    Depth matters because preempt-resume-preempt is where allocator state gets
-    interesting: a block freed by the first preemption can be reallocated to
-    another request and then be needed again by the second.
-    """
+    """Preempt one request at several named steps, for depth sweeps."""
 
     def __init__(self, uid: str, at_steps: tuple[int, ...], max_running: int = 32):
         super().__init__(max_running=max_running)

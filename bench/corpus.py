@@ -1,36 +1,4 @@
-"""The fidelity prompt corpus.
-
-Diversity over length. Forty prompts, mostly short, chosen so that prefilling
-them produces positions across the whole entropy range rather than a pile of
-confident continuations. Flat distributions are where fp16 accumulation error is most
-likely to reorder the top of the distribution, and they are where the compressed
-top-256 reference is most likely to disagree with a full-vocab one, so a corpus
-of only fluent English prose would measure the easy case and report it as the
-result.
-
-Sources are public domain (Gutenberg-era literature, US founding documents) or
-written here. docs/03-security-and-access.md section 8: prompts come from public
-datasets or are synthetically generated, and nothing hand-typed carries personal
-content.
-
-Length is not the organizing principle, but it is not ignored either. Several
-prompts run past 512 tokens on purpose: 512 is the pinned attention split size,
-so a corpus of only short prompts would never launch attention with more than one
-split and would leave the split-combine path, the centerpiece of the invariance
-design, untested by every fidelity number this corpus produces.
-
-Literary excerpts are transcribed from memory and may drift from the canonical
-text. That is acceptable here and would not be elsewhere: these function as token
-sequences to run a forward pass over, not as quotations, and no claim depends on
-their wording. They are public-domain works either way.
-
-The corpus hash goes into env.lock, so a fidelity number is tied to the corpus
-that produced it and cannot be quietly re-scoped by editing this file.
-
-`regime` is the author's expectation, not a measurement. The reference builder
-measures actual fp64 entropy per position and stratifies on that; the tag exists
-so a reader can check that the expectation and the measurement agree.
-"""
+"""The fidelity prompt corpus."""
 
 from __future__ import annotations
 
@@ -42,13 +10,12 @@ from dataclasses import dataclass
 @dataclass(frozen=True)
 class Prompt:
     uid: str
-    regime: str  # low | mixed | high
+    regime: str
     source: str
     text: str
 
 
 PROMPTS: tuple[Prompt, ...] = (
-    # -- Low entropy: memorized or strongly constrained continuations ----------
     Prompt("p01", "low", "public-domain", "To be, or not to be, that is the"),
     Prompt("p02", "low", "public-domain", "It is a truth universally acknowledged, that a single man in possession of a good fortune, must be in want of a"),
     Prompt("p03", "low", "public-domain", "Call me Ishmael. Some years ago, never mind how long precisely, having little or no money in my purse, and nothing particular to interest me on shore, I thought I would sail about a little and see the watery part of the world. It is a way I have of driving off the spleen and regulating the circulation. Whenever I find myself growing grim about the mouth; whenever it is a damp, drizzly November in my soul; whenever I find myself involuntarily pausing before coffin warehouses, and bringing up the rear of every funeral I meet; and especially whenever my hypos get such an upper hand of me, that it requires a strong moral principle to prevent me from deliberately stepping into the street, and methodically knocking people's hats off, then, I account it high time to get to sea as soon as I can. This is my substitute for pistol and ball. With a philosophical flourish Cato throws himself upon his sword; I quietly take to the ship. There is nothing surprising in this. If they but knew it, almost all men in their degree, some time or other, cherish very nearly the same feelings towards the ocean with me. There now is your insular city of the Manhattoes, belted round by wharves as Indian isles by coral reefs; commerce surrounds it with her surf. Right and left, the streets take you waterward. Its extreme downtown is the battery, where that noble mole is washed by waves, and cooled by breezes, which a few hours previous were out of sight of land. Look at the crowds of water-gazers there. Circumambulate the city of a dreamy Sabbath afternoon. Go from Corlears Hook to Coenties Slip, and from thence, by Whitehall, northward. What do you see? Posted like silent sentinels all around the town, stand thousands upon thousands of mortal men fixed in ocean reveries. Some leaning against the spiles; some seated upon the pier-heads; some looking over the bulwarks of ships from China; some high aloft in the rigging, as if striving to get a still better seaward peep. But these are all landsmen; of week days pent up in lath and plaster, tied to counters, nailed to benches, clinched to desks. How then is this? Are the green fields gone? What do they here? But look! here come more crowds, pacing straight for the water, and seemingly bound for a dive. Strange! Nothing will content them but the extremest limit of the land; loitering under the shady lee of yonder warehouses will not suffice. No. They must get just as nigh the water as they possibly can without falling in. And there they stand, miles of them, leagues. Inlanders all, they come from lanes and alleys, streets and avenues, north, east, south, and west. Yet here they all unite. Tell me, does the magnetic virtue of the needles of the compasses of all those ships attract them thither? Once more. Say you are in the country; in some high land of lakes. Take almost any path you please, and ten to one it carries you down in a dale, and leaves you there by a pool in the stream. There is magic in it. Let the most absent-minded of men be plunged in his deepest reveries, stand that man on his legs, set his feet a-going, and he will infallibly lead you to water, if water there be in all that region."),
@@ -62,7 +29,6 @@ PROMPTS: tuple[Prompt, ...] = (
     Prompt("p11", "low", "synthetic", "The chemical symbol for gold is"),
     Prompt("p12", "low", "synthetic", "2 + 2 = 4. 3 + 3 = 6. 4 + 4 = 8. 5 + 5 ="),
 
-    # -- Mixed: ordinary prose, where most real tokens live -------------------
     Prompt("p13", "mixed", "public-domain", "Alice was beginning to get very tired of sitting by her sister on the bank, and of having nothing to do: once or twice she had peeped into the book her sister was reading, but it had no pictures or conversations in it, and what is the use of a book, thought Alice, without pictures or conversations? So she was considering in her own mind, as well as she could, for the hot day made her feel very sleepy and stupid, whether the pleasure of making a daisy-chain would be worth the trouble of getting up and picking the daisies, when suddenly a White Rabbit with pink eyes ran close by her. There was nothing so very remarkable in that; nor did Alice think it so very much out of the way to hear the Rabbit say to itself, Oh dear! Oh dear! I shall be late! But when the Rabbit actually took a watch out of its waistcoat-pocket, and looked at it, and then hurried on, Alice started to her feet, for it flashed across her mind that she had never before seen a rabbit with either a waistcoat-pocket, or a watch to take out of it, and burning with curiosity, she ran across the field after it, and fortunately was just in time to see it pop down a large rabbit-hole under the hedge. In another moment down went Alice after it, never once considering how in the world she was to get out again. The rabbit-hole went straight on like a tunnel for some way, and then dipped suddenly down, so suddenly that Alice had not a moment to think about stopping herself before she found herself falling down a very deep well. Either the well was very deep, or she fell very slowly, for she had plenty of time as she went down to look about her and to wonder what was going to happen next. First, she tried to look down and make out what she was coming to, but it was too dark to see anything; then she looked at the sides of the well, and noticed that they were filled with cupboards and book-shelves; here and there she saw maps and pictures hung upon pegs. She took down a jar from one of the shelves as she passed; it was labelled ORANGE MARMALADE, but to her great disappointment it was empty: she did not like to drop the jar for fear of killing somebody underneath, so managed to put it into one of the cupboards as she fell past it. Well! thought Alice to herself, after such a fall as this, I shall think nothing of tumbling down stairs! How brave they will all think me at home! Why, I wouldn't say anything about it, even if I fell off the top of the house! Down, down, down. Would the fall never come to an end? I wonder how many miles I have fallen by this time? she said aloud. I must be getting somewhere near the centre of the earth."),
     Prompt("p14", "mixed", "public-domain", "It was the best of times, it was the worst of times, it was the age of wisdom,"),
     Prompt("p15", "mixed", "public-domain", "You know my methods, Watson. There was not one of them which I did not apply to the"),
@@ -78,7 +44,6 @@ PROMPTS: tuple[Prompt, ...] = (
     Prompt("p25", "mixed", "synthetic", "# Meeting notes\n\n- Reviewed the latency regression\n- Agreed to"),
     Prompt("p26", "mixed", "synthetic", "The train was late again, and by the time it arrived the platform was"),
 
-    # -- High entropy: flat distributions, rare tokens, format breaks ----------
     Prompt("p27", "high", "synthetic", "qx zj vv mk pt"),
     Prompt("p28", "high", "synthetic", "The"),
     Prompt("p29", "high", "synthetic", "\n\n"),

@@ -1,13 +1,4 @@
-"""Deterministic simulation driver: execution is a function of (W, sigma, seeds).
-
-docs/02-technical-architecture.md section 6: "Because execution is a pure
-function of (W, sigma, seeds), ddmin is exact rather than best-effort. This is
-the entire differentiator versus live-server trace fuzzing."
-
-A Case is that triple. Running one twice gives the same trajectory hash; running
-a subset of one is a well-defined smaller case, which is what makes minimization
-exact rather than a search that sometimes reproduces.
-"""
+"""Deterministic simulation driver: execution is a function of (W, sigma, seeds)."""
 
 from __future__ import annotations
 
@@ -62,26 +53,20 @@ class Case:
     """(W, sigma, seeds). Everything that determines an execution."""
 
     requests: tuple[RequestSpec, ...]
-    chunk_plan: tuple[int, ...] = ()       # cycled through for chunk_boundary
-    preempt_at: tuple[tuple[str, int], ...] = ()   # (uid, step)
-    refuse_cache_at: tuple[int, ...] = ()  # steps where a hit is declined
+    chunk_plan: tuple[int, ...] = ()
+    preempt_at: tuple[tuple[str, int], ...] = ()
+    refuse_cache_at: tuple[int, ...] = ()
     block_size: int = 16
     num_blocks: int = 64
     enable_cache: bool = True
-    shared_prefix_len: int = 0   # true common prefix across requests, before rounding
+    shared_prefix_len: int = 0
     label: str = ""
 
     def shrunk(self, **changes) -> "Case":
         return replace(self, **changes)
 
     def to_dict(self) -> dict:
-        """Every field, because every field determines the execution.
-
-        A Case that round-trips through this and back must produce the same
-        trajectory hash. `tests/test_replay_artifact.py` asserts exactly that, on
-        the committed evidence, since a reproduce command that silently drops a
-        field would replay a different case and report agreement.
-        """
+        """Every field, because every field determines the execution."""
         return {
             "requests": [r.to_dict() for r in self.requests],
             "chunk_plan": list(self.chunk_plan),
@@ -110,11 +95,7 @@ class Case:
 
 
 class ScriptedPolicy(DefaultPolicy):
-    """Drives every decision point from the Case. No heuristic anywhere.
-
-    This is the seam doing its job: the fuzzer supplies decisions, the engine
-    supplies none, so replaying the Case replays the schedule exactly.
-    """
+    """Drives every decision point from the Case. No heuristic anywhere."""
 
     def __init__(self, case: Case, events: dict[str, list[Event]]):
         super().__init__(max_running=32)
@@ -154,17 +135,11 @@ class Outcome:
     steps: int
     error: str | None = None
     depths: dict = field(default_factory=dict)
-    # uid -> one fp16 logit row per emitted token, so a relation can compare
-    # decode-phase bits against canonical rather than only emitted token ids.
     emitted_logits: dict = field(default_factory=dict)
 
 
 def run_case(model, case: Case, audit: bool = True) -> Outcome:
-    """Execute a Case. Any internal failure is captured, not raised.
-
-    A campaign has to keep going past a finding, and a finding is exactly an
-    exception from the audit or a divergence, so the driver returns it as data.
-    """
+    """Execute a Case. Any internal failure is captured, not raised."""
     events: dict[str, list[Event]] = {}
     policy = ScriptedPolicy(case, events)
     scheduler = Scheduler(
@@ -180,8 +155,6 @@ def run_case(model, case: Case, audit: bool = True) -> Outcome:
         try:
             scheduler.submit(spec.to_request())
         except OversizedRequest:
-            # A refusal at the door is correct behaviour, not a finding. The
-            # case simply contains a request this pool can never serve.
             rejected.append(spec.uid)
 
     error = None

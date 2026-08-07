@@ -1,33 +1,4 @@
-"""The 2x2 that separates batch composition from cache cold-versus-warm.
-
-The first concurrent certification run varied two things at once. Each repeat
-changed the filler count, which changes batch geometry, and each repeat also sat
-further from a cold cache, because repeat 0 was the only pass that ran against an
-empty prefix cache. Every divergence observed was repeat 0 against a later
-repeat, which is exactly what either factor would produce, so the run could not
-say which property had failed.
-
-That matters more than it looks, because the two have different verdicts.
-vLLM's documentation scopes batch invariance to "deterministic and independent of
-the batch size or the order of requests in a batch", and its tracking issue
-#27433 lists prefix caching under "Nice to have" rather than as done. So:
-
-  * a divergence under varying batch composition violates a stated claim
-  * a divergence under cold-versus-warm alone violates nothing they claim, and is
-    a gap between their scope and what a reader assumes "deterministic" covers
-
-This runs every cell, including the ones expected to be clean, because a
-factorial with a missing cell invites the question of what was not run. Each cell
-is a separate server lifetime, so a result cannot be an artifact of state left
-behind by the cell before it.
-
-    python3 -m certify.factorial --runs 1
-
-`--runs 2` repeats the whole grid in fresh server lifetimes, which is what
-answers the other question: `batch 31` diverged in one invariant run and was
-clean in the next, and a pure cache effect is a deterministic function of cache
-state and should reproduce across lifetimes.
-"""
+"""The 2x2 that separates batch composition from cache cold-versus-warm."""
 
 from __future__ import annotations
 
@@ -42,21 +13,12 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from certify.run import RELATIONS  # noqa: E402
 
-# Every cell, in the order they are most informative to read. The disabled cell
-# runs first because it is the cleanest single test: if divergence survives with
-# the cache switched off at the server, the cache is exonerated and the remaining
-# variable is batch composition.
 CELLS = [
     ("disabled", "varying", "cleanest: caching off, geometry varies"),
     ("warm", "varying", "batch composition alone"),
     ("cold", "fixed", "cache cold vs warm alone"),
     ("warm", "fixed", "baseline: neither varies"),
     ("cold", "varying", "both, confounded (the original run)"),
-    # The strictest baseline, and initially missing from this list while being
-    # declared in RELATIONS, which would have left an empty cell in a published
-    # factorial. Caching off and geometry fixed: a divergence here is neither
-    # property under test and would indict the measurement rather than the
-    # engine.
     ("disabled", "fixed", "strictest baseline: caching off, geometry fixed"),
 ]
 

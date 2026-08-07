@@ -1,22 +1,4 @@
-"""Row log-softmax, one CTA per row.
-
-docs/02-technical-architecture.md section 4.2: "RMSNorm and softmax as one CTA
-per row."
-
-The vocabulary is 151936 wide, which does not fit a single tile, so the CTA walks
-ceil(151936 / 4096) = 38 tiles in ascending order. The trip count is a function
-of the vocab size, a weight-shape constant, and the traversal order is fixed by
-the loop. No other row and no other request participates.
-
-Two passes rather than one online pass: pass one takes the max, pass two sums
-exp(x - max). An online single pass would also be deterministic, but the two-pass
-form has one obvious summation order instead of a rescaling recurrence, and this
-kernel is not on the throughput path.
-
-Log-space output, not probabilities. Per-position KL is the reported fidelity
-metric and computing it from probabilities loses the tail; the tail is exactly
-what the compressed-versus-exact comparison in bench/fidelity.py is measuring.
-"""
+"""Row log-softmax, one CTA per row."""
 
 from __future__ import annotations
 

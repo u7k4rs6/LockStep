@@ -1,24 +1,4 @@
-"""The ablation table: a positive control for the invariance test.
-
-The kernels here were written invariant from day one. Running the invariance
-suite against them and reporting "nothing breaks" proves nothing at all: a test
-that has never been shown to go red is unfalsifiable, and an all-green table from
-one is decoration.
-
-So for each op under claim this builds a deliberately non-invariant variant, swaps
-exactly one in at a time, and checks that I1 goes red while the full invariant set
-holds. The variants are the ordinary torch implementations, which is the point:
-they are not strawmen, they are what an engine written without this constraint
-would use, and the architecture doc section 5 names why each is a hazard.
-
-I1, as tested here: a request's logits must be bit-identical whether it runs
-alone or alongside cohabitants. Canonical execution C(r) is batch size 1, so the
-batch-1 run is the reference and each larger batch is compared against it.
-
-Cohabitants have deliberately uneven lengths. A batch of equal-length prompts
-would keep the packed token count a clean multiple of the GEMM tile and could let
-a shape-dependent kernel look invariant by luck.
-"""
+"""The ablation table: a positive control for the invariance test."""
 
 from __future__ import annotations
 
@@ -40,28 +20,14 @@ from engine.model import qwen3  # noqa: E402
 BATCH_SIZES = (1, 2, 4, 8, 16, 31, 32)
 
 
-# ---- non-invariant variants -------------------------------------------------
-
-
 def torch_linear(x, weight, bias=None, config="gemm.default"):
-    """cuBLAS via torch.matmul.
-
-    Architecture doc section 5, "Split-K": cuBLAS split-K combines via atomics or
-    a heuristically chosen reduce pass, and the heuristic reads the runtime
-    shape. M here is the packed token count, which is batch-derived.
-    """
+    """cuBLAS via torch.matmul."""
     out = torch.matmul(x, weight.t())
     return out + bias if bias is not None else out
 
 
 def torch_rmsnorm(x, weight, eps, config="rmsnorm.hidden"):
-    """torch's reduction over the last dimension.
-
-    Kept in the table but marked not-a-probe: on a 1024-wide row torch uses a
-    single block whatever the batch is, so no batch-derived quantity reaches the
-    reduction and this was never going to go red. See split_reduction_rmsnorm
-    below for the variant that actually breaks.
-    """
+    """torch's reduction over the last dimension."""
     original = x.dtype
     x32 = x.to(torch.float32)
     normed = x32 * torch.rsqrt(x32.pow(2).mean(-1, keepdim=True) + eps)
@@ -79,22 +45,7 @@ def _atomic_sumsq_kernel(X, Partial, n_cols, stride_row, SPLIT: tl.constexpr):
 
 
 def split_reduction_rmsnorm(x, weight, eps, config="rmsnorm.hidden"):
-    """RMSNorm whose split count is keyed on the batch token count, combined
-    with atomics.
-
-    This is the failure architecture doc section 5 names under "Split-K" and
-    "Fixed split count", applied to a norm rather than a GEMM, and it is the
-    variant the RMSNorm row needed: swapping torch in tested nothing because
-    torch never saw a batch-derived shape.
-
-    Two things are wrong with it at once, and either alone turns I1 red. The
-    split width is read from the batch, so the partition of the reduction
-    changes with cohabitants. And the partials combine through tl.atomic_add,
-    whose summation order is arrival order, so it is not even stable run to run.
-    The static gate in scripts/static_checks.py greps engine/ for tl.atomic_ and
-    would reject this file; it lives under harness/ precisely because it is the
-    thing the gate exists to keep out.
-    """
+    """RMSNorm whose split count is keyed on the batch token count, combined"""
     shape = x.shape
     x2d = x.reshape(-1, shape[-1]).contiguous()
     rows, cols = x2d.shape
@@ -111,11 +62,7 @@ def split_reduction_rmsnorm(x, weight, eps, config="rmsnorm.hidden"):
 
 
 def torch_attention(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale):
-    """torch SDPA over a gathered contiguous view.
-
-    SDPA picks a backend (flash, mem-efficient, math) from the shape, and the
-    flash path's own split heuristics are shape-dependent.
-    """
+    """torch SDPA over a gathered contiguous view."""
     kv_block = k_cache.shape[1]
     order = block_table.tolist()
     k = torch.cat([k_cache[b] for b in order], dim=0)[:kv_len]
@@ -140,25 +87,11 @@ def torch_attention(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale)
     return out.squeeze(0).transpose(0, 1).contiguous()
 
 
-# Set by `target_logits` before each packed forward, so the variant below can
-# read a genuinely batch-derived quantity. Nothing in engine/ can see it.
 _BATCH_TOKENS = 1
 
 
 def batch_derived_split_attention(q, k_cache, v_cache, block_table, q_start, kv_len, sm_scale):
-    """Attention whose split size is chosen from the batch's total token count.
-
-    This is the failure the architecture doc names twice: section 5, "Fixed split
-    count. Reintroduces batch dependence if derived from batch-max sequence
-    length", and mutation operator 10.1, "one code path reads split size from
-    batch size". The arithmetic is otherwise a faithful online-softmax fold, so
-    the only thing wrong with it is where the blocking constant came from.
-
-    Swapping torch SDPA in instead does not test this: the engine calls attention
-    once per sequence, so SDPA never sees a batch-derived shape and stays
-    invariant for a structural reason rather than a numerical one. That is worth
-    knowing, and it is why this variant exists alongside it.
-    """
+    """Attention whose split size is chosen from the batch's total token count."""
     kv_block = k_cache.shape[1]
     order = block_table.tolist()
     k = torch.cat([k_cache[b] for b in order], dim=0)[:kv_len]
@@ -170,9 +103,6 @@ def batch_derived_split_attention(q, k_cache, v_cache, block_table, q_start, kv_
     v = v.repeat_interleave(group, dim=1).to(torch.float32)
     q32 = q.to(torch.float32)
 
-    # The offending line: a blocking constant read from the batch. Kept small
-    # enough that the target request actually spans several chunks; a chunk
-    # larger than kv_len would fold in one step and the bug would hide.
     chunk = 16 + 4 * (_BATCH_TOKENS % 8)
 
     positions = torch.arange(q_start, q_start + q_len, device=q.device)
@@ -208,10 +138,6 @@ class Variant:
     attribute: str
     replacement: object
     note: str
-    # A probe tests something only if a batch-derived quantity can reach the op
-    # at all. Where none can, the right answer is a structural argument, not a
-    # green cell: "held" and "no breaking variant exists" are different claims
-    # and a reader cannot tell them apart if both print as held.
     is_probe: bool = True
     structural_reason: str = ""
 
@@ -240,14 +166,6 @@ VARIANTS = (
 )
 
 
-# ---- I1 probe ---------------------------------------------------------------
-
-
-# Two shape profiles, both probed for every variant. One is not enough: cuBLAS's
-# non-invariance is intermittent across shapes, and the lm_head variant below is
-# detectable under the short-target profile and invariant under the long-target
-# one. Reporting whichever profile made the table look best would be tuning the
-# test to its subject.
 PROFILES = {
     "short-target": (17, 33, 8, 64, 25, 41, 12, 55),
     "long-target": (96, 33, 8, 21, 25, 41, 12, 17),
@@ -255,17 +173,7 @@ PROFILES = {
 
 
 def make_prompts(count: int, vocab: int, profile: str, seed: int = 4242) -> list[list[int]]:
-    """Uneven lengths, so the packed token count is never a tidy multiple.
-
-    r00, the request under test, is deliberately the long one. A short target
-    would sit inside a single tile of every variant's blocking and could hold
-    invariant for want of anything to reorder, which would read as the test
-    passing rather than as the probe missing.
-
-    Cohabitants stay short so that batch 32 packs a few hundred tokens rather
-    than a few thousand: forward_batch materializes logits for every packed
-    token, and 4000 tokens of 151936-wide fp16 is 1.2 GB.
-    """
+    """Uneven lengths, so the packed token count is never a tidy multiple."""
     generator = torch.Generator().manual_seed(seed)
     lengths = list(PROFILES[profile])
     prompts = []
@@ -367,8 +275,6 @@ def run(weights: Path, num_blocks: int = 512) -> list[dict]:
 
     for variant in VARIANTS:
         if variant.attribute == "linear_lm_head":
-            # Swap only the lm_head call by dispatching on the config name, so
-            # the row isolates the 151936-wide GEMM from the rest.
             def only_head(x, weight, bias=None, config="gemm.default", _real=originals["linear"]):
                 if config == "gemm.lm_head":
                     return torch_linear(x, weight, bias, config)

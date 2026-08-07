@@ -1,12 +1,4 @@
-"""Peak VRAM and host RSS across chunk sizes and under eviction pressure.
-
-The previous version of this table had a 512-token chunk row against prompts of
-200 to 360 tokens, so that row never chunked anything and was byte-identical to
-the unchunked row. A configuration that looks tested and executed no new code is
-the same failure the corpus-length and split-boundary checks were added to catch,
-so the prompts here run past every chunk size measured, and the chunk sizes
-include one that is neither a power of two nor a divisor of the block size.
-"""
+"""Peak VRAM and host RSS across chunk sizes and under eviction pressure."""
 
 from __future__ import annotations
 
@@ -29,8 +21,6 @@ from report.artifact import Artifact, relpath  # noqa: E402
 MIB = memprobe.MIB
 TOTAL_VRAM_MIB = 8188
 
-# Every chunk size is smaller than the shortest prompt, so every row chunks.
-# 37 is neither a power of two nor a divisor of any supported block size.
 CHUNK_SIZES = (32, 37, 128, 512, None)
 PROMPT_LENGTHS = (600, 640, 700, 560, 620, 580, 660, 610)
 
@@ -93,8 +83,6 @@ def main() -> int:
               f"{TOTAL_VRAM_MIB - row['peak_reserved_bytes'] / MIB:9.1f}M "
               f"{row['steps']:>6}")
 
-    # Eviction pressure: a pool far too small for the workload, cache on, so the
-    # scheduler must reclaim cached blocks to make progress.
     print()
     print("under eviction pressure (pool sized well below the workload, cache on)")
     pressure = measure(model, None, args.block_size, 200, prompts, cache=True)

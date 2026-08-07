@@ -1,15 +1,4 @@
-"""Metamorphic relations. Week 2 implements MR6 and MR7.
-
-docs/02-technical-architecture.md section 9 lists nine. The rest arrive with the
-engine features they need: MR1 and MR5 need batch composition control, MR2 needs
-chunked prefill, MR3 needs preemption, MR4 needs the prefix cache. Stubbing them
-now would produce green results for relations that are not being tested, which is
-worse than their absence.
-
-Each relation returns a `Result` rather than asserting, so a runner can print a
-table and so a failing relation can carry the information the divergence report
-needs instead of a traceback.
-"""
+"""Metamorphic relations. Week 2 implements MR6 and MR7."""
 
 from __future__ import annotations
 
@@ -65,12 +54,7 @@ def _clone(requests: list[Request]) -> list[Request]:
 
 
 def _child_blocks(requests, block_size: int) -> int:
-    """Blocks the child actually needs, per sequence and rounded up each.
-
-    Sized from the workload rather than inherited from the parent: the child is
-    a second process holding a second copy of the weights, and on 8 GB a pool
-    sized for the parent's largest relation will not fit alongside it.
-    """
+    """Blocks the child actually needs, per sequence and rounded up each."""
     return sum(
         -(-(len(r.prompt) + r.max_new_tokens) // block_size) for r in requests
     ) + 4
@@ -97,18 +81,7 @@ def _run_in_child(requests, num_blocks, block_size, hash_seed):
 
 
 def mr6_cross_process(model, requests, num_blocks, block_size=paged.DEFAULT_BLOCK_SIZE) -> Result:
-    """Same workload, two fresh interpreters, deliberately different hash seeds.
-
-    An in-process replay cannot see anything fixed for the life of an
-    interpreter. PYTHONHASHSEED is the concrete hazard here, because the sampler
-    keys draws on the request uid: a salted hash would look perfectly
-    deterministic inside one session and produce a different trajectory in the
-    next. The two children are given different seeds on purpose, so agreement is
-    evidence rather than coincidence.
-    """
-    # Release the parent's cached device memory first. Two processes each
-    # holding 1.1 GB of weights plus a KV pool does not fit in 8 GB, and the
-    # child's failure would read as a determinism failure rather than an OOM.
+    """Same workload, two fresh interpreters, deliberately different hash seeds."""
     torch.cuda.empty_cache()
     blocks = _child_blocks(requests, block_size)
     first = _run_in_child(requests, blocks, block_size, hash_seed=1)
@@ -133,15 +106,7 @@ def mr6_cross_process(model, requests, num_blocks, block_size=paged.DEFAULT_BLOC
 
 
 def replay_workloads(vocab: int, seed: int = 8191) -> list[tuple[str, list[Request], dict]]:
-    """Workload shapes MR6 is replayed over.
-
-    One six-step workload is an existence proof. These vary length, batch width,
-    sampling, chunking, preemption, and cache pressure, because I3 claims replay
-    determinism for any (W, sigma, seeds) and each of those is a different way
-    for state to leak between runs. The eviction shape is the important one: it
-    is the only shape where the allocator reuses a physical block that a previous
-    sequence wrote, so a stale-block read would show up here and nowhere else.
-    """
+    """Workload shapes MR6 is replayed over."""
     generator = torch.Generator().manual_seed(seed)
 
     def prompt(length):
@@ -171,12 +136,7 @@ def replay_workloads(vocab: int, seed: int = 8191) -> list[tuple[str, list[Reque
 
 
 def mr6_replay(model, requests, num_blocks: int, workloads=None) -> Result:
-    """Identical (W, sigma, seeds) twice yields an identical trajectory hash.
-
-    Architecture doc I3. The hash covers emitted tokens, raw fp16 logit bytes,
-    the packed work list, the allocator ledger, and the prefix cache index, so
-    this is a stronger claim than "the same text came out twice".
-    """
+    """Identical (W, sigma, seeds) twice yields an identical trajectory hash."""
     shapes = workloads if workloads is not None else [("given workload", requests, {})]
     cases = []
     passed = True
@@ -223,25 +183,7 @@ def mr6_replay(model, requests, num_blocks: int, workloads=None) -> Result:
 
 def mr7_rng_isolation(model, requests, num_blocks, extra: Request | None = None,
                       block_size=paged.DEFAULT_BLOCK_SIZE) -> Result:
-    """A request's tokens depend on (seed, uid, position) and nothing else.
-
-    Architecture doc I4 and MR7. Swept rather than demonstrated: one deletion is
-    an existence proof, and the relation claims independence from every other
-    request, not from one of them.
-
-    Four families of perturbation, each of which must leave every survivor's
-    tokens bitwise unchanged:
-
-      * remove each request in turn
-      * add a request that was not there before
-      * reverse the submission order, which changes admission order and
-        therefore batch composition and step membership
-      * re-run a single request alone in a later session, which must reproduce
-        the draws it made as a cohabitant, since a uid is the whole key
-
-    Sampling is on throughout. At temperature 0 the relation follows from batch
-    invariance and never exercises the RNG keying at all.
-    """
+    """A request's tokens depend on (seed, uid, position) and nothing else."""
     baseline, _, _ = _run(model, _clone(requests), num_blocks, block_size=block_size)
     cases = []
     passed = True

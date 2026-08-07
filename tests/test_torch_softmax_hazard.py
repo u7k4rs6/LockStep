@@ -1,26 +1,4 @@
-"""A pinned repro for a torch bug that would silently corrupt the F1 reference.
-
-`torch.softmax(dim=-1)` on CUDA in float64 returns wrong probabilities at row
-widths 513 and 769 when the tensor has two or more rows. The error reaches 0.5 in
-probability, so it is not a precision issue. float32 and float16 are unaffected,
-CPU is unaffected, and torch.logsumexp, torch.topk, and torch.max are unaffected
-at the same shapes.
-
-This matters here for two specific reasons rather than as trivia:
-
-  * 513 is one past the pinned attention split size of 512, which is exactly the
-    boundary the attention tests must cover. A reference built on torch.softmax
-    reports a divergence there that the kernel did not commit.
-  * The fp64 reference in scripts/build_fp64_reference.py is ground truth for
-    every fidelity number. It runs on CPU, where this bug does not occur, and
-    build_fp64_reference asserts that. This test is what makes that assertion
-    load-bearing rather than decorative, so that "run the reference on the GPU,
-    it would be faster" cannot quietly become a wrong published number.
-
-If a torch upgrade fixes this, this test fails and can be deleted along with the
-workarounds it justifies. That failure is the signal, which is why it asserts the
-bug is present rather than skipping when it is absent.
-"""
+"""A pinned repro for a torch bug that would silently corrupt the F1 reference."""
 
 from __future__ import annotations
 
@@ -46,9 +24,7 @@ def _row(width: int, rows: int = 8) -> torch.Tensor:
 
 @pytest.mark.parametrize("width", AFFECTED_WIDTHS)
 def test_torch_softmax_is_still_broken_at_these_widths(width):
-    """Asserts the bug is present. If this fails, torch fixed it: delete the
-    workaround in tests/test_kernels.py and the CPU assertion in the reference
-    builder, and remove this file."""
+    """Asserts the bug is present. If this fails, torch fixed it: delete the"""
     x = _row(width)
     cpu = torch.softmax(x.cpu(), dim=-1).cuda()
     assert (torch.softmax(x, dim=-1) - cpu).abs().max() > 1e-6, (
@@ -66,8 +42,7 @@ def test_the_explicit_softmax_is_correct_everywhere(width):
 
 @pytest.mark.parametrize("width", AFFECTED_WIDTHS)
 def test_the_reductions_the_engine_relies_on_are_unaffected(width):
-    """fidelity.py uses logsumexp, topk, and max on CUDA in fp64. They are clean
-    at the widths that break softmax, which is why they were left alone."""
+    """fidelity.py uses logsumexp, topk, and max on CUDA in fp64. They are clean"""
     x = _row(width)
     assert (torch.logsumexp(x, -1) - torch.logsumexp(x.cpu(), -1).cuda()).abs().max() < 1e-12
     assert (x.max(-1).values - x.cpu().max(-1).values.cuda()).abs().max() == 0

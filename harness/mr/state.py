@@ -1,16 +1,4 @@
-"""MR3, MR4, MR5, MR8, and the block-boundary cases.
-
-Week 4's risk is state rather than numerics. Chunk invariance is already proven
-at the tensor level, so preemption and caching are sound *if* the bookkeeping
-around them is. The bookkeeping is refcounts, eviction, and the prefix cache
-interacting, which is where the upstream divergence this project hunts actually
-lives: SGLang's open case is a scheduler-layer boundary condition at
-`prefix_len == block_size`, not a kernel bug.
-
-So the boundary cases below are hit deliberately at every supported block size
-rather than left for the fuzzer to stumble into. Finding your own engine's
-version of a known upstream bug by accident, later, would be the wrong order.
-"""
+"""MR3, MR4, MR5, MR8, and the block-boundary cases."""
 
 from __future__ import annotations
 
@@ -51,13 +39,7 @@ def _request(uid: str, prompt: list[int], new_tokens: int = 6, temperature: floa
 
 
 def blocks_for(kv_tokens: int, block_size: int) -> int:
-    """Blocks holding `kv_tokens` tokens.
-
-    Relations are sized in tokens, not blocks. A fixed block count would make a
-    sweep over block sizes also a sweep over pool sizes, so block_size=128 would
-    allocate eight times the KV of block_size=16 and run out of device memory
-    while looking like a determinism failure.
-    """
+    """Blocks holding `kv_tokens` tokens."""
     return max(4, -(-kv_tokens // block_size))
 
 
@@ -73,19 +55,8 @@ def run(model, requests, num_blocks, block_size, policy=None, cache=False, audit
     return outputs, scheduler
 
 
-# ---- MR3: preempt and resume ------------------------------------------------
-
-
 def mr3_preempt_resume(model, prompt, kv_tokens, block_size, new_tokens=16) -> Result:
-    """Preemption at every decode step, and at depths 1, 2, and 3.
-
-    Swept, not sampled, in two dimensions. Depth 1 walks the preemption point
-    across every step. Depths 2 and 3 preempt the same request repeatedly, which
-    is where allocator state gets interesting: a block freed by the first
-    preemption can be handed to another request and then be needed again by the
-    second. Architecture doc 8.2 names preemption depth up to 3 as a coverage
-    dimension for exactly that reason.
-    """
+    """Preemption at every decode step, and at depths 1, 2, and 3."""
     blocks = blocks_for(kv_tokens, block_size)
     canonical, _ = run(model, [_request("r0", prompt, new_tokens)], blocks, block_size)
     expected = canonical["r0"]
@@ -135,24 +106,8 @@ def mr3_preempt_resume(model, prompt, kv_tokens, block_size, new_tokens=16) -> R
     )
 
 
-# ---- MR4: cache cold versus warm, crossed with chunking ---------------------
-
-
 def mr4_cache_cold_vs_warm(model, prompt, kv_tokens, block_size, new_tokens=6) -> Result:
-    """Hit and miss produce identical bits, across chunk boundaries.
-
-    Cold versus warm alone would not test the thing that can go wrong. Week 3
-    proved chunk invariance in the compute path; what remains is whether the
-    cache can launder a *different* chunk boundary into a stored result. So the
-    cache is written by one chunking and read by another, in both directions.
-
-    The prompt is sized to at least three whole blocks. Only whole blocks are
-    cacheable, and a full-prompt hit deliberately gives the last block back, so a
-    prompt shorter than two blocks can never register a hit: at block_size 128 a
-    96-token prompt produced twelve green cells and zero cache hits, which is a
-    configuration that looks tested and executed no new code. `hits == 0` is
-    therefore a failure of the relation, not a pass.
-    """
+    """Hit and miss produce identical bits, across chunk boundaries."""
     needed = max(3 * block_size, len(prompt))
     if len(prompt) < needed:
         prompt = (prompt * (needed // max(1, len(prompt)) + 1))[:needed]
@@ -182,7 +137,6 @@ def mr4_cache_cold_vs_warm(model, prompt, kv_tokens, block_size, new_tokens=6) -
             scheduler.submit(_request("writer", prompt, new_tokens))
             scheduler.run()
 
-            # Same pool and cache, second request over the same prompt.
             scheduler.policy = read_policy()
             scheduler.submit(_request("reader", prompt, new_tokens))
             scheduler.run()
@@ -215,18 +169,9 @@ def mr4_cache_cold_vs_warm(model, prompt, kv_tokens, block_size, new_tokens=6) -
     )
 
 
-# ---- MR5: padding and occupancy ---------------------------------------------
-
-
 def mr5_occupancy(model, prompt, kv_tokens, block_size) -> Result:
-    """A cohabitant that only changes tile occupancy leaves others' bits fixed.
-
-    Distinct from MR1: MR1 varies how many requests are resident, MR5 holds the
-    count fixed and varies only how the packed token count lands against the
-    GEMM tile. A kernel that padded to a tile and read the padding would pass
-    MR1 and fail this.
-    """
-    tile = 16  # BLOCK_M in the pinned registry
+    """A cohabitant that only changes tile occupancy leaves others' bits fixed."""
+    tile = 16
     canonical, canonical_sched = run(
         model, [_request("r0", prompt)], blocks_for(kv_tokens * 4, block_size), block_size
     )
@@ -243,10 +188,6 @@ def mr5_occupancy(model, prompt, kv_tokens, block_size) -> Result:
             blocks_for(kv_tokens * 4, block_size),
             block_size,
         )
-        # Tokens first, then the decode-phase logit bytes. MR5 compared emitted
-        # ids only, so a cohabitant that shifted r0's logits below the
-        # top-1-to-top-2 gap passed it, which is the perturbation this relation
-        # exists to catch.
         identical = outputs.get("r0") == expected
         rows_identical = True
         for a, b in zip(canonical_rows, scheduler.emitted_logits.get("r0") or []):
@@ -273,23 +214,8 @@ def mr5_occupancy(model, prompt, kv_tokens, block_size) -> Result:
     )
 
 
-# ---- MR8: temperature-0 tie-break -------------------------------------------
-
-
 def eos_finish(model, prompt, kv_tokens, block_size) -> Result:
-    """A request that stops on EOS produces what an unbounded one would.
-
-    `Scheduler` has accepted `eos_token_ids` since week 2 and its docstring says
-    "Requests that hit their limit or an EOS finish". No relation, campaign, or
-    benchmark ever passed one, so `generated[-1] in self.eos` had never been true
-    and half that disjunction was dead code with no counter able to say so.
-
-    The token to stop on is taken from a first unbounded run rather than guessed,
-    because a token the model never emits would leave this relation green and
-    still exercise nothing, which is the vacuous-pass shape this repository has
-    caught repeatedly. The relation asserts the EOS run is a strict prefix of the
-    unbounded one, ending at the chosen token, and requires the counter to fire.
-    """
+    """A request that stops on EOS produces what an unbounded one would."""
     blocks = blocks_for(kv_tokens, block_size)
     unbounded, _ = run(model, [_request("e0", prompt, new_tokens=8)], blocks, block_size)
     baseline = unbounded["e0"]
@@ -322,13 +248,7 @@ def eos_finish(model, prompt, kv_tokens, block_size) -> Result:
 
 
 def mr8_tiebreak_under_permutation(model, prompts, kv_tokens, block_size) -> Result:
-    """Argmax is stable under logit-preserving permutations of the batch.
-
-    At temperature 0 the sampler is pure argmax with ties broken by the lowest
-    token id, so permuting the batch must not move a single token. Permutation
-    changes admission order, packing order, and therefore each request's offset
-    inside every GEMM, without changing any request's own logits.
-    """
+    """Argmax is stable under logit-preserving permutations of the batch."""
     requests = [_request(f"r{i:02d}", p) for i, p in enumerate(prompts)]
     baseline, _ = run(model, requests, blocks_for(kv_tokens, block_size), block_size)
 
@@ -358,17 +278,8 @@ def mr8_tiebreak_under_permutation(model, prompts, kv_tokens, block_size) -> Res
     )
 
 
-# ---- the block-boundary cases ------------------------------------------------
-
-
 def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
-    """The cases the upstream bug lives at, hit on purpose.
-
-    `prefix_len == block_size` is SGLang's open corruption shape. The rest are
-    the neighbours the architecture doc's coverage section asks for at value,
-    value minus one, and value plus one, plus the pairings that made the
-    upstream bug visible.
-    """
+    """The cases the upstream bug lives at, hit on purpose."""
     generator = torch.Generator().manual_seed(seed)
 
     def tokens(count):
@@ -383,7 +294,6 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
         passed &= ok
         cases.append({"case": label, "ok": ok, "detail": detail})
 
-    # A shared prefix of exactly block_size, and one either side.
     for delta, suffix in ((-1, " - 1"), (0, ""), (1, " + 1")):
         prefix_len = block_size + delta
         if prefix_len < 1:
@@ -410,8 +320,6 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
             f"hit {got.cache_hit_tokens} tokens, expected {expected_hit}",
         )
 
-    # prefix_len == 0 beside a nonzero-prefix request in the same batch. This
-    # pairing is what made the upstream bug visible.
     shared = tokens(block_size * 2)
     scheduler = Scheduler(model, num_blocks=blocks_for(kv_tokens * 2, block_size), block_size=block_size,
                           enable_prefix_cache=True)
@@ -432,7 +340,6 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
         f"zero-prefix hit {z.cache_hit_tokens}, cohabitant hit {w.cache_hit_tokens}",
     )
 
-    # A hit covering the entire prompt: zero new prefill needed.
     whole = tokens(block_size * 3)
     cold_whole, _ = run(model, [_request("f", whole)], blocks_for(kv_tokens, block_size), block_size,
                         policy=NoCacheHitPolicy(), cache=True)
@@ -444,10 +351,6 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
     scheduler.run()
     scheduler.pool.audit()
     full = next(r for r in scheduler.done if r.uid == "f")
-    # The hit deliberately stops one block short of the prompt: a request with
-    # nothing left to compute has no logits to sample from, because the forward
-    # pass that would have produced them never ran. So the expectation is
-    # len(whole) - block_size, and the tokens must still match the cold run.
     expected_full_hit = len(whole) - block_size
     record(
         "cache hit covering the whole prompt",
@@ -456,7 +359,6 @@ def boundary_cases(model, kv_tokens, block_size, vocab, seed=555) -> Result:
         f"so the request has logits to sample",
     )
 
-    # Eviction of a block whose refcount just dropped to zero in the same step.
     tight = tokens(block_size * 2)
     scheduler = Scheduler(model, num_blocks=blocks_for(block_size * 6, block_size), block_size=block_size,
                           enable_prefix_cache=True)

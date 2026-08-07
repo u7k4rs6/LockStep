@@ -1,26 +1,4 @@
-"""Record a case artifact that a fresh clone can replay and verify.
-
-Every other case artifact in `evidence/` is a bug repro, and a fixed bug does not
-reproduce, which is correct but makes for weak evidence: `lockstep replay` on one
-reports "the engine changed under it", and a reader has to take on faith that the
-replay machinery would have caught a real difference.
-
-This records the opposite kind of artifact. A case that never failed, with its
-trajectory hash, so replaying it verifies the claim the differentiator sentence
-makes: execution is a pure function of (W, sigma, seeds). The hash covers emitted
-tokens, raw fp16 logit bytes, the packed work list, the allocator ledger, and the
-prefix cache index, so a match is a statement about all engine state rather than
-about output text.
-
-The case is deliberately not trivial. It carries a shared prefix so the cache
-index participates, a chunk plan so prefill is split, a preemption so the
-allocator churns, and a prompt long enough to cross the 512-token attention split
-boundary, because a witness that exercises none of the machinery would pass
-whatever the engine did.
-
-    python3 -m harness.witness --out evidence/case-witness.json
-    python3 -m harness.replay evidence/case-witness.json
-"""
+"""Record a case artifact that a fresh clone can replay and verify."""
 
 from __future__ import annotations
 
@@ -50,8 +28,6 @@ def build_case(vocab: int) -> Case:
     def toks(n: int) -> tuple[int, ...]:
         return tuple(rng.randrange(1000, vocab) for _ in range(n))
 
-    # 544 tokens crosses the 512 split boundary, so the split-combine fold runs
-    # and a change to its order would move the hash.
     shared = toks(544)
     return Case(
         requests=(
@@ -84,8 +60,6 @@ def main() -> int:
     if first.error:
         raise SystemExit(f"the witness case is not clean: {first.error}")
 
-    # Recorded only after it has already replayed once in this process. A hash
-    # written from a single execution asserts nothing about determinism.
     second = run_case(model, case)
     if second.trajectory != first.trajectory:
         raise SystemExit(
@@ -94,9 +68,6 @@ def main() -> int:
         )
 
     env = envlock.capture()
-    # Written straight to the named path rather than through `Artifact.write`,
-    # which interposes a date directory. Evidence is cited by a stable filename
-    # so a README link does not move every time it is regenerated.
     artifact = Artifact(kind="case", env=env, payload={
         "reason": "",
         "minimized": case.to_dict(),

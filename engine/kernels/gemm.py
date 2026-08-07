@@ -1,22 +1,4 @@
-"""Fixed-BLOCK_K GEMM. No split-K, including on the 151936-wide lm_head.
-
-docs/02-technical-architecture.md section 4.2: "Triton GEMMs with fixed BLOCK_K
-and no split-K, including the roughly 151k-vocab lm_head, which is the most
-tempting place to reach for split-K and the worst place to do it."
-
-Section 5 explains why split-K is not a thing to fix but a thing to not do:
-cuBLAS split-K combines partials via atomics or a heuristically chosen reduce
-pass, and either choice is made from the runtime shape. Here, one program owns
-one output tile and walks the entire K dimension itself, in ascending order, in
-fixed BLOCK_K steps. Nothing accumulates across programs, so there is nothing to
-combine and no order to get wrong.
-
-The grid is a function of M and N, and M is batch-derived. That is a launch
-dimension, not a config: it changes how many independent output tiles exist, not
-the reduction any one of them performs. Every output element is the same
-ascending fp32 sum over the same fixed K blocking regardless of how many rows are
-in flight.
-"""
+"""Fixed-BLOCK_K GEMM. No split-K, including on the 151936-wide lm_head."""
 
 from __future__ import annotations
 
@@ -47,11 +29,7 @@ def _gemm_kernel(
     BLOCK_N: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    """C[M, N] = A[M, K] @ B[N, K].T, accumulated in fp32.
-
-    B is indexed as [N, K] because that is how torch.nn.Linear stores weights;
-    no transpose materializes.
-    """
+    """C[M, N] = A[M, K] @ B[N, K].T, accumulated in fp32."""
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
 
@@ -64,9 +42,6 @@ def _gemm_kernel(
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
-    # The K loop. Ascending, BLOCK_K at a time, trip count ceil(K / BLOCK_K).
-    # K is a weight-shape constant, so the trip count and the summation order are
-    # identical for every call at this call site, whatever M happens to be.
     for k0 in range(0, tl.cdiv(K, BLOCK_K)):
         k_remaining = K - k0 * BLOCK_K
         a = tl.load(
@@ -100,11 +75,7 @@ def linear(
     bias: torch.Tensor | None = None,
     config: str = "gemm.default",
 ) -> torch.Tensor:
-    """y = x @ weight.T + bias, with the pinned config named by `config`.
-
-    `config` is a literal at every call site. It is not derived from `x.shape`,
-    and there is no code path here that would let it be.
-    """
+    """y = x @ weight.T + bias, with the pinned config named by `config`."""
     cfg = registry.get(config)
     assert x.is_cuda and weight.is_cuda, "kernels under claim run on the pinned GPU"
     assert x.dtype == weight.dtype == torch.float16, "engine dtype is fp16"
@@ -125,7 +96,7 @@ def linear(
         x2d,
         weight,
         out,
-        bias if bias is not None else x2d,  # unused when HAS_BIAS is false
+        bias if bias is not None else x2d,
         m,
         n,
         k,

@@ -1,16 +1,4 @@
-"""Start an engine, certify it, tear it down, all in one process lifetime.
-
-An earlier attempt kept the server up across separate tool invocations and lost
-it every time. That was a shell problem rather than a design problem, and this is
-the fix: the server is a child of this process, readiness is polled with a
-timeout, the campaign runs, and teardown happens in a `finally` so a crash in the
-campaign never leaves a GPU pinned by an orphan.
-
-docs/03-security-and-access.md section 2 still applies in full, and is checked by
-`certify.run.guard` before a single request is sent. The server this starts is on
-127.0.0.1, started by this developer, and nothing here can be pointed at a hosted
-endpoint: the URL is constructed locally rather than accepted as input.
-"""
+"""Start an engine, certify it, tear it down, all in one process lifetime."""
 
 from __future__ import annotations
 
@@ -48,13 +36,6 @@ def launch_vllm(python: Path, block_size: int, invariant: bool, log: Path,
     env = dict(os.environ)
     env["PATH"] = f"{python.parent}:{env.get('PATH', '')}"
     if dev_endpoints:
-        # POST /reset_prefix_cache lives behind VLLM_SERVER_DEV_MODE in this
-        # build, and without it every cold cell in the factorial would have
-        # scored vacuous. Set only for the cold cells, which are the only ones
-        # that need to drop the cache between repeats, and only ever on a
-        # 127.0.0.1 server this process started and tears down in a finally.
-        # vLLM logs a security warning when these routes are enabled and it is
-        # right to: they are not something to leave on.
         env["VLLM_SERVER_DEV_MODE"] = "1"
     if invariant:
         env["VLLM_BATCH_INVARIANT"] = "1"
@@ -73,23 +54,10 @@ def launch_vllm(python: Path, block_size: int, invariant: bool, log: Path,
         "--enforce-eager",
     ]
     if max_num_batched_tokens is not None:
-        # D1, the chunked-prefill diagnostic. vLLM runs with
-        # enable_chunked_prefill=True by default and the token budget is shared
-        # across the batch, so a prompt is split at boundaries that depend on
-        # what else is in flight. Raising the budget above the whole workload
-        # means no prompt can be chunked, which is the one lever a black-box
-        # client has on chunk boundaries. If divergence vanishes here, the
-        # mechanism is chunk invariance rather than batch invariance, and those
-        # are different properties: this project spent week 3 proving chunk
-        # invariance in its own engine at the KV tensor level precisely because
-        # it does not follow from batch invariance.
         command += ["--max-num-batched-tokens", str(max_num_batched_tokens)]
     if max_num_seqs is not None:
         command += ["--max-num-seqs", str(max_num_seqs)]
     if not prefix_caching:
-        # The cleanest cell in the factorial: if a divergence survives with the
-        # cache switched off at the server, the cache cannot be the cause and the
-        # remaining variable is batch composition.
         command.append("--no-enable-prefix-caching")
     handle = log.open("w")
     return subprocess.Popen(
@@ -182,9 +150,6 @@ def main() -> int:
            f"-w{args.fixed_width}{'-seq' if args.sequential else ''}"
            f"{f'-mnbt{args.max_num_batched_tokens}' if args.max_num_batched_tokens else ''}"
            f"{f'-mns{args.max_num_seqs}' if args.max_num_seqs else ''}"
-           # The label too: two lifetimes of the same configuration wrote to one
-           # filename and the first one's server log was overwritten, which was
-           # only noticed while reconstructing timings for a provenance record.
            f"{('-' + args.label.replace(' ', '_')) if args.label else ''}.log")
     log.parent.mkdir(parents=True, exist_ok=True)
 
@@ -255,10 +220,6 @@ def main() -> int:
     vacuous = [r for r in results if r.get("vacuous")]
     print()
     print(f"  {clean}/{len(results)} boundary cases clean at this observable")
-    # Count real batching, not the absence of a vacuity flag. A sequential
-    # control is deliberately not vacuous while also forming no batch, so
-    # deriving this from the vacuity count printed "7/7 formed a batch" for a
-    # run whose whole point was one request in flight.
     formed = sum(1 for r in results if r.get("max_concurrent_running", 0) > 1)
     print(f"  {formed}/{len(results)} cases actually formed a batch"
           + ("  <- the rest tested nothing" if vacuous else "")

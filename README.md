@@ -222,17 +222,21 @@ absolute tokens per second.
 
 | baseline | run A | run B | verdict |
 |---|---|---|---|
-| vLLM default, eager | 14.6 percent | **16.6 percent** | straddles the bar |
+| vLLM default, eager | 14.6 percent | 16.6 percent | not separable from the bar |
 | vLLM default, CUDA graphs | 10.6 percent | 11.5 percent | consistently below |
 
-**The graphed comparison is consistently below the bar. The like-for-like
-comparison straddles it**, at 14.6 and 16.6 percent across two runs of the same
-sound design, so this engine sits at the threshold on eager-versus-eager rather
-than clearly under it. Reporting a single run's 14.6 as the figure would be
-picking the unfavourable one to look rigorous, which is its own kind of
-dishonesty; reporting 16.6 alone would be picking the favourable one. It
-straddles, and the reason it keeps moving across measurement designs is that it
-sits almost exactly on the threshold it is being compared against.
+**The graphed comparison is consistently below the bar. The like-for-like figure
+is not separable from the bar at the sample count available**: 14.6 and 16.6
+percent across two runs of the same sound design, against a 15 percent
+threshold. Two runs do not establish a distribution, so this says only that the
+measurement cannot resolve which side of the line the eager comparison falls on.
+Quoting either run alone would pick a side the evidence does not pick.
+
+**The criterion was specified to a precision this measurement cannot resolve.**
+A 15 percent bar against a quantity whose run-to-run variation exceeds its
+distance from that bar decides nothing on the like-for-like comparison, and that
+is a defect in the threshold set in week one rather than in the instrument. It
+still decides the graphed comparison, which sits well clear of it.
 
 Across every design this figure has read 16.1, 16.2, 14.2, 14.6 and 16.6
 percent. An earlier version of this section said the corrections had moved it

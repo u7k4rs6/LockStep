@@ -1,18 +1,4 @@
-"""Host memory instrumentation for the fp64 reference pass.
-
-Peak RSS is a tracked number, not something discovered when the machine freezes.
-This module supplies three things:
-
-  * `peak_rss_bytes`, the high-water mark the kernel reports for this process
-  * `live_tensor_breakdown`, the largest live torch tensors at the moment it is
-    called, grouped so the dominant allocation is named rather than guessed at
-  * `require_headroom`, a ceiling asserted before the pass starts, which fails
-    with the projected requirement instead of thrashing into swap
-
-RSS rather than a torch-side counter, because the fp64 reference runs on CPU
-through MKL and most of what it allocates never passes through a torch
-allocator this process can introspect.
-"""
+"""Host memory instrumentation for the fp64 reference pass."""
 
 from __future__ import annotations
 
@@ -41,14 +27,7 @@ def current_rss_bytes() -> int:
 
 
 def rss_split() -> tuple[int, int]:
-    """(anonymous, file-backed) resident bytes.
-
-    The distinction decides whether a large RSS is actually memory pressure.
-    safetensors mmaps the checkpoint, so reading it makes 1.5 GB resident as
-    file-backed pages that the kernel can drop at any time without swapping.
-    Anonymous pages are the ones that must be held or swapped, so they are the
-    number a ceiling should be set against.
-    """
+    """(anonymous, file-backed) resident bytes."""
     anon = file = 0
     try:
         for line in open("/proc/self/status"):
@@ -82,13 +61,7 @@ class TensorGroup:
 
 
 def live_tensor_breakdown(top: int = 8) -> list[TensorGroup]:
-    """Largest live torch tensors, grouped by (device, dtype).
-
-    Walks the garbage collector rather than a torch allocator report, so it sees
-    CPU tensors too. Views onto the same storage are counted once, by storage
-    identity, since counting a view as a fresh allocation would inflate every
-    number here and point at the wrong suspect.
-    """
+    """Largest live torch tensors, grouped by (device, dtype)."""
     gc.collect()
     seen: set[int] = set()
     groups: dict[tuple[str, str], list] = {}
@@ -143,12 +116,7 @@ class MemoryCeilingExceeded(RuntimeError):
 
 
 def require_headroom(projected_bytes: int, ceiling_bytes: int, what: str) -> None:
-    """Fail fast with the projection rather than thrashing into swap.
-
-    Checked against both the configured ceiling and what the kernel says is
-    actually available, because a ceiling set from total RAM is meaningless on a
-    machine that is already half full.
-    """
+    """Fail fast with the projection rather than thrashing into swap."""
     if projected_bytes > ceiling_bytes:
         raise MemoryCeilingExceeded(
             f"{what} projects {projected_bytes / MIB:.0f} MiB, over the "

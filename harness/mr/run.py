@@ -1,9 +1,4 @@
-"""Run every metamorphic relation the engine can currently support.
-
-Frontend spec 1.2: quiet and factual, one line per meaningful event, never a
-percentage without its denominator, and every bitwise claim tagged with the
-environment.
-"""
+"""Run every metamorphic relation the engine can currently support."""
 
 from __future__ import annotations
 
@@ -47,12 +42,8 @@ NOT_YET = {
            "engine never materializes: sequences are packed, not padded",
 }
 
-# 600 tokens so that the 512 split boundary is reachable. Below it, every MR2
-# case at split_size is silently skipped and the table looks complete.
 LONG_PROMPT = 600
 
-# Relations are sized by KV tokens, not by block count, so the sweep over block
-# sizes does not also sweep over pool sizes. 4096 tokens is 448 MiB of KV.
 KV_TOKENS = 4096
 
 
@@ -121,8 +112,6 @@ def main() -> int:
         print(f"block_size = {block_size}")
         short = uneven_prompts(vocab, 5)
         block_results = [
-            # First, because every relation below it and every observer in the
-            # project reads one of the two paths it compares.
             path_equivalence(model, [long_prompt] + short[:2], block_size=block_size),
             decode_vs_prefill_kv(model, long_prompt, block_size=block_size),
             mr1_batch_composition(model, uneven_prompts(vocab, 32), block_size=block_size),

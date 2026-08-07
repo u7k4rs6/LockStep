@@ -1,42 +1,4 @@
-"""Fixed-split attention. One kernel family for prefill and decode.
-
-docs/02-technical-architecture.md section 4.2, the minimal design that preserves
-chunk invariance:
-
-    One attention kernel family. Constant KV tile (128). Fixed split size (512),
-    never a fixed split count. Partials combined by a single CTA in ascending
-    split order, accumulated in fp32.
-
-Why one family and not a fast prefill kernel plus a split decode kernel: chunk
-invariance (I2) requires that a token's output be identical whether it was
-produced by a prefill pass or by a decode step. Two kernels with two reduction
-structures cannot satisfy that, whatever their individual merits. The split
-structure is therefore paid on prefill as well, and its memory cost for the
-partials is the price of the invariant rather than an oversight.
-
-Why split *size* and never split *count*: a fixed count divides the KV length by
-a constant, and any implementation that picks the count from a batch-max sequence
-length has smuggled a batch-derived quantity into a reduction (section 5, "Fixed
-split count"). Here the number of splits is ceil(kv_len / 512) where kv_len is
-this request's own KV length, which section 3 explicitly permits.
-
-Two things about the launch grid, because they are what a skeptical reader checks
-first:
-
-  * The grid's split dimension is sized by the largest split count in the launch.
-    Programs whose split lies past their own sequence's KV write an empty partial
-    and return. This changes how many programs exist, not what any surviving
-    program sums, and the combine pass loops only to its own sequence's split
-    count.
-  * BLOCK_M tiles query rows. Rows are independent (section 4.2, "Rows are
-    independent, so M-tiling may vary freely"), and it is pinned anyway.
-
-Empty partials carry m = -1e30 rather than -inf. With -inf, an all-empty fold
-computes exp(-inf - -inf) = exp(nan); with a finite sentinel the same fold
-computes exp(0) = 1 against l = 0 and acc = 0, contributing exactly zero. Real
-scores cannot approach -1e30: fp32 q.k over fp16 inputs at head_dim 128 is
-bounded by roughly 5.5e11.
-"""
+"""Fixed-split attention. One kernel family for prefill and decode."""
 
 from __future__ import annotations
 
@@ -46,9 +8,6 @@ import triton.language as tl
 
 from engine.kernels import registry
 
-# Wrapped in tl.constexpr because Triton refuses plain module globals inside a
-# jitted function. The bare annotation form does not work: an annotation does not
-# change the assigned value, and it is the value the JIT inspects.
 NEG_SENTINEL = tl.constexpr(-1e30)
 
 
@@ -90,12 +49,7 @@ def _attn_split_kernel(
     BLOCK_D: tl.constexpr,
     SPLIT_SIZE: tl.constexpr,
 ):
-    """One program owns one (query tile, KV split, query head).
-
-    Writes an unnormalized fp32 accumulator plus the running max and sum that
-    the combine pass needs. Normalization deliberately does not happen here: a
-    partial that had already divided by its own l could not be refolded.
-    """
+    """One program owns one (query tile, KV split, query head)."""
     pid_m = tl.program_id(0)
     pid_s = tl.program_id(1)
     pid_h = tl.program_id(2)
@@ -112,9 +66,6 @@ def _attn_split_kernel(
     split_start = pid_s * SPLIT_SIZE
     split_end = tl.minimum(split_start + SPLIT_SIZE, kv_len)
 
-    # Causal early exit: if this split begins past the last query position in the
-    # tile, every score in it is masked. Skipping writes the same empty partial
-    # the loop would have produced, so the combine result is unchanged.
     last_q_pos = q_start + tl.minimum(pid_m * BLOCK_M + BLOCK_M - 1, q_len - 1)
     active = (split_start < split_end) and (split_start <= last_q_pos)
 
@@ -126,18 +77,10 @@ def _attn_split_kernel(
             other=0.0,
         )
 
-        # Ascending 128-token tiles within this 512-token span. Both bounds come
-        # from this request's own kv_len; nothing here has seen another request.
         for n0 in range(split_start, split_end, BLOCK_N):
             offs_n = n0 + tl.arange(0, BLOCK_N)
             n_valid = offs_n < split_end
 
-            # Paged gather. The logical position decides both which physical
-            # block to read and where inside it, so the set of (key, value)
-            # pairs this tile sums is a function of logical position alone.
-            # Paging moves where the bytes live, never the order they are
-            # combined in: KV_BLOCK divides BLOCK_N, so a tile is a whole number
-            # of blocks walked in ascending logical order.
             phys = tl.load(
                 BlockTable + offs_n // KV_BLOCK, mask=n_valid, other=0
             ).to(tl.int32)
@@ -203,12 +146,7 @@ def _attn_combine_kernel(
     BLOCK_M: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    """Fold the per-split partials, one CTA per (query tile, head).
-
-    Each query row's fold happens entirely inside this one CTA, in ascending
-    split index, in fp32. That is the architecture doc's requirement stated three
-    ways: single CTA, ascending order, fp32.
-    """
+    """Fold the per-split partials, one CTA per (query tile, head)."""
     pid_m = tl.program_id(0)
     pid_h = tl.program_id(1)
 
@@ -242,8 +180,6 @@ def _attn_combine_kernel(
         l_run = l_run * alpha + l_s * beta
         m_run = m_new
 
-    # l_run is zero only for a row with no unmasked key, which causal attention
-    # never produces since a query always attends to its own position.
     out = tl.where(l_run[:, None] > 0.0, acc / l_run[:, None], 0.0)
 
     tl.store(
@@ -267,19 +203,7 @@ def attention(
     kv_len: int,
     sm_scale: float,
 ) -> torch.Tensor:
-    """Causal attention for one sequence over paged KV.
-
-    q is [q_len, n_heads, head_dim]. k_cache and v_cache are the shared pools,
-    [num_blocks, KV_BLOCK, n_kv_heads, head_dim]. `block_table` maps this
-    sequence's logical blocks to physical ones, and `kv_len` is how many of its
-    logical positions are populated. `q_start` is the position of q[0], so
-    prefill passes 0 and a decode step passes kv_len - 1.
-
-    Paging changes which addresses are read. It does not change the split
-    structure, the tile size, the traversal order, or the fold, so a sequence's
-    output is identical whether its blocks are contiguous or scattered. The test
-    suite asserts exactly that against a deliberately shuffled block table.
-    """
+    """Causal attention for one sequence over paged KV."""
     split_cfg = registry.get("attention.split")
     combine_cfg = registry.get("attention.combine")
 

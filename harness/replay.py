@@ -1,33 +1,4 @@
-"""`lockstep replay <artifact>`: re-run a committed case and say what happened.
-
-The differentiator sentence in the README says every finding minimizes to an
-exact replay. That was only half true. The minimized case was written into the
-artifact correctly, but the artifact lived under `results/`, which is gitignored,
-and the command the divergence report told a reader to run had never been
-written. From a fresh clone the reproduce line named a missing file and a
-missing command.
-
-This is that command. It reads a case artifact, rebuilds the exact `(W, sigma,
-seeds)` triple from `payload.minimized`, runs it, and compares what happens now
-against what the artifact recorded.
-
-**A finding that no longer reproduces is the normal outcome for a fixed bug**,
-and saying "DID NOT REPRODUCE" without saying why would be useless. So the
-comparison is three-way, using the environment tuple and the engine revision
-that the artifact carries:
-
-  * same engine revision, same env, different outcome: a real problem, because
-    execution is supposed to be a pure function of the triple.
-  * different engine revision: the engine changed under it. For a fixed bug this
-    is the expected and desirable result, and it is reported as a regression
-    check that passed rather than as a failure.
-  * different environment tuple: out of scope by construction, since every
-    bitwise claim here is scoped to one tuple.
-
-Exit status: 0 if the artifact's recorded behaviour was reproduced or was
-deliberately fixed, 1 if it diverged in a way neither explains, 2 if the artifact
-could not be read.
-"""
+"""`lockstep replay <artifact>`: re-run a committed case and say what happened."""
 
 from __future__ import annotations
 
@@ -60,12 +31,7 @@ def load(path: Path) -> dict:
 
 
 def outcome_of(model, case: Case) -> tuple[str, str]:
-    """Run the case once, and return (error string, trajectory hash).
-
-    Once, not once per comparison: the case is the unit of work here and running
-    it twice to answer two questions about the same execution would make the
-    replay report describe two executions.
-    """
+    """Run the case once, and return (error string, trajectory hash)."""
     try:
         outcome = run_case(model, case)
     except Exception as exc:  # noqa: BLE001 - the finding may be a crash
@@ -82,9 +48,6 @@ def classify(recorded: str, observed: str, same_engine: bool, same_env: bool,
     if recorded_class == observed_class:
         return True, f"raised {observed_class or 'nothing'} again, as recorded"
 
-    # A finding pinned to the commit that fixed it. This outranks every check
-    # below, because a named commit is stronger evidence than an inference from
-    # whether two revision strings happen to differ.
     if provenance and provenance.get("fixed_by"):
         return True, (
             f"recorded {recorded_class or 'no error'}, observed "
@@ -105,9 +68,6 @@ def classify(recorded: str, observed: str, same_engine: bool, same_env: bool,
         )
 
     if not engine_known:
-        # Artifacts written before `engine_revision` existed cannot say which
-        # engine produced them. That is a weaker statement than "the revision
-        # differs" and it gets said rather than rounded up to the stronger one.
         return True, (
             f"recorded {recorded_class or 'no error'}, observed "
             f"{observed_class or 'no error'}. The artifact predates the "
@@ -188,10 +148,6 @@ def main() -> int:
     observed, trajectory = outcome_of(model, case)
 
     if payload.get("trajectory"):
-        # A witness case rather than a bug repro: it never failed, and what is
-        # being checked is that the same triple still produces the same
-        # trajectory hash. This is I3 verified from a fresh clone, which is the
-        # claim the differentiator sentence actually makes.
         got = trajectory
         ok = got == payload["trajectory"]
         detail = (
