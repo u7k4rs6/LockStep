@@ -353,7 +353,7 @@ def main() -> int:
         ("fp64 reference reproduced its cached top-2", idx_match and val_match),
     ]
     print()
-    print("F1 pass criterion (docs/02-technical-architecture.md 7.1)")
+    print("F1 pass criterion (docs/kickoff/02-technical-architecture.md 7.1)")
     for name, ok in checks:
         print(f"  [{'pass' if ok else 'FAIL'}]  {name}")
     passed = all(ok for _, ok in checks)

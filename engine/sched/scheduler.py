@@ -41,10 +41,6 @@ class Request:
     def total_tokens(self) -> int:
         return len(self.prompt) + len(self.generated)
 
-    def needs_compute(self) -> int:
-        return len(self.context()) - self.kv_len
-
-
 class OversizedRequest(ValueError):
     """A request that cannot fit the pool even when the pool is empty."""
 

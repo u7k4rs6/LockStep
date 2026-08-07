@@ -122,19 +122,6 @@ class RecordingPolicy(Policy):
         self.decisions.append(Decision(step, event, uid, detail))
 
 
-class ReplayPolicy(Policy):
-    """Replays a recorded sigma exactly, and refuses to improvise."""
-
-    name = "replay"
-
-    def __init__(self, decisions: list[Decision]):
-        self.decisions = list(decisions)
-        self._admits = {(d.step, d.uid) for d in self.decisions if d.event is Event.ADMIT}
-
-    def admit(self, state: SchedulerState, uid: str, blocks_needed: int) -> bool:
-        return (state.step, uid) in self._admits
-
-
 class FixedChunkPolicy(DefaultPolicy):
     """Prefill in fixed-size chunks. The configuration shipped engines test."""
 
@@ -145,21 +132,6 @@ class FixedChunkPolicy(DefaultPolicy):
 
     def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
         return min(self.chunk, remaining)
-
-
-class ScriptedChunkPolicy(DefaultPolicy):
-    """Prefill along an explicitly given partition."""
-
-    def __init__(self, partitions: dict[str, list[int]], max_running: int = 32):
-        super().__init__(max_running=max_running)
-        self.partitions = {uid: list(sizes) for uid, sizes in partitions.items()}
-        self.name = "scripted-chunk"
-
-    def chunk_boundary(self, state: SchedulerState, uid: str, remaining: int) -> int:
-        queue = self.partitions.get(uid)
-        if not queue:
-            return remaining
-        return min(queue.pop(0), remaining)
 
 
 class PreemptAtStepPolicy(DefaultPolicy):

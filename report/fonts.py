@@ -1,4 +1,4 @@
-"""The three faces from docs/04-frontend-spec.md, inlined as base64."""
+"""The three faces from docs/kickoff/04-frontend-spec.md, inlined as base64."""
 
 from __future__ import annotations
 

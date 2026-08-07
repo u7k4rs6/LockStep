@@ -5,8 +5,14 @@ deterministic-simulation fuzzing, with the harness's own bug-finding power
 measured by mutation testing, then pointed at **vLLM** and **SGLang** to certify
 their deterministic modes at boundary conditions.
 
-> GRIEF confirms a finding by replaying a timed request trace against a live
-> server and checking log-probabilities. Lockstep's execution is a pure function
+If you run evals or RL post-training and your numbers move between runs, this
+tells you whether the inference engine is the reason. The certifier works against
+any OpenAI-compatible endpoint, so you can point it at your own deployment and
+get an answer without adopting anything else here.
+
+> [GRIEF](https://arxiv.org/abs/2605.11202) (arXiv 2605.11202) confirms a finding
+> by replaying a timed request trace against a live server and checking
+> log-probabilities. Lockstep's execution is a pure function
 > of (workload, schedule, seeds) with the schedule supplied rather than observed,
 > so minimization is exact rather than confirmed: ddmin reduces a finding to a
 > case it proves 1-minimal, and the replay is a hash comparison rather than a
@@ -27,14 +33,15 @@ open it directly; it reads only committed artifacts from `evidence/`.
 | | |
 |---|---|
 | [Claims](#claims) | I1 to I4, F1, and where each is substantiated |
-| [Three observers](#three-observers-and-what-each-one-cannot-see) | why there are four, and the blind spot they shared |
+| [Test oracles](#test-oracles-and-what-each-one-cannot-see) | why there are four, and the blind spot they shared |
 | [The three numbers](#the-three-numbers) | invariance, harness power, cost of determinism |
 | [Coverage](#coverage-with-the-denominator-it-is-actually-against) | against the corrected 25 and 79 denominators |
 | [What this does not claim](#what-this-does-not-claim) | the limits, stated before a reader finds them |
-| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | thirteen times this project failed its own test |
-| [Certification: vLLM](#certification-vllm-and-one-filed-finding) | one finding, filed upstream |
+| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | fourteen times this project failed its own test |
+| [Certification](#certification-black-box-differential-testing-of-vllm) | black-box differential testing of vLLM, one finding filed |
 | [Evidence and replay](#evidence-and-replaying-it) | every number's artifact, and how to re-run it |
 | [Prior art](#prior-art) | and what is actually different here |
+| [Check it without a GPU](#what-you-can-check-without-a-gpu) | three things verifiable in under a minute on any machine |
 | [Install](#install) | |
 
 ---
@@ -46,24 +53,27 @@ result artifact. A claim without one is invalid by construction.
 
 | ID | Statement | How verified | Status | Scope |
 |---|---|---|---|---|
-| **[I1](#three-observers-and-what-each-one-cannot-see)** | Batch invariance. For any set of cohabitant requests, `r`'s output is bit-identical to canonical execution `C(r)` | MR1 and MR5, bitwise on fp16 logit bytes, batch sizes {1, 2, 3, 4, 8, 16, 31, 32} | holds | sm_89, block sizes 8 to 128 |
+| **[I1](#test-oracles-and-what-each-one-cannot-see)** | Batch invariance. For any set of cohabitant requests, `r`'s output is bit-identical to canonical execution `C(r)` | MR1 and MR5, bitwise on fp16 logit bytes, batch sizes {1, 2, 3, 4, 8, 16, 31, 32} | holds | sm_89, block sizes 8 to 128 |
 | **[I2](#coverage-with-the-denominator-it-is-actually-against)** | Schedule invariance. For any valid schedule, including preemption at any decode step, any chunk partition, eviction under pressure, and cache hit versus miss | MR2, MR3, MR4, plus decode-versus-prefill KV equality checked per layer at the tensor level | holds | as above |
 | **[I3](#evidence-and-replaying-it)** | Replay determinism. Identical `(W, sigma, seeds)` twice yields an identical trajectory hash over all engine state | MR6, 8 workload shapes, and a cross-process replay under differing `PYTHONHASHSEED` | holds | as above |
-| **[I4](#three-observers-and-what-each-one-cannot-see)** | RNG isolation. `r`'s tokens are a function only of `(seed, uid, position)` and `r`'s logits | MR7, 11 perturbations: each request removed in turn, one added, order reversed, each re-run alone | holds | as above |
-| **[F1](#three-observers-and-what-each-one-cannot-see)** | Fidelity. Batch-1 logits against an fp64 CPU reference, within the bounds in `docs/02-technical-architecture.md` 7.1 | `bench/fidelity.py`, exact KL over the full 151936-token vocabulary at 2756 positions | passes 7 of 7 bounds | corpus `sha256:59759d5b…` |
+| **[I4](#test-oracles-and-what-each-one-cannot-see)** | RNG isolation. `r`'s tokens are a function only of `(seed, uid, position)` and `r`'s logits | MR7, 11 perturbations: each request removed in turn, one added, order reversed, each re-run alone | holds | as above |
+| **[F1](#test-oracles-and-what-each-one-cannot-see)** | Fidelity. Batch-1 logits against an fp64 CPU reference, within the bounds in `docs/kickoff/02-technical-architecture.md` 7.1 | `bench/fidelity.py`, exact KL over the full 151936-token vocabulary at 2756 positions | passes 7 of 7 bounds | corpus `sha256:59759d5b…` |
 
 The trajectory hash covers emitted tokens, raw fp16 logit bytes, the packed work
 list, the allocator ledger, and the prefix cache index. Output bits alone would
 leave allocator faults invisible.
 
-## Three observers, and what each one cannot see
+## Test oracles, and what each one cannot see
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/observers-dark.svg">
   <img alt="Four observers. I1 to I4, F1 and golden bytes all read model.forward, the batch-1 path. The scheduler serves every request through model.forward_batch. PATH-EQ asserts the two agree bitwise at every position." src="docs/img/observers-light.svg" width="700">
 </picture>
 
-The relations above are not one detector with one blind spot. They are three,
+The checks above are test oracles: things that decide whether a run was correct
+without a known-good answer to compare against. This project calls them
+observers, and the relations they enforce are metamorphic relations in the
+standard sense. They are not one detector with one blind spot. They are three,
 and the reason there are three is that a mutation testing run found a fault the
 first two both missed.
 
@@ -254,7 +264,7 @@ faster than fast` is one you cannot.
 
 ### The kill criterion was crossed, on both comparisons
 
-`docs/01-PRD.md` section 11 set it before anything was built: **"Below 15 percent
+`docs/kickoff/01-PRD.md` section 11 set it before anything was built: **"Below 15 percent
 of vLLM default after the CUDA-graph pass"**, with the prescribed response being
 to reframe as a correctness-reference engine and publish ratios rather than
 absolute tokens per second.
@@ -470,9 +480,21 @@ generated tokens. Boundary predicates reach 17 of 20.
 
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
-thirteen times in this repository. Rows 1 to 8 were found by this project's own
+fourteen times in this repository. Rows 1 to 8 were found by this project's own
 machinery or while fixing what it found; rows 9 to 12b were found by an outside
-audit; row 13 came from an anomaly in the results and belongs to neither.
+audit; row 13 came from an anomaly in the results and belongs to neither; row 14
+came from a reader reviewing the repository's style who was not looking for
+defects at all.
+
+Row 14 has the most interesting provenance of the set. A reviewer remarked that
+some abstraction here appeared to exist for future capability rather than present
+need. That is declared surface exceeding used surface, which is the sentence this
+project opens with, so it was audited rather than acknowledged: four definitions
+had no caller anywhere, and one dataclass field was computed on every comparison
+and discarded. That field carried a vacuity warning. The certifier could have
+been silently comparing fewer alternatives than it asked for, and the message
+saying so was built and thrown away every time. The dead definitions are deleted
+and the warning is now printed and recorded in the artifact.
 
 Row 12b is numbered that way on purpose rather than made a fourteenth entry. The
 audit named `(ADMITTED, PREEMPT_RC)` outright, with the `kv_len` argument and the
@@ -492,7 +514,7 @@ each escaped is worth more than the fix:
 | 3 | Eviction under memory pressure, tested | Admission counted only free blocks, so a request serviceable by evicting was refused and the eviction path was unreachable |
 
 <details>
-<summary>Ten more, including the four an outside audit found and the one that came from an anomaly neither the project nor the audit predicted</summary>
+<summary>Eleven more, including the four an outside audit found, one from an anomaly neither predicted, and one from a reader reviewing style</summary>
 
 | # | Declared | Actually |
 |---|---|---|
@@ -505,6 +527,7 @@ each escaped is worth more than the fix:
 | 10 | A proven-equivalent mutant, with a written equivalence argument | A dead store. The operator set `kv_len` after `_preempt`, `_admit` reset it before any read, and the published proof described a mechanism absent from the code. The fault the architecture doc names was never injected at all |
 | 11 | A concurrency cap in the security config | `max_concurrency: 1` sat in `certify/config.json` from week 8 and no code path read it. Enforcing it later revealed it also made batching impossible, so the one setting that would have prevented finding 9 was both unenforced and wrong |
 | 12 | One edit applied to two files | It matched in one and silently no-op'd in the other, so an artifact shipped without the fields that prove its own batch witness fired. Caught by reading the artifact back, not by the edit reporting success |
+| 14 | Abstraction sized for what the design needs | Four definitions with no caller anywhere: `PagedKVCache.evictable`, `ReplayPolicy`, `ScriptedChunkPolicy`, `Request.needs_compute`. And `Comparison.notes`, computed on every certification comparison and never read, one of which reports that the engines exposed fewer alternatives than requested, so the certifier could narrow its own observable and say nothing. **Found by a reviewer looking at style, not correctness** |
 | 13 | An observable comparing repeated runs for identical output | Every comparison was repeat 0 against a later repeat, so "the engine is nondeterministic" and "the first batch differs and everything after it agrees" were indistinguishable. Structurally the same error as comparing a mutant only against canonical, in the file written to certify determinism |
 | 12b | A coverage denominator checked against reality | The check ran in one direction only. Observed transitions had to be legal, so the denominator could only be too large; nothing required a declared transition to be reachable. `(ADMITTED, PREEMPT_RC)` was not, and inflated every published coverage number, because a transition that never fires produces no evidence of its own absence. **Named by the audit, then independently reconfirmed by the witness check built in response to it** |
 
@@ -575,6 +598,36 @@ actually executes.
 
 </details>
 
+## What you can check without a GPU
+
+Every headline claim was measured on one NVIDIA GPU, and reproducing those needs
+the same. But three things can be checked in under a minute on any machine, with
+no CUDA and no model download:
+
+```sh
+python3 scripts/verify_no_gpu.py
+```
+
+It recomputes the coverage denominators from the declared transition relation and
+asserts they are the 25 and 79 this README claims, prints a sha256 for every
+artifact in `evidence/` alongside the engine revision that produced it, and
+rebuilds `evidence/case-0003.json` to show the finding arithmetically: one
+request needing 3 blocks against a pool holding 2, which is why it could never be
+admitted. No kernel runs.
+
+**Which claims need a GPU and which do not:**
+
+| claim | needs a GPU |
+|---|---|
+| the coverage denominators, and that no declared transition is also marked unreachable | no |
+| the minimized repro's shape, and that it is arithmetically unsatisfiable | no |
+| every artifact's integrity, provenance, and environment tuple | no |
+| I1 to I4, F1, path equivalence, the mutation campaign, throughput | yes |
+| the vLLM certification | yes, plus a local vLLM |
+
+The second group is the substance and it is not checkable cheaply. Pinned
+dependencies do not fix that; naming the split is the honest alternative.
+
 ## Install
 
 Requires an NVIDIA GPU. Developed on sm_89 with 8 GB; nothing is claimed
@@ -593,9 +646,12 @@ Reproduce claim 1 from scratch:
 python3 -m harness.mr.run --block-sizes 8 16 32 64 128
 ```
 
-## Certification: vLLM, and one filed finding
+## Certification: black-box differential testing of vLLM
 
-Filed upstream as
+Certification here is black-box differential testing: the same workload run
+against an external implementation under conditions its documentation says
+should not change the output, with no access to its internals. One finding,
+filed upstream as
 [vllm-project/vllm#51187](https://github.com/vllm-project/vllm/issues/51187),
 cross-referenced on the batch-invariance tracker
 [#27433](https://github.com/vllm-project/vllm/issues/27433#issuecomment-5195555951).

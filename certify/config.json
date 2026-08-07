@@ -1,6 +1,6 @@
 {
   "i_control_this_endpoint": true,
-  "note": "Required by docs/03-security-and-access.md section 2, with no default. It is a speed bump against accident, not a security control, and is documented as such. Setting it asserts that the endpoint being certified is a process this developer started on this machine.",
+  "note": "Required by docs/kickoff/03-security-and-access.md section 2, with no default. It is a speed bump against accident, not a security control, and is documented as such. Setting it asserts that the endpoint being certified is a process this developer started on this machine.",
   "max_concurrency": 48,
   "max_requests_per_second": 4,
   "max_concurrency_note": "Raised from 1 deliberately. At 1 the certifier could not form a batch, which made every case named co-batched a case that never cohabited, and the certification of batch invariance measured single-request repeat stability instead. The widest case is 32 requests plus 13 fillers, so 48 covers it with headroom. The security doc's concern is flooding a shared or hosted endpoint; guard() already refuses any host that is not local and any environment holding a hosted API key, and a 45-request burst against a 0.6B model on a server this developer started is the workload under test rather than a denial-of-service pattern.",

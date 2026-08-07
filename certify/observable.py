@@ -24,7 +24,6 @@ class Completion:
 class Comparison:
     identical: bool
     first_token_divergence: int | None = None
-    first_logprob_divergence: int | None = None
     max_logprob_delta: float = 0.0
     detail: str = ""
     notes: list[str] = field(default_factory=list)
@@ -74,7 +73,6 @@ def compare(a: Completion, b: Completion) -> Comparison:
     return Comparison(
         identical=identical,
         first_token_divergence=first_token,
-        first_logprob_divergence=first_logprob,
         max_logprob_delta=worst,
         detail="" if identical else (
             f"first token divergence at {first_token}"

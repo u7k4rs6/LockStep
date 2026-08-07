@@ -187,11 +187,6 @@ class PagedKVCache:
             self.sequences[uid].block_ids, dtype=torch.int32, device=self.device
         )
 
-    def evictable(self) -> list[int]:
-        """Blocks held by exactly one sequence and by no other holder."""
-        return sorted(b for b in range(self.num_blocks) if self.refcount[b] == 1)
-
-
     def audit(self) -> None:
         """Internal invariants, checked every scheduler step in debug builds."""
         expected = [0] * self.num_blocks

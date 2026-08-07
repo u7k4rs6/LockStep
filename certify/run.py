@@ -391,6 +391,7 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
             })
 
         divergences = []
+        observable_notes: list[str] = []
         pair_results = []
         for left in range(len(observations)):
             for right in range(left + 1, len(observations)):
@@ -398,6 +399,10 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
                 for index in range(len(case["requests"])):
                     verdict = compare(observations[left][index],
                                       observations[right][index])
+                    # compare() computes these and they were discarded. One
+                    # reports the engines exposing fewer alternatives than asked
+                    # for, which narrows the observable without saying so.
+                    observable_notes.extend(verdict.notes)
                     if not verdict.identical:
                         differing += 1
                         divergences.append({
@@ -435,6 +440,7 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
             "batched": batched,
             "divergences": divergences,
             "pairs": pair_results,
+            "observable_notes": sorted(set(observable_notes)),
             "repeat_digests": digests,
             "later_repeats_agree": all(
                 p["requests_differing"] == 0 for p in pair_results if p["pair"][0] > 0
@@ -512,6 +518,13 @@ def main() -> int:
         if row.get("vacuous"):
             print("      never observed more than one request running; this case "
                   "formed no batch and its verdict is worth nothing")
+
+    narrowed = sorted({n for r in results for n in r.get("observable_notes", [])})
+    if narrowed:
+        print()
+        print("  the observable was narrower than requested:")
+        for note in narrowed[:5]:
+            print(f"    {note}")
 
     vacuous = [r for r in results if r.get("vacuous")]
     print()
