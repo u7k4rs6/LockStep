@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "kind": "fidelity",
-  "created_utc": "2026-08-05T18:50:46Z",
+  "created_utc": "2026-08-07T05:55:06Z",
   "env": {
     "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
     "gpu_arch": "sm_89",
@@ -19,9 +19,9 @@
     "torch_intraop_threads": 8,
     "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
     "corpus_sha256": "59759d5b266cd314dd82635a1cafa7ce7f48f832276229843e7a9f8469d7ef58",
-    "engine_revision": "328a06678147-dirty",
+    "engine_revision": "e1844dc5d2e8",
     "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
-    "digest": "8efdecd297ed78fd9b0a4a57063138828dfae58023688a90e9b7b745c9b65743"
+    "digest": "986f09b0b1f3182fa550bac501def3f6ab47cbce335b0c63f92483d90876e199"
   },
   "payload": {
     "corpus_sha256": "59759d5b266cd314dd82635a1cafa7ce7f48f832276229843e7a9f8469d7ef58",
@@ -173,9 +173,9 @@
         "pass": true
       }
     ],
-    "peak_rss_bytes": 5051338752,
-    "peak_rss_anon_bytes": 2440200192,
-    "projected_peak_bytes": 1984719232,
+    "peak_rss_bytes": 4866338816,
+    "peak_rss_anon_bytes": 2402508800,
+    "projected_peak_bytes": 1984620928,
     "memory_ceiling_bytes": 4294967296,
     "peak_vram_bytes": 2019833344,
     "f1_pass": true,
