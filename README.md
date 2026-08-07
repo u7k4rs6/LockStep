@@ -94,6 +94,8 @@ lockstep certify  vLLM, VLLM_BATCH_INVARIANT=1
 
   starting server, up to 420s ...
   ready
+  subject             0.26.0, torch 2.11.0+cu130, triton 3.6.0, cu13.0
+                      read from the server's startup output and its own interpreter, not this process
 
   boundary case                                         reqs  positions batch  verdict
   ------------------------------------------------------------------------------------
@@ -102,24 +104,27 @@ lockstep certify  vLLM, VLLM_BATCH_INVARIANT=1
   prefix_len == block_size + 1 (17)                        2         48    15  clean
   zero-prefix request co-batched with a nonzero-prefix request     3         72    16  clean
   cache hit covering the full prompt                       2         48    15  clean
-  batch 31, shared prefix of one block                    31        744    44  DIVERGED (124)
-      request 0 repeat 1: logprobs differ from position 0, max delta 1.564e-02
-      request 1 repeat 1: logprobs differ from position 1, max delta 2.072e-02
+  batch 31, shared prefix of one block                    31        744    44  DIVERGED (186)
+      request 0 repeat 1: logprobs differ from position 1, max delta 3.056e-02
+      request 1 repeat 1: logprobs differ from position 0, max delta 1.543e-02
       request 2 repeat 1: logprobs differ from position 0, max delta 1.467e-02
-  batch 32, shared prefix of one block                    32        768    45  clean
+  batch 32, shared prefix of one block                    32        768    45  DIVERGED (128)
+      request 0 repeat 1: logprobs differ from position 0, max delta 1.607e-02
+      request 1 repeat 1: logprobs differ from position 0, max delta 3.125e-02
+      request 2 repeat 1: logprobs differ from position 1, max delta 2.347e-02
 
-  6/7 boundary cases clean at this observable
+  5/7 boundary cases clean at this observable
   7/7 cases actually formed a batch
 env  sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0
-artifact  results/2026-08-07/certify-0002.json
+artifact  results/2026-08-07/certify-0003.json
 ```
 
 Two long explanatory lines are elided at `[...]`; nothing else is edited. The
 `artifact` line names the uncommitted `results/` path the run actually wrote,
 which is then promoted into `evidence/` under the name linked above.
 
-Three things about that command are worth stating, because the obvious guess is
-wrong on all three.
+Four things about that run are worth stating, because the obvious guess is wrong
+on all four.
 
 - **It takes no URL.** `lockstep certify http://localhost:8000` is not a command
   this repository has. The certifier starts the server itself, on a fixed local
@@ -133,12 +138,22 @@ wrong on all three.
   the `batch` column is read from vLLM's own `num_requests_running` gauge rather
   than assumed. A case that never exceeds one running request is reported as not
   batched and not scored.
+- **The `subject` line is not this process.** `env.lock` on the artifact records
+  the certifier, which is torch 2.6.0. The engine under test runs in its own
+  virtual environment on torch 2.11.0, and that tuple is read back from the
+  server's own startup output and its own interpreter rather than assumed. Every
+  certify artifact written from now on carries it; the six that back the filed
+  issue predate the field and are deliberately not being re-run.
 
-That the run above diverged at 31 and stayed clean at 32 is the finding's own
-shape rather than an inconsistency: divergence is probabilistic and its
-probability rises with resident batch size, so single cases flip between runs.
-The [certification section](#certification-black-box-differential-testing-of-vllm)
-gives the repeat counts this was established over.
+**This is one run, and it is the one that was run.** The divergence is
+intermittent, roughly one server lifetime in three, so the two cases that
+diverged here are not a fixed set: an earlier run at this same configuration
+diverged at 31 and stayed clean at 32. Which cases trip is not the claim. The
+claim is that a byte-identical workload does not return identical logprobs, and
+the [certification section](#certification-black-box-differential-testing-of-vllm)
+gives the repeat counts and the controls it was established over. Nothing here was
+re-run until it produced a divergence worth pasting, because selecting a run for
+its result is the bias the throughput section is about.
 
 For something that runs on a fresh clone in seconds with no server, and which is
 what CI cannot check for you, `uv run ./lockstep replay evidence/case-witness.json`
@@ -154,7 +169,7 @@ recomputes a committed trajectory hash and compares it. It is
 | [The three numbers](#the-three-numbers) | invariance, harness power, cost of determinism |
 | [Coverage](#coverage-with-the-denominator-it-is-actually-against) | against the corrected 25 and 79 denominators |
 | [What this does not claim](#what-this-does-not-claim) | the limits, stated before a reader finds them |
-| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | fifteen times this project failed its own test |
+| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | sixteen times this project failed its own test |
 | [Certification](#certification-black-box-differential-testing-of-vllm) | black-box differential testing of vLLM, one finding filed |
 | [Evidence and replay](#evidence-and-replaying-it) | every number's artifact, and how to re-run it |
 | [Prior art](#prior-art) | and what is actually different here |
@@ -180,9 +195,19 @@ For a `certify` run, `env.lock` describes the certifier's process, not the engin
 certified. vLLM runs in a separate virtual environment on `torch 2.11.0+cu130`, so a
 certification artifact carries the tuple of the process making the requests while the
 subject ran on a different one. The artifact records the engine name, mode, and block
-size but not the subject's own tuple, and the only place that tuple is written down is
-`evidence/upstream-finding.json`, by hand, for the one filed finding. Read against a
-certify artifact, `env.lock` scopes the observer rather than the observed.
+size. Read against a certify artifact, `env.lock` scopes the observer rather than the
+observed.
+
+Certify runs now capture the subject's tuple as well, read from the server's startup
+output and from the interpreter the certifier launched:
+`vLLM 0.26.0`, `torch 2.11.0+cu130`, `triton 3.6.0`, `cu13.0`.
+`evidence/certify-readme-sample.json` carries it. The six artifacts backing
+[vllm#51187](https://github.com/vllm-project/vllm/issues/51187) predate the field and
+are deliberately not re-run: the divergence is intermittent at about one lifetime in
+three, re-establishing it costs real GPU time, and their subject environment is
+already recorded by hand in `evidence/upstream-finding.json`. `scripts/audit_artifacts.py`
+prints which artifacts carry the field and which predate it, rather than letting an
+absent field read as agreement.
 
 | ID | Statement | How verified | Status | Scope |
 |---|---|---|---|---|
@@ -613,11 +638,21 @@ generated tokens. Boundary predicates reach 17 of 20.
 
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
-fifteen times in this repository. Rows 1 to 8 were found by this project's own
+sixteen times in this repository. Rows 1 to 8 were found by this project's own
 machinery or while fixing what it found; rows 9 to 12b were found by an outside
 audit; row 13 came from an anomaly in the results and belongs to neither; rows 14
 and 15 came from readers who were not looking for defects, one reviewing style
-and one reading the directory tree.
+and one reading the directory tree; row 16 turned up while auditing the artifacts
+for an unrelated property.
+
+Row 16 was a judgement call, so the reasoning is stated rather than assumed. Two
+dead filenames on their own would be a broken link and would not have earned a
+row. The stale **55 of 55** is the reason it is here: it was a published figure
+that had been superseded, sitting in the document beside the corrected one, and
+the table it sat in exists precisely so a reader can get from a number to the
+artifact that produced it. `tests/test_evidence_index.py` now checks both
+directions and would have caught it on the commit that introduced it, which is
+the mechanism working rather than a promise that it will not recur.
 
 The last two are the ones worth sitting with. Row 15 in particular: this
 repository's entire argument is that a declared surface wider than the tested one
@@ -652,7 +687,7 @@ each escaped is worth more than the fix:
 | 3 | Eviction under memory pressure, tested | Admission counted only free blocks, so a request serviceable by evicting was refused and the eviction path was unreachable |
 
 <details>
-<summary>Twelve more, including the four an outside audit found, one from an anomaly neither predicted, and two from readers not looking for defects at all</summary>
+<summary>Thirteen more, including the four an outside audit found, one from an anomaly neither predicted, and two from readers not looking for defects at all</summary>
 
 | # | Declared | Actually |
 |---|---|---|
@@ -665,6 +700,7 @@ each escaped is worth more than the fix:
 | 10 | A proven-equivalent mutant, with a written equivalence argument | A dead store. The operator set `kv_len` after `_preempt`, `_admit` reset it before any read, and the published proof described a mechanism absent from the code. The fault the architecture doc names was never injected at all |
 | 11 | A concurrency cap in the security config | `max_concurrency: 1` sat in `certify/config.json` from week 8 and no code path read it. Enforcing it later revealed it also made batching impossible, so the one setting that would have prevented finding 9 was both unenforced and wrong |
 | 12 | One edit applied to two files | It matched in one and silently no-op'd in the other, so an artifact shipped without the fields that prove its own batch witness fired. Caught by reading the artifact back, not by the edit reporting success |
+| 16 | An evidence table mapping every published figure to the artifact backing it | Two rows named files deleted five commits earlier, and one carried **55 of 55** against an actual 65 of 65. So the README stated two different values for the same claim, in one document, across 12 commits, and the audit that corrected the headline number never looked at the table pointing to it. The table's whole function is to make a number checkable, and nothing checked the table. **Found while auditing artifact environments for something else** |
 | 15 | Five CI gates, declared in the architecture doc section 12 | No `.github/` directory existed, so none of them ran. Bitwise invariance every commit, a nightly fuzz campaign with a coverage floor, a throughput regression band, and two static gates, all declared and none wired to anything. **Found by a third party reading the directory tree** |
 | 14 | Abstraction sized for what the design needs | Four definitions with no caller anywhere: `PagedKVCache.evictable`, `ReplayPolicy`, `ScriptedChunkPolicy`, `Request.needs_compute`. And `Comparison.notes`, computed on every certification comparison and never read, one of which reports that the engines exposed fewer alternatives than requested, so the certifier could narrow its own observable and say nothing. **Found by a reviewer looking at style, not correctness** |
 | 13 | An observable comparing repeated runs for identical output | Every comparison was repeat 0 against a later repeat, so "the engine is nondeterministic" and "the first batch differs and everything after it agrees" were indistinguishable. Structurally the same error as comparing a mutant only against canonical, in the file written to certify determinism |
