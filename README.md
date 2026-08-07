@@ -28,6 +28,15 @@ relation run, the mutation table, the coverage denominators, the certification
 result, and the throughput comparison. Build it with `python3 -m report.html` and
 open it directly; it reads only committed artifacts from `evidence/`.
 
+`evidence/` is committed on purpose and `results/` is not. The artifacts are the
+backing for published numbers, and `lockstep replay evidence/case-witness.json`
+has to work immediately after a clone or the provenance argument here is empty;
+`results/` stays gitignored for the bulk output that the usual rule is about,
+hundreds of files superseded every run. The report vendors its four font subsets,
+about 32 KB, for the same kind of reason: it is one self-contained file that
+opens offline from `file://`, so a CDN would trade the property for the bytes.
+`evidence/README.md` states both decisions.
+
 ### Contents
 
 | | |
@@ -37,11 +46,12 @@ open it directly; it reads only committed artifacts from `evidence/`.
 | [The three numbers](#the-three-numbers) | invariance, harness power, cost of determinism |
 | [Coverage](#coverage-with-the-denominator-it-is-actually-against) | against the corrected 25 and 79 denominators |
 | [What this does not claim](#what-this-does-not-claim) | the limits, stated before a reader finds them |
-| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | fourteen times this project failed its own test |
+| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | fifteen times this project failed its own test |
 | [Certification](#certification-black-box-differential-testing-of-vllm) | black-box differential testing of vLLM, one finding filed |
 | [Evidence and replay](#evidence-and-replaying-it) | every number's artifact, and how to re-run it |
 | [Prior art](#prior-art) | and what is actually different here |
 | [Check it without a GPU](#what-you-can-check-without-a-gpu) | three things verifiable in under a minute on any machine |
+| [Which gates run](#which-gates-run-automatically-and-which-do-not) | automated on every push, versus run by hand |
 | [Install](#install) | |
 
 ---
@@ -480,11 +490,16 @@ generated tokens. Boundary predicates reach 17 of 20.
 
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
-fourteen times in this repository. Rows 1 to 8 were found by this project's own
+fifteen times in this repository. Rows 1 to 8 were found by this project's own
 machinery or while fixing what it found; rows 9 to 12b were found by an outside
-audit; row 13 came from an anomaly in the results and belongs to neither; row 14
-came from a reader reviewing the repository's style who was not looking for
-defects at all.
+audit; row 13 came from an anomaly in the results and belongs to neither; rows 14
+and 15 came from readers who were not looking for defects, one reviewing style
+and one reading the directory tree.
+
+The last two are the ones worth sitting with. Row 15 in particular: this
+repository's entire argument is that a declared surface wider than the tested one
+is where bugs live, and it declared five CI gates and shipped none of them. It
+took someone opening the directory listing.
 
 Row 14 has the most interesting provenance of the set. A reviewer remarked that
 some abstraction here appeared to exist for future capability rather than present
@@ -514,7 +529,7 @@ each escaped is worth more than the fix:
 | 3 | Eviction under memory pressure, tested | Admission counted only free blocks, so a request serviceable by evicting was refused and the eviction path was unreachable |
 
 <details>
-<summary>Eleven more, including the four an outside audit found, one from an anomaly neither predicted, and one from a reader reviewing style</summary>
+<summary>Twelve more, including the four an outside audit found, one from an anomaly neither predicted, and two from readers not looking for defects at all</summary>
 
 | # | Declared | Actually |
 |---|---|---|
@@ -527,6 +542,7 @@ each escaped is worth more than the fix:
 | 10 | A proven-equivalent mutant, with a written equivalence argument | A dead store. The operator set `kv_len` after `_preempt`, `_admit` reset it before any read, and the published proof described a mechanism absent from the code. The fault the architecture doc names was never injected at all |
 | 11 | A concurrency cap in the security config | `max_concurrency: 1` sat in `certify/config.json` from week 8 and no code path read it. Enforcing it later revealed it also made batching impossible, so the one setting that would have prevented finding 9 was both unenforced and wrong |
 | 12 | One edit applied to two files | It matched in one and silently no-op'd in the other, so an artifact shipped without the fields that prove its own batch witness fired. Caught by reading the artifact back, not by the edit reporting success |
+| 15 | Five CI gates, declared in the architecture doc section 12 | No `.github/` directory existed, so none of them ran. Bitwise invariance every commit, a nightly fuzz campaign with a coverage floor, a throughput regression band, and two static gates, all declared and none wired to anything. **Found by a third party reading the directory tree** |
 | 14 | Abstraction sized for what the design needs | Four definitions with no caller anywhere: `PagedKVCache.evictable`, `ReplayPolicy`, `ScriptedChunkPolicy`, `Request.needs_compute`. And `Comparison.notes`, computed on every certification comparison and never read, one of which reports that the engines exposed fewer alternatives than requested, so the certifier could narrow its own observable and say nothing. **Found by a reviewer looking at style, not correctness** |
 | 13 | An observable comparing repeated runs for identical output | Every comparison was repeat 0 against a later repeat, so "the engine is nondeterministic" and "the first batch differs and everything after it agrees" were indistinguishable. Structurally the same error as comparing a mutant only against canonical, in the file written to certify determinism |
 | 12b | A coverage denominator checked against reality | The check ran in one direction only. Observed transitions had to be legal, so the denominator could only be too large; nothing required a declared transition to be reachable. `(ADMITTED, PREEMPT_RC)` was not, and inflated every published coverage number, because a transition that never fires produces no evidence of its own absence. **Named by the audit, then independently reconfirmed by the witness check built in response to it** |
@@ -558,7 +574,7 @@ test would have to distrust the edit that wrote it.
 The eighth was found while fixing the seventh, and it is the most literal
 instance of the sentence this project opens with. A declared surface wider than
 the tested one is exactly what Lockstep exists to find in other people's engines,
-and the CLI section of the frontend spec had been declaring nine commands at a
+and the CLI section of the CLI-and-report spec had been declaring nine commands at a
 repository that shipped none of them. The tests covering it checked that the
 divergence report printed the right string, which it did, correctly, for a
 command that did not exist.
@@ -628,10 +644,45 @@ admitted. No kernel runs.
 The second group is the substance and it is not checkable cheaply. Pinned
 dependencies do not fix that; naming the split is the honest alternative.
 
+## Which gates run automatically, and which do not
+
+`docs/kickoff/02-technical-architecture.md` section 12 declares five CI gates.
+For most of this project none of them ran, because there was no `.github/`
+directory at all. That is row 15 above.
+
+Hosted runners have no NVIDIA device, so the split is explicit rather than
+aspirational:
+
+| gate | how it runs |
+|---|---|
+| static checks: no atomics, no autotune, no torch reductions in `engine/` | **automated**, every push |
+| the static gate is not vacuous: lifting the named exception must produce exactly one hit | **automated**, every push |
+| secret scan | **automated**, every push |
+| every source file parses | **automated**, every push |
+| coverage denominators recomputed from the declared transition relation | **automated**, every push |
+| artifacts carry an environment tuple and the committed repro rebuilds | **automated**, every push |
+| tests that do not need CUDA | **automated**, every push |
+| the report builds from committed evidence | **automated**, every push |
+| bitwise invariance, MR1 through MR8 and PATH-EQ | manual, `make claim1` |
+| fuzz campaign with the coverage floor | manual, `make claim2` |
+| throughput regression | manual, `make claim3` |
+| certification against a local vLLM | manual, `make certify` |
+
+The manual four need a GPU and, for two of them, a local vLLM. Their artifacts
+are committed to `evidence/` with the revision that produced them, which is the
+substitute for a green check. A documented manual gate is honest; a declared gate
+that never runs is the thing this repository is about.
+
+```sh
+make check     # everything the CPU gate runs, locally
+```
+
 ## Install
 
 Requires an NVIDIA GPU. Developed on sm_89 with 8 GB; nothing is claimed
 elsewhere.
+
+`make setup` does all of this; `make help` lists every target.
 
 ```sh
 uv sync

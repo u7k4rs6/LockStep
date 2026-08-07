@@ -156,7 +156,7 @@ def run_campaign(model, seeds, cases_per_seed, coverage, oracle, progress=True):
 
 
 def print_repro(finding: Finding, minimization, artifact_path: str) -> None:
-    """The divergence report from frontend spec 1.3, with the minimality proof."""
+    """The divergence report from the CLI and report spec 1.3, with the minimality proof."""
     case = minimization.case
     print()
     is_crash = ":" in finding.detail and "diverged from canonical" not in finding.detail

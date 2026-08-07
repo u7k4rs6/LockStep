@@ -1,4 +1,4 @@
-"""The 80-column constraint from frontend spec 1.3 is a test, not a convention."""
+"""The 80-column constraint from the CLI and report spec 1.3 is a test, not a convention."""
 
 from __future__ import annotations
 

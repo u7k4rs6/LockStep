@@ -1,0 +1,69 @@
+# Gate 4 of docs/kickoff/02-technical-architecture.md section 12, plus the parts
+# of the others that do not need a GPU. Gates 1, 2 and 3 are bitwise invariance,
+# the fuzz campaign and throughput; hosted runners have no NVIDIA device, so
+# those are run by hand and their artifacts are committed to evidence/. The
+# README says which is which rather than leaving a declared gate unbuilt.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  cpu:
+    name: checks that need no GPU
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: "0.5.14"
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install
+        run: uv sync --frozen
+
+      - name: Every source file parses
+        run: |
+          uv run python3 - <<'PY'
+          import ast, pathlib, glob, sys
+          bad = []
+          for f in glob.glob("**/*.py", recursive=True):
+              if ".venv" in f: continue
+              try: ast.parse(pathlib.Path(f).read_text())
+              except SyntaxError as e: bad.append((f, e.lineno))
+          print(f"{len(glob.glob('**/*.py', recursive=True))} files")
+          if bad: print("SYNTAX ERRORS:", bad); sys.exit(1)
+          PY
+
+      - name: Static gates, no atomics, no autotune, no torch reductions
+        run: uv run python3 scripts/static_checks.py
+
+      - name: The static gate is not vacuous
+        run: |
+          uv run python3 - <<'PY'
+          import importlib.util, sys
+          spec = importlib.util.spec_from_file_location("sc", "scripts/static_checks.py")
+          m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+          m.EXCEPTIONS = {}
+          hits = [f for f in m.scan()[0] if "torch reductions" in f]
+          print(f"lifting the named exception yields {len(hits)} hit(s)")
+          sys.exit(0 if len(hits) == 1 else 1)
+          PY
+
+      - name: Secret scan
+        run: uv run python3 scripts/secret_scan.py
+
+      - name: Coverage denominators, artifact schemas, committed repro
+        run: uv run python3 scripts/verify_no_gpu.py
+
+      - name: Tests that do not need CUDA
+        run: uv run python3 -m pytest -m "not gpu" -q
+
+      - name: Report builds from committed evidence
+        run: |
+          uv run python3 -m report.html
+          test -s results/report.html

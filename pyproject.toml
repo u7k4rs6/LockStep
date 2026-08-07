@@ -28,3 +28,6 @@ package = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+markers = [
+    "gpu: needs a CUDA device. Deselect with -m 'not gpu' for the set hosted CI can run.",
+]

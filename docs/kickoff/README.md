@@ -14,4 +14,4 @@ claims are in the top-level README.
 | `01-PRD.md` | scope, the three headline numbers, kill criteria |
 | `02-technical-architecture.md` | invariants, kernel rules, mutation operators, coverage design |
 | `03-security-and-access.md` | rules governing anything pointed at an external endpoint |
-| `04-frontend-spec.md` | CLI surface and report design |
+| `04-cli-and-report-spec.md` | CLI surface and report design |

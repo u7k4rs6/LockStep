@@ -39,6 +39,7 @@ def test_emitter_refuses_to_release_a_leaked_field():
         envlock._assert_scrubbed(poisoned)
 
 
+@pytest.mark.gpu
 def test_fingerprint_has_the_shape_the_divergence_report_prints():
     parts = envlock.capture().fingerprint().split(" / ")
     assert len(parts) == 4

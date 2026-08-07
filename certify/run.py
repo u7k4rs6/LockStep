@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import collections
 import concurrent.futures
 import hashlib
 import json
@@ -344,6 +345,8 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
         observations = []
         witnesses = []
         digests: list[str] = []
+        widths: collections.Counter = collections.Counter()
+        missing_lp: collections.Counter = collections.Counter()
 
         if cache_mode == "warm":
             prime_width = (fixed_width if filler_mode == "fixed"
@@ -379,6 +382,9 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
                         order_seed=repeat if order_mode == "permuted" else 0,
                     )
             observations.append(batch)
+            for completion in batch:
+                widths.update(len(a) for a in completion.alternatives)
+                missing_lp.update(1 for lp in completion.logprobs if lp is None)
             digests.append(hashlib.sha256(repr([
                 (c.tokens, c.logprobs, c.alternatives) for c in batch
             ]).encode()).hexdigest())
@@ -441,6 +447,8 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
             "divergences": divergences,
             "pairs": pair_results,
             "observable_notes": sorted(set(observable_notes)),
+            "alternatives_width": dict(widths),
+            "positions_missing_logprob": sum(missing_lp.values()),
             "repeat_digests": digests,
             "later_repeats_agree": all(
                 p["requests_differing"] == 0 for p in pair_results if p["pair"][0] > 0
