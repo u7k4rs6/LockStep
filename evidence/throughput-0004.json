@@ -1,0 +1,383 @@
+{
+  "schema_version": 1,
+  "kind": "throughput",
+  "created_utc": "2026-08-07T08:31:49Z",
+  "env": {
+    "gpu_name": "NVIDIA GeForce RTX 4060 Laptop GPU",
+    "gpu_arch": "sm_89",
+    "gpu_memory_bytes": 8177975296,
+    "driver_version": "595.84",
+    "cuda_version": "12.4",
+    "torch_version": "2.6.0+cu124",
+    "triton_version": "3.2.0",
+    "numpy_version": "2.1.3",
+    "python_version": "3.12.13",
+    "os_kernel": "Linux 7.0.0-28-generic x86_64",
+    "cpu_model": "12th Gen Intel(R) Core(TM) i5-12450HX",
+    "omp_num_threads": "8",
+    "mkl_num_threads": "8",
+    "torch_intraop_threads": 8,
+    "kernel_registry_sha256": "41bae2170740ea253797d24c5d7c51ee0dbe62381def094a9af428e79e4abe25",
+    "corpus_sha256": null,
+    "engine_revision": "e6ff1ed922e8",
+    "fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0",
+    "digest": "38116ffdd19a2b96300f005ca911390f49f3e073eb773fe20fe5c9016702131e"
+  },
+  "payload": {
+    "trace_tokens": 2972,
+    "runs": 5,
+    "interleaved": true,
+    "measurement_order_seed": 20260806,
+    "provenance": {
+      "clean": true,
+      "override": false,
+      "revision": "e6ff1ed922e8",
+      "dirty_files": 0
+    },
+    "rows": [
+      {
+        "config": "lockstep, fast mode",
+        "seconds": 2.8232461549996515,
+        "samples": [
+          2.751034062999679,
+          2.7956372720000218,
+          2.936973306999789,
+          2.8232461549996515,
+          2.9479091759994844
+        ],
+        "measured": true,
+        "spread_ratio": 1.0715640404630746,
+        "gpu_state": [
+          {
+            "sm_mhz": 1890,
+            "temp_c": 52,
+            "power_w": 17.03,
+            "util_pct": 0,
+            "vram_free_mib": 6953,
+            "vram_used_mib": 847
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.85,
+            "util_pct": 0,
+            "vram_free_mib": 6937,
+            "vram_used_mib": 863
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 56,
+            "power_w": 15.72,
+            "util_pct": 15,
+            "vram_free_mib": 6858,
+            "vram_used_mib": 942
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 18.15,
+            "util_pct": 3,
+            "vram_free_mib": 6972,
+            "vram_used_mib": 828
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 58,
+            "power_w": 20.0,
+            "util_pct": 6,
+            "vram_free_mib": 6884,
+            "vram_used_mib": 916
+          }
+        ]
+      },
+      {
+        "config": "lockstep, invariant",
+        "seconds": 2.956583629999841,
+        "samples": [
+          2.974430169000698,
+          2.944593062000422,
+          2.9012747850001688,
+          3.0202647870000874,
+          2.956583629999841
+        ],
+        "measured": true,
+        "spread_ratio": 1.0410130066325005,
+        "gpu_state": [
+          {
+            "sm_mhz": 225,
+            "temp_c": 49,
+            "power_w": 3.92,
+            "util_pct": 4,
+            "vram_free_mib": 6914,
+            "vram_used_mib": 886
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 51,
+            "power_w": 15.61,
+            "util_pct": 7,
+            "vram_free_mib": 6926,
+            "vram_used_mib": 874
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 57,
+            "power_w": 18.59,
+            "util_pct": 13,
+            "vram_free_mib": 6931,
+            "vram_used_mib": 869
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 56,
+            "power_w": 16.57,
+            "util_pct": 2,
+            "vram_free_mib": 6927,
+            "vram_used_mib": 873
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.83,
+            "util_pct": 0,
+            "vram_free_mib": 6969,
+            "vram_used_mib": 831
+          }
+        ]
+      },
+      {
+        "config": "vLLM default, eager",
+        "seconds": 0.4897979029992712,
+        "samples": [
+          0.42894379399967875,
+          0.5456987770003252,
+          0.4897979029992712,
+          0.4742778529998759,
+          0.5052105459999439
+        ],
+        "measured": true,
+        "spread_ratio": 1.2721917990978882,
+        "gpu_state": [
+          {
+            "sm_mhz": 2595,
+            "temp_c": 54,
+            "power_w": 18.69,
+            "util_pct": 0,
+            "vram_free_mib": 6958,
+            "vram_used_mib": 843
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 55,
+            "power_w": 17.65,
+            "util_pct": 0,
+            "vram_free_mib": 6957,
+            "vram_used_mib": 843
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.96,
+            "util_pct": 0,
+            "vram_free_mib": 6930,
+            "vram_used_mib": 870
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.98,
+            "util_pct": 0,
+            "vram_free_mib": 6974,
+            "vram_used_mib": 826
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 56,
+            "power_w": 15.04,
+            "util_pct": 0,
+            "vram_free_mib": 6928,
+            "vram_used_mib": 872
+          }
+        ]
+      },
+      {
+        "config": "vLLM VLLM_BATCH_INVARIANT=1, eager",
+        "seconds": 0.5736420660005024,
+        "samples": [
+          0.5749906840001131,
+          0.55070050500035,
+          0.5736420660005024,
+          0.6309785889998238,
+          0.5547635470002206
+        ],
+        "measured": true,
+        "spread_ratio": 1.1457744877125595,
+        "gpu_state": [
+          {
+            "sm_mhz": 1890,
+            "temp_c": 55,
+            "power_w": 16.31,
+            "util_pct": 0,
+            "vram_free_mib": 6921,
+            "vram_used_mib": 879
+          },
+          {
+            "sm_mhz": 210,
+            "temp_c": 55,
+            "power_w": 7.14,
+            "util_pct": 1,
+            "vram_free_mib": 6895,
+            "vram_used_mib": 906
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 56,
+            "power_w": 18.22,
+            "util_pct": 38,
+            "vram_free_mib": 6955,
+            "vram_used_mib": 845
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.83,
+            "util_pct": 0,
+            "vram_free_mib": 6977,
+            "vram_used_mib": 823
+          },
+          {
+            "sm_mhz": 1095,
+            "temp_c": 56,
+            "power_w": 15.8,
+            "util_pct": 0,
+            "vram_free_mib": 6975,
+            "vram_used_mib": 825
+          }
+        ]
+      },
+      {
+        "config": "vLLM default, cudagraphs",
+        "seconds": 0.34126557000035973,
+        "samples": [
+          0.3350489389995346,
+          0.34126557000035973,
+          0.3603865510003743,
+          0.3524598860003607,
+          0.34010974600005284
+        ],
+        "measured": true,
+        "spread_ratio": 1.075623615094853,
+        "gpu_state": [
+          {
+            "sm_mhz": 1890,
+            "temp_c": 56,
+            "power_w": 16.0,
+            "util_pct": 0,
+            "vram_free_mib": 6928,
+            "vram_used_mib": 872
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.78,
+            "util_pct": 7,
+            "vram_free_mib": 6931,
+            "vram_used_mib": 869
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.77,
+            "util_pct": 0,
+            "vram_free_mib": 6874,
+            "vram_used_mib": 926
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 56,
+            "power_w": 17.59,
+            "util_pct": 30,
+            "vram_free_mib": 6935,
+            "vram_used_mib": 865
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.91,
+            "util_pct": 1,
+            "vram_free_mib": 6967,
+            "vram_used_mib": 833
+          }
+        ]
+      },
+      {
+        "config": "vLLM VLLM_BATCH_INVARIANT=1, cudagraphs",
+        "seconds": 0.4746728380005152,
+        "samples": [
+          0.46319251300064934,
+          0.4746728380005152,
+          0.5861590960003014,
+          0.496192150000752,
+          0.4690498040008606
+        ],
+        "measured": true,
+        "spread_ratio": 1.2654761887299324,
+        "gpu_state": [
+          {
+            "sm_mhz": 1890,
+            "temp_c": 53,
+            "power_w": 17.94,
+            "util_pct": 0,
+            "vram_free_mib": 6940,
+            "vram_used_mib": 860
+          },
+          {
+            "sm_mhz": 1890,
+            "temp_c": 57,
+            "power_w": 17.46,
+            "util_pct": 27,
+            "vram_free_mib": 6939,
+            "vram_used_mib": 861
+          },
+          {
+            "sm_mhz": 2430,
+            "temp_c": 58,
+            "power_w": 18.73,
+            "util_pct": 0,
+            "vram_free_mib": 6823,
+            "vram_used_mib": 977
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 56,
+            "power_w": 17.75,
+            "util_pct": 0,
+            "vram_free_mib": 6893,
+            "vram_used_mib": 908
+          },
+          {
+            "sm_mhz": 2595,
+            "temp_c": 57,
+            "power_w": 17.9,
+            "util_pct": 2,
+            "vram_free_mib": 6944,
+            "vram_used_mib": 856
+          }
+        ]
+      },
+      {
+        "config": "SGLang deterministic",
+        "seconds": null,
+        "measured": false,
+        "why": "no external environment supplied"
+      }
+    ],
+    "derived": {
+      "lockstep_invariant_over_fast": 1.0472284270232914,
+      "lockstep_invariant_over_vLLM default, eager": 6.036333785619005,
+      "lockstep_invariant_over_vLLM VLLM_BATCH_INVARIANT=1, eager": 5.154056519274254,
+      "lockstep_invariant_over_vLLM default, cudagraphs": 8.663586045309886,
+      "lockstep_invariant_over_vLLM VLLM_BATCH_INVARIANT=1, cudagraphs": 6.228676665920016
+    }
+  }
+}

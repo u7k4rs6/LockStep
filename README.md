@@ -149,28 +149,35 @@ repair, it is a new claim.
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | **65 of 65** relation runs bitwise identical across 5 block sizes, 13 relations including path equivalence and EOS finishing | `python3 -m harness.mr.run` |
 | 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 10.6 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
-| 3 | Cost of determinism | lockstep invariant is **5.7x** vLLM batch-invariant eager; **1.10x** against its own fast path. Every measurement in its own process, interleaved, all sample spreads at or under 1.24x | `python3 -m bench.throughput` |
+| 3 | Cost of determinism | lockstep invariant is **5.2x to 5.7x** vLLM batch-invariant eager across two sound runs; **1.05x to 1.10x** against its own fast path | `python3 -m bench.throughput` |
 
 Claim 3, on a committed 8-request 2972-token trace, four of eight prompts
-crossing the 512-token attention split. Median of 5, every measurement in its own
-process, interleaved under a committed shuffle seed:
+crossing the 512-token attention split. Median of 5 samples, every measurement in
+its own process, interleaved under a committed shuffle seed. Two runs of the
+final design, reported as a range because a single run of it would overstate the
+precision:
 
-| configuration | seconds | vs lockstep fast | sample spread |
+| configuration | run A | run B | worst sample spread |
 |---|---|---|---|
-| lockstep, fast mode | 2.930 | 1.00x | 1.24x |
-| lockstep, invariant | 3.226 | 1.10x | 1.17x |
-| vLLM default, eager | 0.470 | 0.16x | 1.14x |
-| vLLM `VLLM_BATCH_INVARIANT=1`, eager | 0.563 | 0.19x | 1.08x |
-| vLLM default, CUDA graphs | 0.343 | 0.12x | 1.06x |
-| vLLM `VLLM_BATCH_INVARIANT=1`, CUDA graphs | 0.484 | 0.17x | 1.10x |
+| lockstep, fast mode | 2.930s | 2.823s | 1.24x |
+| lockstep, invariant | 3.226s | 2.957s | 1.17x |
+| vLLM default, eager | 0.470s | 0.490s | 1.27x |
+| vLLM `VLLM_BATCH_INVARIANT=1`, eager | 0.563s | 0.574s | 1.15x |
+| vLLM default, CUDA graphs | 0.343s | 0.341s | 1.08x |
+| vLLM `VLLM_BATCH_INVARIANT=1`, CUDA graphs | 0.484s | 0.475s | 1.27x |
 | SGLang deterministic | not measured | | |
 
-**Absolute standing**: lockstep invariant is **5.7x the wall time of vLLM
-batch-invariant in eager mode**, 6.7x with CUDA graphs. **Cost of determinism
-inside this engine**: **1.10x** against its own fast path, which differs in
-exactly one way, letting torch pick the GEMM. CUDA graphs give vLLM's
-batch-invariant mode a **14 percent** gain, 0.563s to 0.484s, against 27 percent
-for its default mode.
+**Absolute standing**: lockstep invariant is **5.2x to 5.7x the wall time of vLLM
+batch-invariant in eager mode**. **Cost of determinism inside this engine**:
+**1.05x to 1.10x** against its own fast path, which differs in exactly one way,
+letting torch pick the GEMM. CUDA graphs give vLLM's batch-invariant mode roughly
+**14 to 17 percent**, against 27 to 30 percent for its default mode.
+
+Two rows tripped the 1.25x spread flag in run B, and their samples are worth
+seeing: `0.429, 0.474, 0.490, 0.505, 0.546`. That is ordinary variance across
+five samples, not the two populations that flag was added to catch, so the
+threshold is tight for n=5 rather than the measurement being unsound. The flag
+did its job earlier, on a row whose samples really were bimodal.
 
 ### This number took four benchmark designs, and three of them were biased
 
@@ -213,20 +220,26 @@ of vLLM default after the CUDA-graph pass"**, with the prescribed response being
 to reframe as a correctness-reference engine and publish ratios rather than
 absolute tokens per second.
 
-| baseline | lockstep invariant runs at | sample spread |
-|---|---|---|
-| vLLM default, eager | **14.6 percent** | 1.14x |
-| vLLM default, CUDA graphs | **10.6 percent** | 1.06x |
+| baseline | run A | run B | verdict |
+|---|---|---|---|
+| vLLM default, eager | 14.6 percent | **16.6 percent** | straddles the bar |
+| vLLM default, CUDA graphs | 10.6 percent | 11.5 percent | consistently below |
 
-Both are below the bar, so there is no configuration of the comparison in which
-this engine clears it.
+**The graphed comparison is consistently below the bar. The like-for-like
+comparison straddles it**, at 14.6 and 16.6 percent across two runs of the same
+sound design, so this engine sits at the threshold on eager-versus-eager rather
+than clearly under it. Reporting a single run's 14.6 as the figure would be
+picking the unfavourable one to look rigorous, which is its own kind of
+dishonesty; reporting 16.6 alone would be picking the favourable one. It
+straddles, and the reason it keeps moving across measurement designs is that it
+sits almost exactly on the threshold it is being compared against.
 
-**Every correction to the benchmark moved this number against the project.** The
-blocked design put the like-for-like figure at 16.1 and 16.2 percent, above the
-bar, with only the graphed comparison below it. Interleaving gave 14.2 percent,
-and full isolation with warmup gives **14.6 percent**. Three measurement designs,
-each fixing a real bias, and the figure crossed the bar at the first fix and
-stayed across. None of the corrections was made to move it.
+Across every design this figure has read 16.1, 16.2, 14.2, 14.6 and 16.6
+percent. An earlier version of this section said the corrections had moved it
+decisively below the bar and that it "crossed at the first fix and stayed
+across". The next run of the same design gave 16.6, so that was a claim built on
+two samples of a quantity that varies by more than the distance to the
+threshold.
 
 Two qualifications, neither an excuse. The criterion reads "after the CUDA-graph
 pass" and this engine never received one, since graphs were cut in week 7 to fund
@@ -621,7 +634,7 @@ Promotion is deliberate, one artifact at a time, with
 |---|---|
 | `evidence/verify-0001.json` | claim 1, 55 of 55 relation runs across 5 block sizes |
 | `evidence/fuzz-0004.json` | claim 2, ten operators over 192 cases, 10 of 10 killed |
-| `evidence/throughput-0001.json` | claim 3, interleaved measurements with per-sample GPU state |
+| `evidence/throughput-0004.json` | claim 3, isolated and interleaved, per-sample GPU state and VRAM |
 | `evidence/fidelity-0001.json` | F1, 7 of 7 bounds, exact KL over the full vocabulary |
 | `evidence/certify-0003.json` | the default-mode positive control, 0 of 7 clean |
 | `evidence/case-0003.json` | the eviction finding the fuzzer found, minimized and 1-minimal |
