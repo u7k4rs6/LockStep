@@ -17,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from certify.observable import TOP_LOGPROBS, describe  # noqa: E402
+from certify import subject as subject_env  # noqa: E402
 from certify.run import (  # noqa: E402
     FILLER_WIDTHS, RELATIONS, EngineInfo, certify, concurrency_cap, guard,
 )
@@ -185,6 +186,13 @@ def main() -> int:
             return 1
         print("  ready", flush=True)
 
+        subject = subject_env.capture(args.python, log, f"vLLM ({mode})")
+        print(f"  subject             {subject['engine_version']}, "
+              f"torch {subject['torch_version']}, triton {subject['triton_version']}, "
+              f"cu{subject['cuda_version']}")
+        print("                      read from the server's startup output and its "
+              "own interpreter, not this process")
+
         info = EngineInfo(
             name=f"vLLM ({mode})", model="qwen3",
             block_size=args.block_size,
@@ -237,6 +245,7 @@ def main() -> int:
             "block_size": args.block_size, "block_size_assumed": False,
             "block_size_source": info.discovered_from,
             "observable": describe(), "top_logprobs": TOP_LOGPROBS,
+            "subject_env": subject,
             "repeats": args.repeats, "results": results,
             "clean": clean, "total": len(results),
             "batched_cases": sum(1 for r in results if r.get("batched")),

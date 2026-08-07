@@ -60,6 +60,9 @@ jobs:
       - name: Coverage denominators, artifact schemas, committed repro
         run: uv run python3 scripts/verify_no_gpu.py
 
+      - name: Every artifact reports one environment tuple
+        run: uv run python3 scripts/audit_artifacts.py
+
       - name: Tests that do not need CUDA
         run: uv run python3 -m pytest -m "not gpu" -q
 

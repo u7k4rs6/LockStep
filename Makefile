@@ -22,6 +22,7 @@ check:
 	uv run python3 scripts/static_checks.py
 	uv run python3 scripts/secret_scan.py
 	uv run python3 scripts/verify_no_gpu.py
+	uv run python3 scripts/audit_artifacts.py
 	uv run python3 -m pytest -m "not gpu" -q
 
 claim1:
