@@ -84,7 +84,12 @@ class VacuousRun(AssertionError):
 
 
 def require_fired(counters: Counters, *paths: str, what: str = "this relation") -> None:
-    """Assert the mechanism actually ran. The generalization of the hand checks."""
+    """Assert the mechanism actually ran.
+
+    A relation that passes without firing its own mechanism is a failure, not a
+    pass. Five configurations in this project were green while executing nothing
+    they claimed to test.
+    """
     missing = counters.missing(*paths)
     if missing:
         raise VacuousRun(

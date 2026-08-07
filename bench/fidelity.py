@@ -273,6 +273,10 @@ def main() -> int:
     gap = (cache["top2_logits"][:, 0] - cache["top2_logits"][:, 1]).to(torch.float64)
     err_stats = quantiles(top2_err)
     ordered = top2_err.sort().values
+    # Derived from this run, never hardcoded. A greedy argmax flips when the error
+    # on the top1-minus-top2 difference exceeds the gap between them, so that
+    # difference-error is measured directly and its p99.9 is the threshold. A
+    # constant chosen after seeing the numbers would judge nothing.
     threshold = float(ordered[int(NEAR_TIE_QUANTILE * (ordered.numel() - 1))])
 
     agree = engine_argmax == ref_top1

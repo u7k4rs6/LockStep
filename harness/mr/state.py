@@ -155,6 +155,8 @@ def mr4_cache_cold_vs_warm(model, prompt, kv_tokens, block_size, new_tokens=6) -
 
     hits = sum(1 for c in cases if c["hit_tokens"] > 0)
     require_fired(mr4_counters, "cache_hit", "cache_insert", what="MR4")
+    # Zero hits is a failure, not a pass. At block_size 128 a 96-token prompt once
+    # produced twelve green cells and no cache hit at all.
     if hits == 0:
         passed = False
     return Result(

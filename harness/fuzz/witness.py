@@ -17,6 +17,10 @@ from harness.fuzz.generators import draw_case, draw_config, eviction_cases  # no
 from harness.sim.driver import Case, RequestSpec, run_case  # noqa: E402
 
 
+# Kept separate from the campaign on purpose: a transition reached only by a case
+# built to reach it proves it belongs in the denominator and says nothing about
+# whether the generator explores. Folding the two together would let any coverage
+# number be improved by writing more probes.
 def targeted_cases(vocab: int, seed: int = 4242) -> list[Case]:
     """Cases shaped at the transitions a uniform campaign reaches rarely."""
     rng = random.Random(seed)

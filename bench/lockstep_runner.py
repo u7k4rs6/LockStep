@@ -27,6 +27,11 @@ def main() -> int:
     if not spec["invariant"]:
         qwen3.linear = torch_linear
     try:
+        # Untimed. Each sample is now its own process, so without this the timed
+        # region pays Triton's JIT on first launch and lands it on whichever
+        # samples run before the compile cache is warm. That produced the
+        # impossible reading that invariant mode was faster than the mode it
+        # constrains.
         warmup = Scheduler(model, num_blocks=512, block_size=16, audit=False)
         for index, (prompt, new_tokens) in enumerate(trace):
             warmup.submit(Request(uid=f"w{index:02d}", prompt=list(prompt),

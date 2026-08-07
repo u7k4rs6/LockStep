@@ -85,6 +85,8 @@ def compare(a: Completion, b: Completion) -> Comparison:
     )
 
 
+# No tolerance. A tolerance here would be a decision about how much
+# nondeterminism is acceptable, which is the question being asked.
 def _same(x: float, y: float) -> bool:
     """Exact equality, with NaN handled. No tolerance."""
     if x is None or y is None:

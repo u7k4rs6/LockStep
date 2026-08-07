@@ -339,6 +339,9 @@ class Qwen3:
             q = apply_rope(q.contiguous(), cos, sin)
             k = apply_rope(k.contiguous(), cos, sin)
 
+            # Attention per sequence, not over the packed batch. A fused kernel
+            # would need a batch-max sequence length to size anything shared,
+            # which is the batch-derived quantity I1 forbids.
             attn = torch.empty_like(q)
             for index, (uid, tokens, start) in enumerate(work):
                 lo, hi = offsets[index], offsets[index + 1]

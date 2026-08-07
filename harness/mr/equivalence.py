@@ -94,6 +94,8 @@ def first_kv_divergence(a: list[tuple], b: list[tuple]) -> tuple | None:
     return None
 
 
+# On, one below, and one above each boundary. A random partition reaches a
+# fencepost only by luck, and a fencepost is where the off-by-one lives.
 def boundary_partitions(length: int, block_size: int) -> list[tuple[str, list[int]]]:
     """Partitions landing exactly on, and one either side of, each boundary."""
     cases: list[tuple[str, list[int]]] = []
@@ -147,6 +149,10 @@ def decode_vs_prefill_kv(
     )
 
 
+# The taxonomy's fourth observer. All three others read model.forward while every
+# served request goes through model.forward_batch, and canonical execution runs
+# forward_batch too, so a deterministic defect confined to the served path was
+# invisible to all of them at once.
 def path_equivalence(
     model: Qwen3, prompts: list[list[int]],
     block_size: int = paged.DEFAULT_BLOCK_SIZE,

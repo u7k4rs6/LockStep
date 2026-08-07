@@ -93,6 +93,10 @@ class Scheduler:
 
     def submit(self, request: Request) -> None:
         """Queue a request, refusing one that can never fit."""
+        # Found by the fuzzer: a request larger than the whole pool is not a
+        # pressure condition and no eviction can satisfy it, but it sat in the
+        # queue until the scheduler reported pressure naming blocks it could
+        # never have used.
         needed = self._blocks_needed(request)
         if needed > self.pool.num_blocks:
             raise OversizedRequest(
@@ -124,6 +128,10 @@ class Scheduler:
 
     def _reserve_with_eviction(self, uid: str, tokens: int) -> None:
         """Reserve blocks, evicting cached-but-unused ones under pressure."""
+        # Bounded by the candidate count at entry, not by an argument that the set
+        # shrinks. Each pass evicts one block and none creates a candidate, so
+        # more passes than candidates is a livelock and should say so rather than
+        # hang until a campaign calls it a timeout.
         max_passes = len(self.cache.evictable_blocks(self.pool)) + 1 if self.cache else 1
         passes = 0
         while True:
@@ -289,6 +297,7 @@ class Scheduler:
                 self.counters.hit("prefill_complete")
             row = logits[request.uid][-1]
             position = request.total_tokens() - 1
+            # Kept so a relation can compare decode-phase bits against canonical.
             self.emitted_logits.setdefault(request.uid, []).append(
                 row.detach().cpu().clone()
             )

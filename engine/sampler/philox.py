@@ -47,6 +47,10 @@ def philox_4x32(counter: tuple[int, int, int, int], key: tuple[int, int]) -> tup
     return c0, c1, c2, c3
 
 
+# Keyed on (seed, uid, position) and nothing else. A global step counter here
+# would make a request's draw depend on how many others were resident, which is
+# cross-request coupling that no output comparison catches until two runs happen
+# to differ in batch composition.
 def uniform(seed: int, uid: str, position: int, index: int = 0) -> float:
     """A draw in [0, 1) for (seed, uid, position)."""
     key64 = uid_key(uid)
@@ -77,6 +81,8 @@ def top_p(
         return greedy(logits)
 
     values = (logits.to(torch.float32) / temperature).to(torch.float64).cpu()
+    # The named exception to the torch-reduction gate in scripts/static_checks.py:
+    # CPU, fp64, one row, outside any batched path.
     probs = torch.softmax(values, dim=-1)
 
     order = sorted(range(probs.numel()), key=lambda i: (-float(probs[i]), i))

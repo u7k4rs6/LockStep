@@ -74,6 +74,10 @@ def draw_case(config: SwarmConfig, vocab: int, index: int) -> Case:
     for shape in config.prompt_shapes:
         lengths.extend(PROMPT_SHAPES[shape])
 
+    # Stratified, not uniform. With randint(1, 31) the chance of landing on 31 is
+    # 1 in 31, so the predicate most likely to find something was the one least
+    # likely to be hit. 15 percent keeps it reachable without letting 31-wide
+    # batches dominate the budget.
     if config.max_requests >= 16 and rng.random() < 0.15:
         count = rng.choice((16, 31, 32))
     else:

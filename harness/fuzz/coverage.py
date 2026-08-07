@@ -39,7 +39,14 @@ class Coverage:
 
 
     def observe_transitions(self, events: list[Event]) -> None:
-        """Record which declared (state, event) transitions actually fired."""
+        """Record which declared (state, event) transitions actually fired.
+
+        The n-gram check runs one way only: observed must be legal, so the
+        denominator can only ever be too large. Nothing asserted the converse
+        until this existed, and a transition that never fires produces no
+        evidence of its own absence, so `(ADMITTED, PREEMPT_RC)` sat in the table
+        inflating every published coverage number from its first day.
+        """
         from engine.sched.lifecycle import INITIAL, TRANSITIONS
 
         state = INITIAL

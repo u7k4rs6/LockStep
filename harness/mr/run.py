@@ -42,6 +42,8 @@ NOT_YET = {
            "engine never materializes: sequences are packed, not padded",
 }
 
+# 600 so the 512 split boundary is reachable. Below it every MR2 case at
+# split_size is silently skipped and the table looks complete.
 LONG_PROMPT = 600
 
 KV_TOKENS = 4096

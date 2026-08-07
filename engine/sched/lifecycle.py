@@ -19,6 +19,10 @@ class State(str, Enum):
     DONE = "done"
 
 
+# The one declaration. Reachable states and feasible n-grams for any n fall out
+# by search, so a hand-written feasible set cannot reach 100 percent by having
+# omitted the hard transitions. Checked both ways: observed must be legal, and
+# every entry here must have been taken by a real run or moved below.
 TRANSITIONS: dict[tuple[State, Event], State] = {
     (State.WAITING, Event.ADMIT): State.ADMITTED,
     (State.ADMITTED, Event.EVICT): State.ADMITTED,

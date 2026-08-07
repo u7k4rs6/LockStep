@@ -8,6 +8,7 @@ import triton.language as tl
 
 from engine.kernels import registry
 
+# Not -inf. An all-empty fold would produce exp(nan) and poison the combine.
 NEG_SENTINEL = tl.constexpr(-1e30)
 
 
@@ -190,7 +191,11 @@ def _attn_combine_kernel(
 
 
 def _num_splits(kv_len: int) -> int:
-    """ceil(kv_len / SPLIT_SIZE), from this request's own KV length alone."""
+    """ceil(kv_len / SPLIT_SIZE), from this request's own KV length alone.
+
+    Never from a batch-max or a device occupancy target. This is the function
+    that would silently break I2 if it grew a second argument.
+    """
     return triton.cdiv(kv_len, registry.SPLIT_SIZE)
 
 

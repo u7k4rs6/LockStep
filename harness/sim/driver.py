@@ -94,6 +94,9 @@ class Case:
         )
 
 
+# The seam doing its job: the fuzzer supplies every decision and the engine
+# supplies none, so replaying the Case replays the schedule exactly. That is what
+# makes ddmin exact rather than a search that sometimes reproduces.
 class ScriptedPolicy(DefaultPolicy):
     """Drives every decision point from the Case. No heuristic anywhere."""
 

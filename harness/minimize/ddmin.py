@@ -153,6 +153,8 @@ def _verify(case: Case, fails, before: dict, checks: int) -> "Minimization":
     """Check the two things a minimization claim rests on."""
     reproduces = fails(case)
 
+    # Every single-element removal is attempted and must fail. Without this the
+    # three passes leave removable elements behind, which the check caught.
     one_minimal = True
     failed_removals: list[str] = []
     for label, field, values in (

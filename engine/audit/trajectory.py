@@ -25,6 +25,9 @@ class TrajectoryHash:
         self._digest.update(len(payload).to_bytes(8, "big"))
         self._digest.update(payload)
 
+    # Covers the work list, emitted tokens, raw fp16 logit bytes, the allocator
+    # ledger and the cache index. Output bits alone leave allocator faults
+    # invisible, which is most of the mutation operator list.
     def observe_step(
         self,
         step: int,

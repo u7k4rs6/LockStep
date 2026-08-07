@@ -25,12 +25,19 @@ from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 RUNS = 5
 
+# Interleaving put this benchmark's own allocation in front of external samples.
+# Measured: with empty_cache a following vLLM sample ran about twice as slow;
+# without it vLLM failed to launch at all. Hence a floor, and every measurement
+# in its own process.
 MIN_FREE_VRAM_MIB = 5000
 
 
 def committed_trace(vocab: int, seed: int = 20260805) -> list[tuple[list[int], int]]:
     """The one workload every configuration runs. Committed, not generated live."""
     generator = torch.Generator().manual_seed(seed)
+    # Four of eight cross the 512 split. The earlier trace topped out at 192
+    # prompt tokens, so the benchmark for a project about split-combine
+    # invariance never executed the fold.
     lengths = [64, 544, 96, 600, 80, 520, 112, 700]
     return [
         (torch.randint(0, vocab, (length,), generator=generator).tolist(), 32)
@@ -121,6 +128,10 @@ def main() -> int:
     print("  ratios only; absolute tokens per second is not a claim this project makes")
     print()
 
+    # Interleaved, not blocked. Blocking maps any drift across the run straight
+    # onto the A-versus-B ratio: two runs of identical code once disagreed by
+    # 1.75x on every eager configuration while every graphed one held, which was
+    # enough to publish and then retract a claim about CUDA graphs.
     units: list[tuple[str, object]] = []
     for label, invariant in (("lockstep, fast mode", False),
                              ("lockstep, invariant", True)):

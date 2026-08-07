@@ -80,6 +80,8 @@ class PrefixCache:
             self.counters.hit("cache_insert", created)
         return created
 
+    # Only blocks whose sole remaining holder is the cache index. Including one a
+    # running sequence holds is mutation operator 10.1 exactly.
     def evictable_blocks(self, pool) -> list[int]:
         """Indexed blocks that no live sequence is using."""
         return sorted(

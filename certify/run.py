@@ -203,6 +203,9 @@ def complete(base_url: str, model: str, tokens: list[int], max_tokens: int) -> C
     ], alternatives=alternatives)
 
 
+# Generated against the engine's own block size, discovered rather than assumed.
+# SGLang's known corruption is at prefix_len == block_size with theirs at 64;
+# probing it with this project's 16 would run the campaign and test nothing.
 def boundary_workloads(block_size: int, vocab: int = 100000, seed: int = 424242):
     """The cases that matter, generated against *their* block size."""
     import random
@@ -280,6 +283,8 @@ def reset_prefix_cache(base_url: str) -> bool:
         return False
 
 
+# Varying the cohabitants across repeats is MR1 through a black box: the target
+# requests are fixed, only who shares their batch changes.
 FILLER_WIDTHS = (0, 5, 13)
 
 FIXED_FILLER_WIDTH = 13
@@ -410,6 +415,10 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
         gauge_seen = any(w["gauge_samples"] for w in witnesses)
         batched = observed_batch > 1
         cold_ok = cache_mode != "cold" or cold_enforced
+    # A cold cell whose reset never took is not a cold cell, and a case that never
+        # cohabited cannot certify batch invariance. Both score vacuous rather than
+        # clean: the first version of this certifier submitted sequentially and
+        # reported 7 of 7 on cases that never formed a batch.
         configured = cold_ok and (batched or sequential)
         results.append({
             "case": case["name"],

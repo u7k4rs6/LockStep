@@ -9,6 +9,8 @@ import triton.language as tl
 from engine.kernels import registry
 
 
+# One CTA per row: the whole reduction happens inside a single program, so there
+# is no cross-program combine whose order could depend on occupancy.
 @triton.jit
 def _rmsnorm_kernel(
     X,

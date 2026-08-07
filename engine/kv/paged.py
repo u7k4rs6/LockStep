@@ -160,7 +160,14 @@ class PagedKVCache:
         sequence.length = 0
 
     def assert_exclusive(self, uid: str, block: int) -> None:
-        """The invariant that makes copy-on-write unnecessary here."""
+        """The invariant that makes copy-on-write unnecessary here.
+
+        Prefix sharing is whole-block only, so a granted hit covers an exact
+        multiple of the block size and a sequence's first write always lands in a
+        block it reserved itself. That holds only because there is no fork API.
+        Adding parallel sampling or beam search brings copy-on-write back, and
+        this assertion is what will fail first if someone does.
+        """
         holders = sum(
             1 for sequence in self.sequences.values()
             if sequence.uid != uid and block in sequence.block_ids

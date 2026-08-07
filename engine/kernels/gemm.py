@@ -42,6 +42,10 @@ def _gemm_kernel(
 
     acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
 
+    # Ascending, fixed BLOCK_K, trip count from a weight-shape constant. One
+    # program owns one output tile and walks all of K, so nothing accumulates
+    # across programs and there is no combine order to get wrong. M changes the
+    # grid, never the blocking.
     for k0 in range(0, tl.cdiv(K, BLOCK_K)):
         k_remaining = K - k0 * BLOCK_K
         a = tl.load(

@@ -62,6 +62,9 @@ class DirtyTree(SystemExit):
     """A claim was about to be produced from an uncommitted working tree."""
 
 
+# Three separate re-runs launched to replace dirty artifacts produced dirty
+# artifacts, each noticed afterwards by reading the file. The rule was in the docs
+# from week 1 and enforced by remembering it.
 def require_clean_tree(allow_dirty: bool = False) -> dict:
     """Refuse to produce a claim artifact from a tree that is not committed."""
     import subprocess

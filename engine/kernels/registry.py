@@ -38,6 +38,10 @@ def _cfg(why: str, num_warps: int, num_stages: int, **constants: int) -> Config:
     )
 
 
+# Fixed split *size*, never a fixed split count. A count derived from kv_len would
+# make the fold depth a function of how much KV a request happens to hold, and
+# two schedules that reach the same position by different routes would then fold
+# a different number of partials.
 HEAD_DIM = 128
 HIDDEN_SIZE = 1024
 
@@ -142,7 +146,12 @@ REGISTRY = MappingProxyType(_REGISTRY)
 
 
 def get(name: str) -> Config:
-    """Look up a pinned config by name."""
+    """Look up a pinned config by name.
+
+    Takes a name and nothing else. Adding a shape parameter here is the single
+    edit that would let a batch-derived quantity reach a kernel config, which is
+    what I1 forbids, so the absence of that parameter is the enforcement.
+    """
     try:
         return REGISTRY[name]
     except KeyError:

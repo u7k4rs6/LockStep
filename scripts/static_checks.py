@@ -45,6 +45,7 @@ CHECKS: list[tuple[str, re.Pattern[str], str]] = [
 
 SELF = Path(__file__).resolve()
 
+# Named, not pattern-matched, so adding a second exception is a visible edit.
 EXCEPTIONS = {"torch reductions in the engine": {"engine/sampler/philox.py"}}
 
 

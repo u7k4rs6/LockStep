@@ -16,6 +16,10 @@ from engine.kv import paged  # noqa: E402
 
 BASELINE = Path(__file__).parent / "golden.json"
 
+# Two prompts cross the 512 split boundary and two do not, so a fold fault has
+# something to perturb and the single-split path is covered. Under the reversed
+# fold the 600 and 520 digests move and the 48 and 17 do not, which is the
+# observer seeing the mechanism rather than noise.
 CORPUS_LENGTHS = (600, 520, 48, 17)
 CORPUS_SEED = 90210
 
@@ -30,6 +34,9 @@ def corpus(vocab: int) -> list[list[int]]:
 
 def logit_digest(model, prompt: list[int]) -> str:
     """sha256 over the raw fp16 logit bytes for every position in the prompt."""
+    # Through forward_batch, the path the scheduler serves from. The baseline
+    # previously observed forward, the batch-1 path, so a defect confined to the
+    # served implementation would have left the committed digests untouched.
     pool = paged.PagedKVCache(
         num_blocks=-(-len(prompt) // paged.DEFAULT_BLOCK_SIZE) + 2,
         num_layers=model.cfg.num_hidden_layers,

@@ -104,6 +104,9 @@ def case_fails(model, case: Case) -> str | None:
         if expected is not None and observed is not None and expected != observed:
             return f"{spec.uid} diverged from canonical: {observed} != {expected}"
 
+        # Token equality masks a sub-tie perturbation until it lands near a tie,
+        # far from its cause. This oracle compared token ids only, while I1's
+        # claims-table cell said bitwise on fp16 logit bytes.
         want = canonical.emitted_logits.get(spec.uid) or []
         got = outcome.emitted_logits.get(spec.uid) or []
         for index, (a, b) in enumerate(zip(want, got)):

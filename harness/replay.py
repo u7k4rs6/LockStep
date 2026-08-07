@@ -48,6 +48,7 @@ def classify(recorded: str, observed: str, same_engine: bool, same_env: bool,
     if recorded_class == observed_class:
         return True, f"raised {observed_class or 'nothing'} again, as recorded"
 
+    # A named commit outranks inferring from whether two revision strings differ.
     if provenance and provenance.get("fixed_by"):
         return True, (
             f"recorded {recorded_class or 'no error'}, observed "

@@ -138,13 +138,23 @@ def chunk_boundary_off_by_one():
 
 @contextlib.contextmanager
 def recompute_off_by_one_token_count():
-    """Architecture doc 10.1: "recompute re-prefills with an off-by-one token count"."""
+    """Architecture doc 10.1: "recompute re-prefills with an off-by-one token count".
+
+    Injected after `_admit` on the resume path, which is the only place the value
+    survives. An earlier version set `kv_len` after `_preempt`, where `_admit`
+    resets it to 0 before any read: a dead store. It was published for weeks as a
+    proven-equivalent mutant with an argument describing a mechanism the code did
+    not contain, and its sentinel fired the whole time, because the patch ran even
+    though the fault never reached engine state. Patch-executed is not
+    fault-injected.
+    """
     from engine.sched import scheduler as sched
 
     original = sched.Scheduler._admit
 
     def mutant(self, request, state):
         original(self, request, state)
+        # Resume path only: a fresh admission is not a recompute.
         if request.preempt_count:
             trip("recompute_off_by_one_token_count")
             request.kv_len += 1
@@ -173,7 +183,16 @@ def rng_keyed_on_global_step():
 
 @contextlib.contextmanager
 def split_combine_reduction_reversed():
-    """Architecture doc 10.1: "reduction order reversed in the split-combine CTA"."""
+    """Architecture doc 10.1: "reduction order reversed in the split-combine CTA".
+
+    The real kernel with one loop bound reversed, not a proxy. An earlier version
+    scaled the output whenever the split count was at least two, and the campaign
+    killed it by bitwise divergence for the wrong reason: that firing condition
+    varies with the schedule, so chunked and unchunked prefill hit it on different
+    calls and the relations saw a difference no reversed fold would produce. A
+    mutant killed for the wrong reason inflates a score exactly as badly as one
+    that never ran.
+    """
     from engine.kernels import attention as attn
 
     original_launch = attn._attn_combine_kernel
