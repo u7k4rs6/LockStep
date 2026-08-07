@@ -16,6 +16,27 @@ The engine is a fixture. **The harness is the product.** Batch-invariant kernels
 are already shipped upstream by Thinking Machines, vLLM, and SGLang, so nothing
 here claims novelty on kernels. What is unbuilt is the verification layer.
 
+**The visual summary is `results/report.html`**, a single self-contained 84 KB
+file with no network dependencies: the invariance strip with one tick per
+relation run, the mutation table, the coverage denominators, the certification
+result, and the throughput comparison. Build it with `python3 -m report.html` and
+open it directly; it reads only committed artifacts from `evidence/`.
+
+### Contents
+
+| | |
+|---|---|
+| [Claims](#claims) | I1 to I4, F1, and where each is substantiated |
+| [Three observers](#three-observers-and-what-each-one-cannot-see) | why there are four, and the blind spot they shared |
+| [The three numbers](#the-three-numbers) | invariance, harness power, cost of determinism |
+| [Coverage](#coverage-with-the-denominator-it-is-actually-against) | against the corrected 25 and 79 denominators |
+| [What this does not claim](#what-this-does-not-claim) | the limits, stated before a reader finds them |
+| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | thirteen times this project failed its own test |
+| [Certification: vLLM](#certification-vllm-and-one-filed-finding) | one finding, filed upstream |
+| [Evidence and replay](#evidence-and-replaying-it) | every number's artifact, and how to re-run it |
+| [Prior art](#prior-art) | and what is actually different here |
+| [Install](#install) | |
+
 ---
 
 ## Claims
@@ -25,17 +46,22 @@ result artifact. A claim without one is invalid by construction.
 
 | ID | Statement | How verified | Status | Scope |
 |---|---|---|---|---|
-| **I1** | Batch invariance. For any set of cohabitant requests, `r`'s output is bit-identical to canonical execution `C(r)` | MR1 and MR5, bitwise on fp16 logit bytes, batch sizes {1, 2, 3, 4, 8, 16, 31, 32} | holds | sm_89, block sizes 8 to 128 |
-| **I2** | Schedule invariance. For any valid schedule, including preemption at any decode step, any chunk partition, eviction under pressure, and cache hit versus miss | MR2, MR3, MR4, plus decode-versus-prefill KV equality checked per layer at the tensor level | holds | as above |
-| **I3** | Replay determinism. Identical `(W, sigma, seeds)` twice yields an identical trajectory hash over all engine state | MR6, 8 workload shapes, and a cross-process replay under differing `PYTHONHASHSEED` | holds | as above |
-| **I4** | RNG isolation. `r`'s tokens are a function only of `(seed, uid, position)` and `r`'s logits | MR7, 11 perturbations: each request removed in turn, one added, order reversed, each re-run alone | holds | as above |
-| **F1** | Fidelity. Batch-1 logits against an fp64 CPU reference, within the bounds in `docs/02-technical-architecture.md` 7.1 | `bench/fidelity.py`, exact KL over the full 151936-token vocabulary at 2756 positions | passes 7 of 7 bounds | corpus `sha256:59759d5b…` |
+| **[I1](#three-observers-and-what-each-one-cannot-see)** | Batch invariance. For any set of cohabitant requests, `r`'s output is bit-identical to canonical execution `C(r)` | MR1 and MR5, bitwise on fp16 logit bytes, batch sizes {1, 2, 3, 4, 8, 16, 31, 32} | holds | sm_89, block sizes 8 to 128 |
+| **[I2](#coverage-with-the-denominator-it-is-actually-against)** | Schedule invariance. For any valid schedule, including preemption at any decode step, any chunk partition, eviction under pressure, and cache hit versus miss | MR2, MR3, MR4, plus decode-versus-prefill KV equality checked per layer at the tensor level | holds | as above |
+| **[I3](#evidence-and-replaying-it)** | Replay determinism. Identical `(W, sigma, seeds)` twice yields an identical trajectory hash over all engine state | MR6, 8 workload shapes, and a cross-process replay under differing `PYTHONHASHSEED` | holds | as above |
+| **[I4](#three-observers-and-what-each-one-cannot-see)** | RNG isolation. `r`'s tokens are a function only of `(seed, uid, position)` and `r`'s logits | MR7, 11 perturbations: each request removed in turn, one added, order reversed, each re-run alone | holds | as above |
+| **[F1](#three-observers-and-what-each-one-cannot-see)** | Fidelity. Batch-1 logits against an fp64 CPU reference, within the bounds in `docs/02-technical-architecture.md` 7.1 | `bench/fidelity.py`, exact KL over the full 151936-token vocabulary at 2756 positions | passes 7 of 7 bounds | corpus `sha256:59759d5b…` |
 
 The trajectory hash covers emitted tokens, raw fp16 logit bytes, the packed work
 list, the allocator ledger, and the prefix cache index. Output bits alone would
 leave allocator faults invisible.
 
 ## Three observers, and what each one cannot see
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/observers-dark.svg">
+  <img alt="Four observers. I1 to I4, F1 and golden bytes all read model.forward, the batch-1 path. The scheduler serves every request through model.forward_batch. PATH-EQ asserts the two agree bitwise at every position." src="docs/img/observers-light.svg" width="700">
+</picture>
 
 The relations above are not one detector with one blind spot. They are three,
 and the reason there are three is that a mutation testing run found a fault the
@@ -47,6 +73,9 @@ first two both missed.
 | **F1** | the engine | an fp64 CPU reference | max abs logit error 0.5 | anything inside the tolerance |
 | **golden bytes** | the engine | a committed baseline digest | none, bitwise | any change made before the baseline was written |
 | **path equivalence** | the observed implementation | the served one | none, bitwise | anything both implementations get wrong identically |
+
+<details>
+<summary>Three observers with distinct blind spots still shared one, because all three read a file the engine does not serve from</summary>
 
 The fourth row was missing for most of this project, and its absence was not a
 gap in coverage so much as a gap in the taxonomy's own logic. All three original
@@ -143,6 +172,8 @@ not a correctness detector, and the baseline's authority comes entirely from the
 `env.lock` committed beside it. Regenerating it on different hardware is not a
 repair, it is a new claim.
 
+</details>
+
 ## The three numbers
 
 | # | Claim | Value | Reproduce |
@@ -179,6 +210,9 @@ five samples, not the two populations that flag was added to catch, so the
 threshold is tight for n=5 rather than the measurement being unsound. The flag
 did its job earlier, on a row whose samples really were bimodal.
 
+<details>
+<summary>This number took four benchmark designs, and three of them were biased. Each fix was correct and each introduced the next bias</summary>
+
 ### This number took four benchmark designs, and three of them were biased
 
 Worth reading before trusting any figure above, because each design was a correct
@@ -212,6 +246,11 @@ ratio is 1.10x, the right side of 1.0, and every spread is at or below 1.24x.
 The third design's impossible number is why this is legible at all. A bias that
 produces a plausible figure is one you publish; a bias that produces `invariant
 faster than fast` is one you cannot.
+
+</details>
+
+<details>
+<summary>The PRD set a 15 percent kill criterion in week one. The graphed comparison is below it; the like-for-like figure cannot be resolved against it at this sample count</summary>
 
 ### The kill criterion was crossed, on both comparisons
 
@@ -305,6 +344,8 @@ behaviour on a laptop GPU, not a change in detection power. Time to detection is
 reported because the architecture doc asks for it, and it should be read as an
 order of magnitude rather than a measurement.
 
+</details>
+
 ## Coverage, with the denominator it is actually against
 
 The denominators are **25 two-grams and 79 three-grams**, not the 27 and 84 this
@@ -316,6 +357,9 @@ on 3-grams at the same observed counts: the old figures understated exploration.
 That is worth saying plainly precisely because it flatters the project, and a
 reader who remembers the old numbers should find the reason here rather than
 having to reconstruct it.
+
+<details>
+<summary>Why the eviction campaign counts as exploration and the transition probes do not, decided on evidence after the obvious argument turned out to be false</summary>
 
 Coverage is reported by population, because a case built to reach a transition
 proves the transition belongs in the denominator and says nothing about whether
@@ -370,6 +414,8 @@ Transitions, same discipline:
 Only `(PREFILLING, PREEMPT_RC)` needs the probe, and it is rare rather than dead:
 it requires a resumed request re-prefilling in chunks while already holding
 generated tokens. Boundary predicates reach 17 of 20.
+
+</details>
 
 ## What this does not claim
 
@@ -444,6 +490,12 @@ each escaped is worth more than the fix:
 | 1 | A fidelity corpus exercising the fixed-split attention kernel | No prompt exceeded 512 tokens, so the split-combine fold never executed in any fidelity number |
 | 2 | A VRAM table across five chunk sizes | Prompts were shorter than the largest chunk, so that row was byte-identical to unchunked and chunked nothing |
 | 3 | Eviction under memory pressure, tested | Admission counted only free blocks, so a request serviceable by evicting was refused and the eviction path was unreachable |
+
+<details>
+<summary>Ten more, including the four an outside audit found and the one that came from an anomaly neither the project nor the audit predicted</summary>
+
+| # | Declared | Actually |
+|---|---|---|
 | 4 | A copy-on-write boundary case passing | Nothing in the engine called `fork`; the test exercised dead code |
 | 5 | A coverage denominator derived from the lifecycle | The transition table was wrong four times, in both directions, inflating and deflating the denominator |
 | 6 | A mutation trial gated on the mutated path executing | The gate passed and the patch never ran; the fault rebound a name in the module that defined it while the caller held its own import, and the trial was scored as a survivor |
@@ -455,6 +507,8 @@ each escaped is worth more than the fix:
 | 12 | One edit applied to two files | It matched in one and silently no-op'd in the other, so an artifact shipped without the fields that prove its own batch witness fired. Caught by reading the artifact back, not by the edit reporting success |
 | 13 | An observable comparing repeated runs for identical output | Every comparison was repeat 0 against a later repeat, so "the engine is nondeterministic" and "the first batch differs and everything after it agrees" were indistinguishable. Structurally the same error as comparing a mutant only against canonical, in the file written to certify determinism |
 | 12b | A coverage denominator checked against reality | The check ran in one direction only. Observed transitions had to be legal, so the denominator could only be too large; nothing required a declared transition to be reachable. `(ADMITTED, PREEMPT_RC)` was not, and inflated every published coverage number, because a transition that never fires produces no evidence of its own absence. **Named by the audit, then independently reconfirmed by the witness check built in response to it** |
+
+</details>
 
 The thirteenth is the one worth reading last, because it was invisible to
 everyone. `certify/run.py` compared repeat 0 against each later repeat and never
@@ -508,6 +562,9 @@ actually executes.
 
 ## Prior art
 
+<details>
+<summary>Thinking Machines, vLLM, SGLang, GRIEF, LLM-42 and MarginGate, each checked against its source rather than cited from memory</summary>
+
 - [Thinking Machines, *Defeating Nondeterminism in LLM Inference*](https://thinkingmachines.ai/blog/defeating-nondeterminism-in-llm-inference/) and [`batch_invariant_ops`](https://github.com/thinking-machines-lab/batch_invariant_ops), for the diagnosis this project takes as given.
 - [vLLM batch invariance](https://docs.vllm.ai/en/latest/features/batch_invariance/), enabled by `VLLM_BATCH_INVARIANT=1`, beta as of July 2026, tracking issue [#27433](https://github.com/vllm-project/vllm/issues/27433). Its attention operators do not support `FULL` or `FULL_DECODE_ONLY` cudagraph modes but do support `PIECEWISE`, which is why the throughput table below measures it both eager and graphed rather than only eager.
 - [SGLang deterministic inference](https://docs.sglang.ai/advanced_features/deterministic_inference.html) and issue [#22819](https://github.com/sgl-project/sglang/issues/22819), KV cache corruption at a radix cache block boundary under `--enable-deterministic-inference`, where the request whose `prefix_len` equals the 64-token block size is corrupted while `prefix_len == 0` requests in the same concurrent batch are not. Reproduced upstream with 11 requests across two burst waves. Both halves of that shape, the boundary predicate and the concurrent burst, are first-class here.
@@ -515,6 +572,8 @@ actually executes.
 - [LLM-42](https://arxiv.org/abs/2601.17768) (arXiv 2601.17768), the argument that batch invariance is over-constrained: fixing the reduction strategy for every token regardless of batch geometry strips kernels of the parallelism they exist to exploit, and most kernels are not batch-invariant to begin with, so it demands new implementations. Their answer is a nondeterministic fast path with a verify-rollback loop. This project does not rebut that; it concedes it and measures the price, which is what the throughput table is.
 - [MarginGate](https://arxiv.org/abs/2605.30218) (arXiv 2605.30218), sparse margin-triggered verification for batch-invariant inference. Adjacent to F1's near-tie threshold: both key on the top-1-to-top-2 margin as the quantity that decides whether a floating-point perturbation can become an observable token difference.
 - Groce et al., *Swarm Testing* (ISSTA 2012). Zeller and Hildebrandt, ddmin (IEEE TSE 2002). Just et al., *Are Mutants a Valid Substitute for Real Faults?* (FSE 2014).
+
+</details>
 
 ## Install
 
@@ -555,6 +614,9 @@ It now submits concurrently, measures co-residency from the engine's own
 `vllm:num_requests_running` gauge rather than assuming it, refuses to score a
 case whose witness never exceeded one running request, and compares **every pair**
 of repeats rather than repeat 0 against the rest.
+
+<details>
+<summary>What vLLM guarantees in its own words, the full finding, what was retracted, and what could not be determined from outside the engine</summary>
 
 ### What vLLM guarantees
 
@@ -626,7 +688,12 @@ the investigation and two were wrong.
 **Only the `--max-num-seqs` comparison is a controlled single-variable result.**
 Everything else in this section is observational.
 
+</details>
+
 ## Evidence, and replaying it
+
+<details>
+<summary>Every published number's artifact, and why one is pinned to the commit that fixed it rather than re-run</summary>
 
 `evidence/` is committed and holds the artifacts the claims above actually cite,
 each with its `env.lock`. `results/` stays gitignored: it is bulk campaign output,
@@ -694,3 +761,5 @@ change a reader can apply.
 
 Artifacts written since carry `engine_revision`, so newer findings pin themselves
 and need none of this.
+</details>
+
