@@ -44,6 +44,12 @@ from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 RUNS = 5
 
+# Below this, a measurement is contaminated rather than merely tight. The idle
+# device on this machine reports about 7300 MiB free; a lockstep process holding
+# its model and KV pool leaves far less, and an external engine asking for 0.55
+# of what remains then measures a different thing or fails outright.
+MIN_FREE_VRAM_MIB = 5000
+
 
 def committed_trace(vocab: int, seed: int = 20260805) -> list[tuple[list[int], int]]:
     """The one workload every configuration runs. Committed, not generated live.
@@ -67,35 +73,29 @@ def committed_trace(vocab: int, seed: int = 20260805) -> list[tuple[list[int], i
     ]
 
 
-def time_lockstep(model, trace, invariant: bool) -> float:
-    """Seconds for the whole trace. `invariant=False` is the fast path.
+def time_lockstep(python: Path, trace, invariant: bool) -> float | None:
+    """Seconds for the whole trace, in a fresh process. `invariant=False` is fast.
 
-    The fast path differs from the invariant path in exactly one way: it lets
-    torch pick the GEMM, which is what every non-invariant engine does and what
-    the ablation showed turns I1 red. Everything else, including the attention
-    kernel and the scheduler, is identical, so the ratio isolates the cost of the
-    constraint rather than the cost of two different engines.
+    Out of process, like the external engines, and for the same reason. Holding
+    the model in the parent meant every interleaved external measurement started
+    behind our allocation: about 2x slower with `empty_cache()`, and a total
+    failure to launch without it. The fast path differs in exactly one way, by
+    letting torch pick the GEMM; attention and the scheduler are identical, so
+    the ratio isolates the GEMM constraint rather than two different engines.
     """
-    from engine.model import qwen3
-    from harness.mr.ablation import torch_linear
-
-    original = qwen3.linear
-    if not invariant:
-        qwen3.linear = torch_linear
+    script = REPO_ROOT / "bench" / "lockstep_runner.py"
+    payload = json.dumps({
+        "invariant": invariant,
+        "weights": str(WEIGHTS),
+        "trace": [[list(p), n] for p, n in trace],
+    })
     try:
-        torch.cuda.synchronize()
-        started = time.perf_counter()
-        scheduler = Scheduler(model, num_blocks=512, block_size=16, audit=False)
-        for index, (prompt, new_tokens) in enumerate(trace):
-            scheduler.submit(
-                Request(uid=f"r{index:02d}", prompt=list(prompt),
-                        seed=index, max_new_tokens=new_tokens, temperature=0.0)
-            )
-        scheduler.run()
-        torch.cuda.synchronize()
-        return time.perf_counter() - started
-    finally:
-        qwen3.linear = original
+        out = subprocess.run([str(python), str(script), payload],
+                             capture_output=True, text=True, timeout=1800, check=True)
+        return float(json.loads(out.stdout.strip().splitlines()[-1])["seconds"])
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+            ValueError, KeyError, json.JSONDecodeError):
+        return None
 
 
 def time_external(python: Path, engine: str, deterministic: bool, trace,
@@ -134,13 +134,20 @@ def gpu_state() -> dict:
     try:
         out = subprocess.run(
             ["nvidia-smi",
-             "--query-gpu=clocks.sm,temperature.gpu,power.draw,utilization.gpu",
+             "--query-gpu=clocks.sm,temperature.gpu,power.draw,utilization.gpu,"
+             "memory.free,memory.used",
              "--format=csv,noheader,nounits"],
             capture_output=True, text=True, timeout=10,
         )
-        sm, temp, power, util = (x.strip() for x in out.stdout.strip().split(","))
+        sm, temp, power, util, free, used = (
+            x.strip() for x in out.stdout.strip().split(","))
+        # Free VRAM per sample. Its absence is what left a 2.20x spread ambiguous
+        # between warmup and this process's own residual allocation: interleaving
+        # scatters in-process lockstep measurements through the run, so a vLLM
+        # sample can start behind several GB held by our torch context.
         return {"sm_mhz": int(float(sm)), "temp_c": int(float(temp)),
-                "power_w": float(power), "util_pct": int(float(util))}
+                "power_w": float(power), "util_pct": int(float(util)),
+                "vram_free_mib": int(float(free)), "vram_used_mib": int(float(used))}
     except (OSError, ValueError, subprocess.SubprocessError):
         return {}
 
@@ -156,8 +163,11 @@ def main() -> int:
     args = parser.parse_args()
     provenance = require_clean_tree(args.allow_dirty)
 
-    model = Qwen3(WEIGHTS, max_len=1024)
-    trace = committed_trace(model.cfg.vocab_size)
+    # Vocabulary only. Instantiating the model here would put roughly 1.7 GB on
+    # the device for the whole benchmark and contaminate every external sample,
+    # which is the bias this file was rewritten to remove.
+    vocab = json.loads((WEIGHTS / "config.json").read_text())["vocab_size"]
+    trace = committed_trace(vocab)
     total_tokens = sum(len(p) + n for p, n in trace)
 
     print("cost of determinism")
@@ -204,9 +214,16 @@ def main() -> int:
     print(f"  {len(units)} measurements, interleaved and shuffled", flush=True)
     for index, (label, spec) in enumerate(units, start=1):
         before = gpu_state()
+        free = before.get("vram_free_mib")
+        if free is not None and free < MIN_FREE_VRAM_MIB:
+            raise SystemExit(
+                f"refusing to measure with only {free} MiB free. A sample taken "
+                "behind a residual allocation is not comparable to one taken "
+                "without, and that contamination is what this benchmark was "
+                "rewritten to remove. Free the device and rerun."
+            )
         if spec[0] == "lockstep":
-            seconds = time_lockstep(model, trace, spec[1])
-            torch.cuda.empty_cache()
+            seconds = time_lockstep(sys.executable, trace, spec[1])
         else:
             seconds = time_external(args.external_python, spec[1], spec[2],
                                     trace, spec[3])

@@ -149,103 +149,91 @@ repair, it is a new claim.
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | **65 of 65** relation runs bitwise identical across 5 block sizes, 13 relations including path equivalence and EOS finishing | `python3 -m harness.mr.run` |
 | 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 10.6 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
-| 3 | Cost of determinism | lockstep invariant is **5.3x** vLLM batch-invariant eager, from interleaved measurements with 1.07x sample spread; **1.11x** against its own fast path | `python3 -m bench.throughput` |
+| 3 | Cost of determinism | lockstep invariant is **5.7x** vLLM batch-invariant eager; **1.10x** against its own fast path. Every measurement in its own process, interleaved, all sample spreads at or under 1.24x | `python3 -m bench.throughput` |
 
-Claim 3, in full, on a committed 8-request 2972-token trace, median of 5. Four of
-the eight prompts cross the 512-token attention split boundary, so the
-split-combine fold executes during the measurement. The previous version of this
-trace topped out at 192 prompt tokens against a 512-token model length, meaning
-the benchmark for a project about split-combine invariance never ran the fold at
-all; that is why this number moved.
+Claim 3, on a committed 8-request 2972-token trace, four of eight prompts
+crossing the 512-token attention split. Median of 5, every measurement in its own
+process, interleaved under a committed shuffle seed:
 
-| configuration | wall time vs lockstep fast |
-|---|---|
-| lockstep, fast mode | 1.00x |
-| lockstep, invariant | 1.05x |
-| vLLM default, eager | 0.17x |
-| vLLM `VLLM_BATCH_INVARIANT=1`, eager | 0.22x |
-| vLLM default, CUDA graphs | 0.14x |
-| vLLM `VLLM_BATCH_INVARIANT=1`, CUDA graphs | 0.22x |
-| SGLang deterministic | not measured |
-
-**Absolute standing**: lockstep invariant is **4.7x the wall time of vLLM
-batch-invariant in eager mode, and 4.8x with CUDA graphs enabled**. That is the
-number a reader should use. The previous README reported 3.3x on the shorter
-trace against an eager-only comparator.
-
-Both comparator configurations are published because the earlier benchmark
-hardcoded `enforce_eager=True` for vLLM, which handicapped it by exactly the
-feature this engine lacks.
-
-**A claim published here was refuted by re-measuring it, and this is the
-retraction.** An earlier run had CUDA graphs moving vLLM's batch-invariant mode
-from 0.587s to 0.579s, which is nothing, and that was written up as a result
-about the cost structure of determinism. It was an artifact of the benchmark
-design. Measured properly, graphs move that mode from 0.923s to 0.571s, a **38
-percent gain**. The claim is withdrawn.
-
-The cause was blocking. The benchmark ran all samples of one configuration, then
-all of the next, so any drift across the run mapped straight onto the ratio
-between them. Two runs of identical code disagreed by 1.75x on every eager
-configuration while every graphed one held, which is what a launch-overhead-bound
-measurement does on a laptop under sustained load.
-
-`bench/throughput.py` now builds every measurement as an independent unit,
-shuffles them under a committed seed, and takes the per-configuration median, so
-drift hits both arms of a comparison roughly equally. It records `nvidia-smi`
-clock, temperature and power per sample, and flags any configuration whose
-sample spread exceeds 1.25x. The effect is visible: **sample spreads fell to 1.04x
-to 1.18x**, against the 1.75x that had separated two blocked runs.
-
-**Interleaving changed the answer, and not in this project's favour.** The
-blocked runs put lockstep at 16.1 and 16.2 percent of vLLM default eager.
-Interleaved, it is **14.2 percent**, so the kill criterion is crossed on the
-like-for-like comparison too, not only against a graphed comparator. The blocked
-design had been flattering this engine.
-
-**One configuration is genuinely unstable, and the flag caught it.** vLLM
-batch-invariant with CUDA graphs has a 2.20x sample spread, and the five samples
-are `0.565, 0.569, 0.571, 0.975, 1.242`: bimodal, three fast and two slow with
-nothing between. That is a property of the configuration rather than measurement
-noise, and the median reports 0.571s while hiding it. Any figure derived from
-that row, including the 8.57x cross-mode ratio, should be read as provisional.
-Every other configuration sits at 1.04x to 1.18x spread and is sound.
-
-A consequence for this project's own headline: the eager-versus-eager comparison
-was not unfair for the row that decides it, because graphs give the invariant row
-nothing. The number moved from 3.3x to 4.7x because the trace now crosses the
-split, not because the comparator was ungagged.
-
-### The kill criterion was crossed, and here it is
-
-`docs/01-PRD.md` section 11 set a kill criterion for this project before any of
-it was built: **"Below 15 percent of vLLM default after the CUDA-graph pass"**,
-with the prescribed response being to reframe explicitly as a
-correctness-reference engine and publish only ratios rather than absolute tokens
-per second.
-
-Measured on this trace:
-
-| baseline | blocked runs | interleaved | sample spread |
+| configuration | seconds | vs lockstep fast | sample spread |
 |---|---|---|---|
-| vLLM default, eager | 16.1%, 16.2% | **14.2%** | 1.07x |
-| vLLM default, CUDA graphs | 13.0%, 8.5% | **8.1%** | 1.04x |
+| lockstep, fast mode | 2.930 | 1.00x | 1.24x |
+| lockstep, invariant | 3.226 | 1.10x | 1.17x |
+| vLLM default, eager | 0.470 | 0.16x | 1.14x |
+| vLLM `VLLM_BATCH_INVARIANT=1`, eager | 0.563 | 0.19x | 1.08x |
+| vLLM default, CUDA graphs | 0.343 | 0.12x | 1.06x |
+| vLLM `VLLM_BATCH_INVARIANT=1`, CUDA graphs | 0.484 | 0.17x | 1.10x |
+| SGLang deterministic | not measured | | |
 
-**Both comparisons are below the bar the project set for itself.** The blocked
-measurements put the eager comparison above it at 16 percent, and interleaving,
-which exists to remove a bias rather than to move a number, put it at 14.2. The
-threshold is crossed either way you measure and by more than the first
-measurement suggested. Stated here rather than left for a reader to divide 0.697
-by 4.892 and notice that a bar was set and quietly passed under. A claims table
-is worth what its least convenient entry is worth.
+**Absolute standing**: lockstep invariant is **5.7x the wall time of vLLM
+batch-invariant in eager mode**, 6.7x with CUDA graphs. **Cost of determinism
+inside this engine**: **1.10x** against its own fast path, which differs in
+exactly one way, letting torch pick the GEMM. CUDA graphs give vLLM's
+batch-invariant mode a **14 percent** gain, 0.563s to 0.484s, against 27 percent
+for its default mode.
 
-Two qualifications, neither of which is an excuse. The criterion reads "after the
-CUDA-graph pass", and this engine never received one: CUDA graphs were cut in
-week 7 to fund the certifier, so the condition the criterion presupposes was
-never met and no claim is made about where the number would land with one. And
-the prescribed response was already in force before the measurement, since this
-file has published ratios and refused absolute tokens per second from the start.
-What was missing was the disclosure, which is the part that mattered.
+### This number took four benchmark designs, and three of them were biased
+
+Worth reading before trusting any figure above, because each design was a correct
+fix for the previous one's bias and each introduced a new bias of its own.
+
+**Blocked.** All samples of one configuration, then all of the next. Any drift
+across the run mapped straight onto the ratio between them. Two runs of identical
+code disagreed by 1.75x on every eager configuration while every graphed one
+held, which was enough to publish, and then retract, a claim that CUDA graphs
+gave vLLM's batch-invariant mode no benefit.
+
+**Interleaved.** Samples shuffled under a seed so drift hits both arms equally.
+Spreads fell to 1.04x-1.18x. But interleaving scatters in-process lockstep
+measurements through the run, so every external sample started behind roughly
+5 GB held by this benchmark's own torch context. Measured directly: with
+`empty_cache()` a following vLLM sample ran about twice as slow, and without it
+vLLM **failed to launch at all** and never recovered. Even the samples that
+looked clean were slow, 0.565s against 0.465s uncontaminated.
+
+**Isolated.** Every measurement in its own process, the parent holding no device
+memory and reading `vocab_size` from a config file rather than instantiating the
+model, with a 5000 MiB free-VRAM floor asserted before each sample. That removed
+the contamination and put Triton's JIT compilation inside the timed region
+instead, because each fresh process compiles the kernels on first launch. The
+result was a 1.54x spread on the fast path and the impossible reading that
+invariant mode was **faster** than the mode it constrains, at 0.95x.
+
+**Isolated with warmup.** One untimed pass per process before the timed one. The
+ratio is 1.10x, the right side of 1.0, and every spread is at or below 1.24x.
+
+The third design's impossible number is why this is legible at all. A bias that
+produces a plausible figure is one you publish; a bias that produces `invariant
+faster than fast` is one you cannot.
+
+### The kill criterion was crossed, on both comparisons
+
+`docs/01-PRD.md` section 11 set it before anything was built: **"Below 15 percent
+of vLLM default after the CUDA-graph pass"**, with the prescribed response being
+to reframe as a correctness-reference engine and publish ratios rather than
+absolute tokens per second.
+
+| baseline | lockstep invariant runs at | sample spread |
+|---|---|---|
+| vLLM default, eager | **14.6 percent** | 1.14x |
+| vLLM default, CUDA graphs | **10.6 percent** | 1.06x |
+
+Both are below the bar, so there is no configuration of the comparison in which
+this engine clears it.
+
+**Every correction to the benchmark moved this number against the project.** The
+blocked design put the like-for-like figure at 16.1 and 16.2 percent, above the
+bar, with only the graphed comparison below it. Interleaving gave 14.2 percent,
+and full isolation with warmup gives **14.6 percent**. Three measurement designs,
+each fixing a real bias, and the figure crossed the bar at the first fix and
+stayed across. None of the corrections was made to move it.
+
+Two qualifications, neither an excuse. The criterion reads "after the CUDA-graph
+pass" and this engine never received one, since graphs were cut in week 7 to fund
+the certifier, so no claim is made about where it would land with one. And the
+prescribed response was already in force before the measurement, because this
+file has published ratios and refused absolute tokens per second throughout. What
+was missing was the disclosure.
 
 **Cost of determinism inside this engine**: **1.05x** against its own fast path,
 which differs in exactly one way, letting torch pick the GEMM. That measures the
