@@ -29,5 +29,5 @@ package = false
 testpaths = ["tests"]
 addopts = "-q"
 markers = [
-    "gpu: needs a CUDA device. Deselect with -m 'not gpu' for the set hosted CI can run.",
+    "gpu: needs a CUDA device. The single source of truth for what -m 'not gpu' excludes; files that also skip at runtime carry both.",
 ]

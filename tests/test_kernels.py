@@ -10,9 +10,13 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="kernels under claim run on the pinned GPU"
-)
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.skipif(
+        not torch.cuda.is_available(),
+        reason="kernels under claim run on the pinned GPU",
+    ),
+]
 
 from engine.kernels import registry  # noqa: E402
 from engine.kernels.attention import attention  # noqa: E402

@@ -5,7 +5,10 @@ from __future__ import annotations
 import pytest
 import torch
 
-pytestmark = pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-only hazard")
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA-only hazard"),
+]
 
 AFFECTED_WIDTHS = (513, 769)
 SAFE_WIDTHS = (512, 514, 768, 770, 1024, 151936)

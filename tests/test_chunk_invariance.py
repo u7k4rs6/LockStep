@@ -10,9 +10,15 @@ import torch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-pytestmark = pytest.mark.skipif(
-    not torch.cuda.is_available(), reason="kernels under claim run on the pinned GPU"
-)
+# The marker is what CI selects on; the skipif is a second line of defence for
+# anyone running the file directly on a machine without a device.
+pytestmark = [
+    pytest.mark.gpu,
+    pytest.mark.skipif(
+        not torch.cuda.is_available(),
+        reason="kernels under claim run on the pinned GPU",
+    ),
+]
 
 from engine.kv.paged import SUPPORTED_BLOCK_SIZES  # noqa: E402
 from engine.model.qwen3 import Qwen3  # noqa: E402

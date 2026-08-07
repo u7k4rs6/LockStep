@@ -1,5 +1,7 @@
 # Lockstep
 
+[![ci](https://github.com/u7k4rs6/LockStep/actions/workflows/ci.yml/badge.svg)](https://github.com/u7k4rs6/LockStep/actions/workflows/ci.yml)
+
 A batch-invariant LLM inference engine whose determinism is **certified** by
 deterministic-simulation fuzzing, with the harness's own bug-finding power
 measured by mutation testing, then pointed at **vLLM** and **SGLang** to certify
@@ -667,6 +669,14 @@ aspirational:
 | fuzz campaign with the coverage floor | manual, `make claim2` |
 | throughput regression | manual, `make claim3` |
 | certification against a local vLLM | manual, `make certify` |
+
+The automated set is 74 tests plus six checks, and it has been observed green on
+GitHub rather than only locally:
+[run 31168574579](https://github.com/u7k4rs6/LockStep/actions/runs/31168574579),
+51 seconds, first attempt. `@pytest.mark.gpu` is the single source of truth for
+what `-m "not gpu"` excludes; the four GPU-dependent files carry the marker and
+also skip at runtime, so running one directly on a machine without a device still
+does the right thing.
 
 The manual four need a GPU and, for two of them, a local vLLM. Their artifacts
 are committed to `evidence/` with the revision that produced them, which is the
