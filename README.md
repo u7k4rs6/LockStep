@@ -39,6 +39,112 @@ about 32 KB, for the same kind of reason: it is one self-contained file that
 opens offline from `file://`, so a CDN would trade the property for the bytes.
 `evidence/README.md` states both decisions.
 
+### How it fits together
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/architecture-dark.svg">
+  <img alt="Architecture. Workload and schedule are two separate inputs which, with seeds, fully determine execution. The lockstep engine runs the workload under the given schedule and again under a canonical batch-1 uninterrupted schedule; canonical is the same engine re-run, not a separate reference implementation. Oracles compare the two bitwise. Two loops lead out: an internal white-box one through the minimizer, the witness artifact and the report, and an external black-box one where the certifier reads logprobs over HTTP from another engine entirely." src="docs/img/architecture-light.svg" width="700">
+</picture>
+
+Three things in that picture are load-bearing, so they are also stated here.
+
+**Workload and schedule are separate inputs.** A trace records one interleaving
+that happened. Lockstep takes the schedule as an argument, so the same workload
+can be replayed under a different one, and a schedule can be shrunk by the
+minimizer without touching the workload. That is what makes minimization exact
+rather than confirmed.
+
+**Canonical execution is the same engine.** It is this engine re-run under a
+batch-1 uninterrupted schedule, not a second implementation and not a reference
+model. Every invariance relation is the engine measured against itself under a
+different schedule, which is why a shared bug cancels: both sides would move
+together and the comparison would still hold. That blind spot is what F1 against
+fp64 and the committed golden bytes are for, and it is
+[covered below](#test-oracles-and-what-each-one-cannot-see).
+
+**There are two loops, not one chain.** The internal loop is white box: it sees
+the whole trajectory hash, so it can minimize a failure to a 1-minimal case and
+replay it by hash. The external certifier sees nothing but logprobs over HTTP
+against an engine it did not build, which is strictly weaker and is the reason a
+clean certification means no divergence at that observable rather than bitwise
+identity. They share the relations and nothing else.
+
+### A run, verbatim
+
+This is the certifier finding the divergence that became
+[vllm-project/vllm#51187](https://github.com/vllm-project/vllm/issues/51187),
+copied from the run that produced
+[`evidence/certify-0004-readme-sample.json`](evidence/certify-0004-readme-sample.json).
+It needs a GPU and a local vLLM; the [certification
+section](#certification-black-box-differential-testing-of-vllm) has the analysis.
+
+```console
+$ uv run ./lockstep certify --cache-mode warm --filler-mode fixed \
+      --fixed-width 13 --order-mode identical --repeats 5 --label readme-sample
+
+lockstep certify  vLLM, VLLM_BATCH_INVARIANT=1
+  endpoint            http://127.0.0.1:30011  (local, started by this process)
+  block size          16  configured at launch
+  cell                cache=warm filler=fixed  [readme-sample]
+  relation under test [...]
+  repeats per case    5, filler widths fixed at 13
+  submission          concurrent; co-residency measured from vllm:num_requests_running
+
+  observable: [...]
+
+  starting server, up to 420s ...
+  ready
+
+  boundary case                                         reqs  positions batch  verdict
+  ------------------------------------------------------------------------------------
+  prefix_len == block_size - 1 (15)                        2         48    15  clean
+  prefix_len == block_size (16)                            2         48    15  clean
+  prefix_len == block_size + 1 (17)                        2         48    15  clean
+  zero-prefix request co-batched with a nonzero-prefix request     3         72    16  clean
+  cache hit covering the full prompt                       2         48    15  clean
+  batch 31, shared prefix of one block                    31        744    44  DIVERGED (124)
+      request 0 repeat 1: logprobs differ from position 0, max delta 1.564e-02
+      request 1 repeat 1: logprobs differ from position 1, max delta 2.072e-02
+      request 2 repeat 1: logprobs differ from position 0, max delta 1.467e-02
+  batch 32, shared prefix of one block                    32        768    45  clean
+
+  6/7 boundary cases clean at this observable
+  7/7 cases actually formed a batch
+env  sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0
+artifact  results/2026-08-07/certify-0002.json
+```
+
+Two long explanatory lines are elided at `[...]`; nothing else is edited. The
+`artifact` line names the uncommitted `results/` path the run actually wrote,
+which is then promoted into `evidence/` under the name linked above.
+
+Three things about that command are worth stating, because the obvious guess is
+wrong on all three.
+
+- **It takes no URL.** `lockstep certify http://localhost:8000` is not a command
+  this repository has. The certifier starts the server itself, on a fixed local
+  port, and tears it down in the same process lifetime, so the thing being
+  certified is a process it launched rather than one it found.
+- **It refuses to run without `certify/config.json`** setting
+  `i_control_this_endpoint: true`, deliberately and with no default. It also
+  refuses any non-local host and refuses outright if a hosted API key is present
+  in the environment. The config is committed, so a clone has it already.
+- **`31 requests` is `44` co-resident.** The gap is the 13 filler requests, and
+  the `batch` column is read from vLLM's own `num_requests_running` gauge rather
+  than assumed. A case that never exceeds one running request is reported as not
+  batched and not scored.
+
+That the run above diverged at 31 and stayed clean at 32 is the finding's own
+shape rather than an inconsistency: divergence is probabilistic and its
+probability rises with resident batch size, so single cases flip between runs.
+The [certification section](#certification-black-box-differential-testing-of-vllm)
+gives the repeat counts this was established over.
+
+For something that runs on a fresh clone in seconds with no server, and which is
+what CI cannot check for you, `uv run ./lockstep replay evidence/case-witness.json`
+recomputes a committed trajectory hash and compares it. It is
+[shown in full below](#evidence-and-replaying-it).
+
 ### Contents
 
 | | |
@@ -834,9 +940,33 @@ Promotion is deliberate, one artifact at a time, with
 The differentiator sentence at the top of this file claims every finding
 minimizes to an exact replay. That is checkable rather than asserted:
 
-```sh
-python3 -m harness.replay evidence/case-witness.json
+```console
+$ uv run ./lockstep replay evidence/case-witness.json
+
+lockstep replay  evidence/case-witness.json
+  recorded          trajectory 82ee4d7d1d99fe766991aa1a8258d1c8
+  recorded env      sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0
+  this env          sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0
+  recorded engine   c835a7361031
+  this engine       05621331aeb8
+  minimality        reproduces=True 1-minimal=False checks=2
+
+  replaying 3 request(s), block_size=16, num_blocks=192, prompt lengths [553, 561, 37]
+
+  OK: trajectory hash 82ee4d7d1d99fe76 matches the artifact
 ```
+
+Verbatim from a real run. `1-minimal=False` is correct and not a failure: this
+artifact is a witness rather than a finding, so there is no failing property for
+ddmin to shrink against. The two environment lines agreeing is the point of
+printing both, and the two engine revisions disagreeing is the stronger result,
+since the hash held across the change between them.
+
+The `uv run` prefix is load-bearing. `./lockstep` starts `#!/usr/bin/env python3`,
+which is the system interpreter rather than the pinned environment, and on a
+machine that happens to have a different torch installed the replay will run
+against it and say so on the `this env` line. On a clean clone it fails outright.
+Every `Makefile` target now goes through `uv run` for this reason.
 
 The witness is a clean case, not a bug repro, carrying the trajectory hash over
 emitted tokens, raw fp16 logit bytes, the packed work list, the allocator ledger,

@@ -25,22 +25,22 @@ check:
 	uv run python3 -m pytest -m "not gpu" -q
 
 claim1:
-	./lockstep verify --block-sizes 8 16 32 64 128
+	uv run ./lockstep verify --block-sizes 8 16 32 64 128
 
 claim2:
-	./lockstep fuzz --seeds 12 --cases-per-seed 6 --eviction-campaign 120 --seeded-faults
+	uv run ./lockstep fuzz --seeds 12 --cases-per-seed 6 --eviction-campaign 120 --seeded-faults
 
 claim3:
-	./lockstep bench --external-python $$HOME/lockstep-extenv/vllmdet/bin/python --runs 5
+	uv run ./lockstep bench --external-python $$HOME/lockstep-extenv/vllmdet/bin/python --runs 5
 
 report:
-	./lockstep report
+	uv run ./lockstep report
 
 replay:
-	./lockstep replay evidence/case-witness.json
+	uv run ./lockstep replay evidence/case-witness.json
 
 certify:
-	./lockstep certify --repeats 3
+	uv run ./lockstep certify --repeats 3
 
 clean:
 	rm -rf results/*/ results/report.html

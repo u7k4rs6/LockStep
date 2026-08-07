@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 456" width="700" height="456" role="img" aria-label="Architecture. Workload and schedule are two separate inputs which, with seeds, fully determine execution. The lockstep engine runs the workload under the given schedule and again under a canonical batch-1 uninterrupted schedule; canonical is the same engine re-run, not a separate reference implementation. Oracles compare the two bitwise. Two loops lead out: an internal white-box one through the minimizer, the witness artifact and the report, and an external black-box one where the certifier reads logprobs over HTTP from another engine entirely.">
+  <style>
+    .t { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; fill: #1f2328; }
+    .h { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; fill: #59636e; }
+    .b { fill: none; stroke: #59636e; stroke-width: 1.5; }
+    .em { fill: none; stroke: #0969da; stroke-width: 2; }
+    .gap { fill: none; stroke: #bc4c00; stroke-width: 1.5; stroke-dasharray: 5 4; }
+    .arr { stroke: #59636e; stroke-width: 1.5; fill: none; }
+    .arrs { stroke: #0969da; stroke-width: 2; fill: none; }
+    .lbl { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; fill: #bc4c00; }
+  </style>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 z" fill="#59636e"/>
+    </marker>
+    <marker id="as" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <path d="M0,0 L7,3 L0,6 z" fill="#0969da"/>
+    </marker>
+  </defs>
+
+  <text x="14" y="22" class="h">execution is a pure function of (workload, schedule, seeds)</text>
+
+  <rect x="14" y="48" width="112" height="24" rx="3" class="b"/>
+  <text x="24" y="65" class="t">workload</text>
+  <rect x="14" y="80" width="112" height="24" rx="3" class="b"/>
+  <text x="24" y="97" class="t">schedule</text>
+  <rect x="14" y="112" width="112" height="24" rx="3" class="b"/>
+  <text x="24" y="129" class="t">seeds</text>
+  <text x="14" y="154" class="lbl">the schedule is supplied,</text>
+  <text x="14" y="168" class="lbl">not observed</text>
+
+  <path d="M126,60 L151,60 L151,92" class="arr"/>
+  <path d="M126,124 L151,124 L151,92" class="arr"/>
+  <path d="M126,92 L174,92" class="arr" marker-end="url(#a)"/>
+
+  <rect x="176" y="62" width="136" height="60" rx="3" class="em"/>
+  <text x="188" y="88" class="t">lockstep</text>
+  <text x="188" y="108" class="t">engine</text>
+
+  <path d="M312,84 L336,84 L336,63 L354,63" class="arrs" marker-end="url(#as)"/>
+  <path d="M312,100 L336,100 L336,123 L354,123" class="arrs" marker-end="url(#as)"/>
+
+  <rect x="356" y="44" width="212" height="38" rx="3" class="em"/>
+  <text x="366" y="60" class="t">served run</text>
+  <text x="366" y="76" class="h">under the given schedule</text>
+
+  <rect x="356" y="104" width="212" height="38" rx="3" class="em"/>
+  <text x="366" y="120" class="t">canonical run</text>
+  <text x="366" y="136" class="h">batch 1, uninterrupted</text>
+
+  <text x="356" y="162" class="lbl">canonical is the same engine re-run under a</text>
+  <text x="356" y="176" class="lbl">different schedule, not a separate reference</text>
+
+  <path d="M568,63 L616,63 L616,214 L570,214" class="arr" marker-end="url(#a)"/>
+  <path d="M568,123 L592,123 L592,232 L570,232" class="arr" marker-end="url(#a)"/>
+
+  <rect x="176" y="200" width="392" height="46" rx="3" class="b"/>
+  <text x="188" y="220" class="t">oracles compare the two, bitwise</text>
+  <text x="188" y="238" class="h">I1 to I4   F1   PATH-EQ   golden bytes</text>
+
+  <path d="M372,246 L372,270" class="arr"/>
+  <path d="M165,270 L531,270" class="arr"/>
+  <path d="M165,270 L165,292" class="arr" marker-end="url(#a)"/>
+  <path d="M531,270 L531,292" class="arr" marker-end="url(#a)"/>
+
+  <text x="176" y="288" class="lbl">internal, white box</text>
+  <text x="542" y="288" class="lbl">external, black box</text>
+
+  <rect x="40" y="294" width="250" height="28" rx="3" class="b"/>
+  <text x="50" y="313" class="t">minimizer: ddmin, 1-minimal</text>
+  <path d="M165,322 L165,338" class="arr" marker-end="url(#a)"/>
+  <rect x="40" y="340" width="250" height="28" rx="3" class="b"/>
+  <text x="50" y="359" class="t">witness artifact + env.lock</text>
+  <path d="M165,368 L165,384" class="arr" marker-end="url(#a)"/>
+  <rect x="40" y="386" width="250" height="28" rx="3" class="b"/>
+  <text x="50" y="405" class="t">report.html</text>
+
+  <rect x="406" y="294" width="262" height="28" rx="3" class="b"/>
+  <text x="416" y="313" class="t">certifier</text>
+  <path d="M531,322 L531,338" class="gap" marker-end="url(#a)"/>
+  <text x="541" y="334" class="h">HTTP</text>
+  <rect x="406" y="340" width="262" height="44" rx="3" class="gap"/>
+  <text x="416" y="358" class="t">another engine entirely</text>
+  <text x="416" y="376" class="h">vLLM or SGLang, started locally</text>
+
+  <text x="406" y="401" class="lbl">it never sees a trajectory; it reads</text>
+  <text x="406" y="415" class="lbl">logprobs, which is strictly weaker</text>
+
+  <text x="14" y="442" class="h">the two loops share the relations and nothing else</text>
+</svg>
