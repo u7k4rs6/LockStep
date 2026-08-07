@@ -1,0 +1,21 @@
+{
+  "note": "Which committed artifact backs each published claim. The report reads this file. It used to take whichever filename sorted last in evidence/, which is not a selection criterion at all: adding certify-readme-sample.json would have silently moved the published certification figure off the intended control run, with no visible cause. Sorting by created_utc fails the same case, because the intended certify artifact is deliberately not the newest one. The choice has to be declared, so it is declared here.",
+  "selection_is_not_recency": "certify names the max-num-seqs 8 control, which is neither the newest certify artifact nor the last by filename. Any rule derived from name or time picks a different file.",
+  "selected": {
+    "verify": "verify-0002.json",
+    "fuzz": "fuzz-0002.json",
+    "fidelity": "fidelity-0001.json",
+    "throughput": "throughput-0004.json",
+    "certify": "certify-pairs-mns8.json"
+  },
+  "supporting": {
+    "case-0003.json": "the eviction finding, minimized and proven 1-minimal, pinned to the commit that closed it",
+    "case-witness.json": "the replay-determinism witness the replay command re-runs",
+    "certify-0003.json": "the default-mode positive control, 0 of 7 clean",
+    "certify-clean-revision.json": "the filed finding reproduced at a clean committed revision",
+    "certify-pairs-a.json": "all-pairs comparison, the run that did not exhibit the divergence",
+    "certify-pairs-b.json": "all-pairs comparison, the run that did",
+    "certify-readme-sample.json": "the run pasted verbatim in the README",
+    "upstream-finding.json": "provenance index for vllm#51187; not a result artifact and carries no env of its own"
+  }
+}

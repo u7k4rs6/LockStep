@@ -74,7 +74,7 @@ identity. They share the relations and nothing else.
 This is the certifier finding the divergence that became
 [vllm-project/vllm#51187](https://github.com/vllm-project/vllm/issues/51187),
 copied from the run that produced
-[`evidence/certify-0004-readme-sample.json`](evidence/certify-0004-readme-sample.json).
+[`evidence/certify-readme-sample.json`](evidence/certify-readme-sample.json).
 It needs a GPU and a local vLLM; the [certification
 section](#certification-black-box-differential-testing-of-vllm) has the analysis.
 
@@ -168,6 +168,21 @@ recomputes a committed trajectory hash and compares it. It is
 
 Every claim is scoped to the environment tuple in `env.lock`, embedded in every
 result artifact. A claim without one is invalid by construction.
+
+All thirteen committed artifacts were audited for this and twelve carry byte-identical
+tuples: `torch 2.6.0+cu124`, `triton 3.2.0`, `cu12.4`, driver `595.84`, `sm_89` on an
+RTX 4060 Laptop. Nothing published was produced under a drifted environment. The
+thirteenth, `evidence/upstream-finding.json`, carries no tuple and should not: it is a
+provenance index pointing at other artifacts rather than a result.
+
+**One qualification, because the sentence above overstates the certify artifacts.**
+For a `certify` run, `env.lock` describes the certifier's process, not the engine it
+certified. vLLM runs in a separate virtual environment on `torch 2.11.0+cu130`, so a
+certification artifact carries the tuple of the process making the requests while the
+subject ran on a different one. The artifact records the engine name, mode, and block
+size but not the subject's own tuple, and the only place that tuple is written down is
+`evidence/upstream-finding.json`, by hand, for the one filed finding. Read against a
+certify artifact, `env.lock` scopes the observer rather than the observed.
 
 | ID | Statement | How verified | Status | Scope |
 |---|---|---|---|---|
@@ -924,17 +939,23 @@ hundreds of files superseded on every run, and no published number points at one
 Promotion is deliberate, one artifact at a time, with
 `python3 -m report.publish results/<date>/<artifact>.json`.
 
+`evidence/index.json` names which of these backs each published figure, and
+the report reads that file rather than sorting the directory.
+
 | file | backs |
 |---|---|
-| `evidence/verify-0001.json` | claim 1, 55 of 55 relation runs across 5 block sizes |
-| `evidence/fuzz-0004.json` | claim 2, ten operators over 192 cases, 10 of 10 killed |
+| `evidence/verify-0002.json` | claim 1, 65 of 65 relation runs across 5 block sizes |
+| `evidence/fuzz-0002.json` | claim 2, ten operators over 192 cases (72 fuzz plus a 120-case eviction campaign), 10 of 10 killed |
 | `evidence/throughput-0004.json` | claim 3, isolated and interleaved, per-sample GPU state and VRAM |
 | `evidence/fidelity-0001.json` | F1, 7 of 7 bounds, exact KL over the full vocabulary |
 | `evidence/certify-0003.json` | the default-mode positive control, 0 of 7 clean |
 | `evidence/case-0003.json` | the eviction finding the fuzzer found, minimized and 1-minimal |
 | `evidence/case-witness.json` | a replay-determinism witness, see below |
 | `evidence/upstream-finding.json` | provenance for [vllm#51187](https://github.com/vllm-project/vllm/issues/51187): the issue URL, the artifacts backing every number in it, and why their `engine_revision` reads dirty |
-| `evidence/certify-pairs-{a,b,mns8}.json` | the three runs the filed issue rests on. `b` is the one exhibiting the divergence; `mns8` is the controlled variable |
+| `evidence/certify-pairs-a.json` | one of the three runs the filed issue rests on; this one did not exhibit the divergence |
+| `evidence/certify-pairs-b.json` | the run that did exhibit it |
+| `evidence/certify-pairs-mns8.json` | the controlled variable, `--max-num-seqs 8`, which restored reproducibility. **This is the certification result the report renders**, named by `evidence/index.json` |
+| `evidence/certify-readme-sample.json` | the run pasted verbatim at the top of this file |
 | `evidence/certify-clean-revision.json` | the same finding reproduced at a clean committed revision, no dirty marker |
 
 The differentiator sentence at the top of this file claims every finding

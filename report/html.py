@@ -15,6 +15,7 @@ from report.fonts import css as font_css, embedded_bytes  # noqa: E402
 
 RESULTS = REPO_ROOT / "results"
 EVIDENCE = REPO_ROOT / "evidence"
+INDEX = EVIDENCE / "index.json"
 
 FONT_CSS = font_css()
 
@@ -155,11 +156,32 @@ document.querySelectorAll('.tick').forEach(function (tick) {
 """
 
 
-def latest(kind: str) -> dict | None:
-    """Prefer committed evidence over local results."""
-    published = sorted(EVIDENCE.glob(f"{kind}-*.json"))
-    if published:
-        return json.loads(published[-1].read_text())
+def selected(kind: str) -> dict | None:
+    """The artifact evidence/index.json names for this claim.
+
+    Not the last filename and not the newest. This used to sort evidence/ and
+    take the tail, which meant a published figure was chosen by string ordering
+    and any new artifact could move it. created_utc is no better here: the
+    certify entry is deliberately a control run rather than the most recent one.
+    Falls back to results/ only for a kind the index does not name, so a local
+    run before promotion still renders.
+    """
+    named = json.loads(INDEX.read_text())["selected"].get(kind) if INDEX.is_file() else None
+    if named:
+        path = EVIDENCE / named
+        if not path.is_file():
+            raise FileNotFoundError(
+                f"evidence/index.json names {named} for {kind!r} and it is not "
+                "there. The report will not silently fall back to a different "
+                "artifact, because that is the failure this file exists to stop."
+            )
+        artifact = json.loads(path.read_text())
+        if artifact.get("kind") != kind:
+            raise ValueError(
+                f"evidence/index.json files {named} under {kind!r} but the "
+                f"artifact declares kind {artifact.get('kind')!r}"
+            )
+        return artifact
     files = sorted(RESULTS.glob(f"*/{kind}-*.json"))
     if not files:
         return None
@@ -188,11 +210,11 @@ def strip(runs: list[dict]) -> str:
 
 
 def build(out: Path) -> Path:
-    verify = latest("verify") or {}
-    fuzz = latest("fuzz") or {}
-    fidelity = latest("fidelity") or {}
-    throughput = latest("throughput") or {}
-    certification = latest("certify")
+    verify = selected("verify") or {}
+    fuzz = selected("fuzz") or {}
+    fidelity = selected("fidelity") or {}
+    throughput = selected("throughput") or {}
+    certification = selected("certify")
 
     env = (verify.get("env") or fuzz.get("env") or fidelity.get("env") or {})
     fingerprint = env.get("fingerprint", "environment not recorded")
