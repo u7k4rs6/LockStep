@@ -19,7 +19,7 @@ from engine import envlock  # noqa: E402
 from engine.kernels import registry  # noqa: E402
 from engine.kernels.softmax import log_softmax  # noqa: E402
 from engine.model.qwen3 import KVCache, Qwen3  # noqa: E402
-from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
+from report.artifact import SAME_PROCESS, require_clean_tree, Artifact, relpath  # noqa: E402
 
 DEFAULT_WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 DEFAULT_REFERENCE = REPO_ROOT / "reference"
@@ -374,7 +374,7 @@ def main() -> int:
     if not args.no_artifact:
         path = Artifact(
             kind="fidelity",
-            env=env,
+            harness=env, subject=SAME_PROCESS,
             payload={
                 "corpus_sha256": corpus_sha256(),
                 "positions": int(kl.numel()),

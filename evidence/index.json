@@ -16,6 +16,7 @@
     "certify-pairs-a.json": "all-pairs comparison, the run that did not exhibit the divergence",
     "certify-pairs-b.json": "all-pairs comparison, the run that did",
     "certify-readme-sample.json": "the run pasted verbatim in the README",
-    "upstream-finding.json": "provenance index for vllm#51187; not a result artifact and carries no env of its own"
+    "upstream-finding.json": "provenance index for vllm#51187; not a result artifact and carries no env of its own",
+    "prediction-rmsnorm-blocksize.json": "pre-registration for the instrumented RMSNorm block-size run, committed before the run so its result cannot be fitted to it; not a result artifact and carries no env of its own"
   }
 }

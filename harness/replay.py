@@ -13,6 +13,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from engine import envlock  # noqa: E402
 from engine.model.qwen3 import Qwen3  # noqa: E402
 from harness.sim.driver import Case, run_case  # noqa: E402
+from report.artifact import harness_env  # noqa: E402
 
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 
@@ -108,7 +109,7 @@ def main() -> int:
         return 2
 
     payload = artifact["payload"]
-    recorded_env = artifact.get("env", {})
+    recorded_env = harness_env(artifact)
     here = envlock.capture()
 
     same_env = recorded_env.get("fingerprint") == here.fingerprint()

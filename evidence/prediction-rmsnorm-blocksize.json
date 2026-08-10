@@ -1,0 +1,86 @@
+{
+  "kind": "pre-registration",
+  "note": "Written and committed BEFORE the instrumented run. Its only purpose is to make the result unfittable after the fact. If the numbers below turn out wrong, this file stays as written and the result artifact records the disagreement.",
+  "written_utc": "2026-08-11",
+  "subject_of_prediction": "vllm-project/vllm#51187, and SyaOtiLan's proposal that vllm#48391 (merged b6cbba8) is its root cause",
+
+  "mechanism_as_established_in_phase_0": {
+    "status": "reachability verified from source, not from the issue thread",
+    "chain": [
+      "--enforce-eager sets CompilationMode.NONE, so config/vllm.py:1251-1258 appends 'all' to custom_ops. Confirmed in the server's own banner: compilation_config custom_ops: ['all'].",
+      "custom_ops 'all' makes RMSNorm.enabled() true, so CustomOp.dispatch_forward returns forward_cuda, not forward_native.",
+      "layernorm.py:96-115 forward_cuda sees VLLM_BATCH_INVARIANT and calls rms_norm_batch_invariant.",
+      "batch_invariant.py:848-855 early-returns into ops.fused_add_rms_norm whenever residual is not None. Only the residual-free path reaches the Triton kernel.",
+      "csrc/libtorch_stable/layernorm_kernels.cu at v0.26.0 selects max_block_size = (num_tokens < 256) ? 1024 : 256, and CMakeLists.txt:404 confirms that file ships."
+    ],
+    "traffic": "Qwen3-0.6B, 28 layers: 1 Triton call and 56 C++ fused_add_rms_norm calls per forward pass, all at hidden_size 1024, so min(hidden_size, max_block_size) genuinely moves 1024 -> 256.",
+    "what_phase_0_did_not_establish": "That any launch in this workload ever reaches 256 tokens. A reachable mechanism that never fires explains nothing. That is what this prediction is for."
+  },
+
+  "the_quantity_measured": {
+    "what": "num_tokens at each fused_add_rms_norm launch, i.e. input.numel() // hidden_size, read at the call site in the subject venv's batch_invariant.py",
+    "why_not_scheduler_stats": "This is the variable the block-size branch actually reads. Scheduler step accounting is a proxy for it and could agree in aggregate while differing per launch.",
+    "boundary": "num_tokens >= 256 selects a 256-thread block; num_tokens < 256 selects 1024. The comparison in the kernel is (num_tokens < 256), so 256 itself is on the narrow-block side."
+  },
+
+  "derived_numbers": {
+    "method": "certify.run.boundary_workloads(16) and certify.run.filler_requests(13, 16, 0), the harness's own generators, not re-derived by hand",
+    "target_lengths": "31 or 32 requests of 16 + 3 + (i mod 5) tokens, i.e. 19..23",
+    "filler_lengths": "13 requests of 19..31 tokens, sum 325",
+    "case_44_co_resident": {
+      "requests": 31,
+      "fillers": 13,
+      "prompt_tokens_total": 974,
+      "full_16_token_blocks": 44,
+      "tokens_outside_full_blocks": 270
+    },
+    "case_45_co_resident": {
+      "requests": 32,
+      "fillers": 13,
+      "prompt_tokens_total": 994,
+      "full_16_token_blocks": 45,
+      "tokens_outside_full_blocks": 274
+    },
+    "case_16_co_resident": {
+      "tokens_outside_full_blocks": 140,
+      "role": "the largest of the small cases; predicted to never cross, matching the retraction of the 15-to-16 divergences from earlier drafts"
+    },
+    "the_margin_is_the_point": "270 and 274 against a threshold of 256. Fourteen and eighteen tokens of headroom. A workload sitting this close to the branch is the natural explanation for an effect that appears in roughly 2 of 3 server lifetimes and never in the emitted token ids, and it is not a margin anyone would have chosen deliberately."
+  },
+
+  "run_configuration_this_predicts": {
+    "cache_mode": "warm",
+    "filler_mode": "fixed",
+    "fixed_width": 13,
+    "order_mode": "identical",
+    "repeats": 5,
+    "note": "read from evidence/certify-pairs-b.json, so the instrumented run matches the run that produced the finding. order_mode identical means the request multiset is byte-identical across repeats, which is what makes repeat-to-repeat divergence a defect rather than a different input.",
+    "prefix_cache_caveat": "The 270 and 274 figures assume the warm prefix cache holds every full 16-token block, so only the remainders are scheduled. If vLLM schedules more than the remainder (for instance by forcing recomputation of a final block), the true per-step counts will be higher and will cross 256 more readily, not less. The instrument measures the real number either way; this arithmetic only sets the expectation."
+  },
+
+  "predictions": {
+    "P1_primary": "Across 5 byte-identical repeats of the 44 and 45 co-resident cases, the recorded fused_add_rms_norm launches will NOT all fall on the same side of 256. At least one repeat will contain a launch with num_tokens >= 256 and at least one repeat will not.",
+    "P2_primary": "Two repeats produce bit-identical logprobs if and only if they used the same set of block widths. A repeat containing a >=256 launch will disagree with a repeat containing none.",
+    "P3": "Every decode-only step sits at 44 or 45 tokens and never reaches 256. Therefore every launch that crosses is a prefill or mixed prefill-plus-decode step, and the divergence originates in prefill and reaches decode logprobs through the perturbed KV cache. This is consistent with the filed observation of zero token-id divergence and logprob movement of order 4e-2.",
+    "P4": "With --max-num-seqs 8 no launch reaches 256, because 8 requests of these lengths cannot supply 256 tokens outside full blocks. This is why the mns8 control is clean, and the control is therefore not evidence about sequence count at all.",
+    "P5": "The 16-co-resident case never crosses 256 in any repeat."
+  },
+
+  "falsifiers": {
+    "F1": "All 5 repeats show identical launch-token sequences and the logprobs still differ. The mechanism is then refuted for this repro and something else is the source.",
+    "F2": "Repeats differ in launch-token sequence, every launch stays below 256, and the logprobs still differ. Block width cannot be the cause.",
+    "F3": "A repeat containing a >=256 launch agrees bit-exactly with a repeat containing none. The width flip then does not perturb this observable.",
+    "F4": "No launch anywhere in the run reaches 256. The mechanism is reachable but never fires here, and #48391 cannot explain #51187 no matter how good its own operator-level evidence is."
+  },
+
+  "a_conflict_between_P1_and_P2_that_is_not_a_falsifier": {
+    "case": "Two repeats have DIFFERENT launch-token sequences, both entirely below 256, and agree bit-exactly.",
+    "why_it_is_not_a_falsifier": "That is batch invariance working as designed: different packing, same reduction width, same arithmetic. It falsifies the stricter reading of 'two repeats agree iff their launch-token sequences are identical' while confirming the width claim, which is the one that matters. Recorded here in advance so the weaker clause cannot be quietly dropped later.",
+    "consequence": "P2 is stated in terms of block widths, not sequence identity. Sequence identity is reported as a secondary observation."
+  },
+
+  "what_this_run_is_not": {
+    "not_a_max_num_seqs_sweep": "If P1 through P4 hold, the ten-point sweep in the original plan is confirmation of an already-measured quantity and is not run. If any falsifier fires, the sweep becomes necessary again.",
+    "not_a_nightly_confirmation": "Phase 3 confirms someone else's result and is unaffected by this file."
+  }
+}

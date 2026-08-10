@@ -13,7 +13,7 @@ sys.path.insert(0, str(REPO_ROOT))
 from engine import envlock  # noqa: E402
 from engine.model.qwen3 import Qwen3  # noqa: E402
 from harness.sim.driver import Case, RequestSpec, run_case  # noqa: E402
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import SAME_PROCESS, Artifact, relpath  # noqa: E402
 
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 SEED = 20260805
@@ -68,7 +68,7 @@ def main() -> int:
         )
 
     env = envlock.capture()
-    artifact = Artifact(kind="case", env=env, payload={
+    artifact = Artifact(kind="case", harness=env, subject=SAME_PROCESS, payload={
         "reason": "",
         "minimized": case.to_dict(),
         "trajectory": first.trajectory,

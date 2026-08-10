@@ -99,7 +99,7 @@ def test_the_finding_path_composes(tmp_path):
     from harness.fuzz.campaign import Finding, print_repro
     from harness.minimize.ddmin import minimize
     from harness.sim.driver import RequestSpec
-    from report.artifact import Artifact
+    from report.artifact import SAME_PROCESS, Artifact
     from engine.envlock import EnvLock
 
     case = Case(
@@ -126,7 +126,7 @@ def test_the_finding_path_composes(tmp_path):
         kernel_registry_sha256="0" * 64, corpus_sha256=None,
         engine_revision="deadbeefcafe",
     )
-    artifact = Artifact(kind="case", env=env, payload={
+    artifact = Artifact(kind="case", harness=env, subject=SAME_PROCESS, payload={
         "reason": "synthetic",
         "minimized": minimization.case.to_dict(),
         "reproduces": minimization.reproduces,

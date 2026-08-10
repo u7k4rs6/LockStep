@@ -11,6 +11,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
+from report.artifact import harness_env  # noqa: E402
 from report.fonts import css as font_css, embedded_bytes  # noqa: E402
 
 RESULTS = REPO_ROOT / "results"
@@ -216,7 +217,8 @@ def build(out: Path) -> Path:
     throughput = selected("throughput") or {}
     certification = selected("certify")
 
-    env = (verify.get("env") or fuzz.get("env") or fidelity.get("env") or {})
+    env = next((harness_env(a) for a in (verify, fuzz, fidelity)
+                if "env" in a or "environment" in a), {})
     fingerprint = env.get("fingerprint", "environment not recorded")
 
     vp = verify.get("payload", {})

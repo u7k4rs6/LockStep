@@ -23,7 +23,7 @@ from harness.fuzz.faults import FAULTS  # noqa: E402
 from harness.fuzz.generators import draw_case, draw_config, eviction_cases  # noqa: E402
 from harness.minimize.ddmin import minimize  # noqa: E402
 from harness.sim.driver import Case, run_case  # noqa: E402
-from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
+from report.artifact import SAME_PROCESS, require_clean_tree, Artifact, relpath  # noqa: E402
 from report.divergence import Divergence  # noqa: E402
 
 
@@ -221,7 +221,7 @@ def main() -> int:
 
     for finding in findings:
         minimization = minimize(finding.case, lambda c: case_fails(model, c) is not None)
-        artifact = Artifact(kind="case", env=envlock.capture(), payload={
+        artifact = Artifact(kind="case", harness=envlock.capture(), subject=SAME_PROCESS, payload={
             "reason": finding.detail,
             "config": finding.config,
             "minimized": minimization.case.to_dict(),
@@ -426,7 +426,7 @@ def main() -> int:
     print()
     print(f"env  {env.fingerprint()}")
     if not args.no_artifact:
-        path = Artifact(kind="fuzz", env=env, payload=payload).write()
+        path = Artifact(kind="fuzz", harness=env, subject=SAME_PROCESS, payload=payload).write()
         print(f"artifact  {relpath(path)}")
     return 0
 

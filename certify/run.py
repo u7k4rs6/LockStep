@@ -25,6 +25,7 @@ from certify.observable import (  # noqa: E402
     describe,
 )
 from engine import envlock  # noqa: E402
+from certify import subject as subject_env  # noqa: E402
 from report.artifact import Artifact, relpath  # noqa: E402
 
 HOSTED_KEYS = (
@@ -549,7 +550,13 @@ def main() -> int:
     env = envlock.capture()
     print(f"env  {env.fingerprint()}")
     if not args.no_artifact:
-        path = Artifact(kind="certify", env=env, payload={
+        path = Artifact(kind="certify", harness=env, subject=subject_env.unprobed(
+            info.name,
+            "certify/run.py attaches to a server it did not start, so there is "
+            "no interpreter to probe and no startup log to parse. Use "
+            "certify/session.py, which owns the server's lifetime, when the "
+            "subject's tuple has to be on the record.",
+        ), payload={
             "engine": info.name,
             "model": info.model,
             "block_size": block_size,

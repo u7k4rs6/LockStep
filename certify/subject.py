@@ -90,6 +90,33 @@ def scrub(value):
     return value
 
 
+def unprobed(engine_name: str, reason: str) -> dict:
+    """A subject this runner cannot interrogate.
+
+    `certify/run.py` attaches to a server someone else started, so it has no
+    interpreter to probe and no startup log to parse. That is a real limitation
+    and it is written down as one. The alternative on offer was to fall back to
+    the harness tuple, which is exactly the substitution schema 2 exists to stop.
+    """
+    if not reason:
+        raise ValueError("an unprobed subject must say why it could not be probed")
+    return {
+        "engine": engine_name,
+        "engine_version": None,
+        "non_default_args": None,
+        "torch_version": None,
+        "triton_version": None,
+        "cuda_version": None,
+        "python_version": None,
+        "startup_parsed": False,
+        "interpreter_probed": False,
+        "reason": reason,
+        "note": "the subject's environment was NOT recorded. Read no tuple into "
+                "this artifact: the harness block beside it describes a "
+                "different process.",
+    }
+
+
 def capture(python: Path, log: Path, engine_name: str) -> dict:
     """Everything recorded about the subject, for the artifact."""
     startup = scrub(from_startup_log(log))

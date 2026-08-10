@@ -35,7 +35,7 @@ from harness.mr.state import (  # noqa: E402
     mr5_occupancy,
     mr8_tiebreak_under_permutation,
 )
-from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
+from report.artifact import SAME_PROCESS, require_clean_tree, Artifact, relpath  # noqa: E402
 
 NOT_YET = {
     "MR9": "mask no-op, fidelity side. Needs an explicit pad region, which this "
@@ -168,7 +168,7 @@ def main() -> int:
     if not args.no_artifact:
         path = Artifact(
             kind="verify",
-            env=env,
+            harness=env, subject=SAME_PROCESS,
             payload={
                 "block_sizes": args.block_sizes,
                 "long_prompt_tokens": LONG_PROMPT,

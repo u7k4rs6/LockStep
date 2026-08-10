@@ -16,7 +16,7 @@ from engine import envlock  # noqa: E402
 from engine.model.qwen3 import Qwen3  # noqa: E402
 from engine.sched.policy import DefaultPolicy, FixedChunkPolicy  # noqa: E402
 from engine.sched.scheduler import Request, Scheduler  # noqa: E402
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import SAME_PROCESS, Artifact, relpath  # noqa: E402
 
 MIB = memprobe.MIB
 TOTAL_VRAM_MIB = 8188
@@ -104,7 +104,7 @@ def main() -> int:
     if not args.no_artifact:
         path = Artifact(
             kind="memory",
-            env=env,
+            harness=env, subject=SAME_PROCESS,
             payload={
                 "block_size": args.block_size,
                 "prompt_lengths": list(PROMPT_LENGTHS),

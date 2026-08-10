@@ -14,6 +14,7 @@ from engine.sched.lifecycle import (  # noqa: E402
     TRANSITIONS, UNREACHABLE_BY_DESIGN, feasible_ngrams, reachable_states,
 )
 from harness.sim.driver import Case  # noqa: E402
+from report.artifact import harness_env  # noqa: E402
 
 
 def main() -> int:
@@ -35,10 +36,10 @@ def main() -> int:
     for path in sorted((REPO_ROOT / "evidence").glob("*.json")):
         raw = path.read_bytes()
         doc = json.loads(raw)
-        env = doc.get("env", {})
+        env = harness_env(doc) if ("env" in doc or "environment" in doc) else {}
         rev = env.get("engine_revision", "n/a")
         print(f"   {path.name:<32} sha256:{hashlib.sha256(raw).hexdigest()[:16]}  {rev}")
-        if "env" in doc:
+        if "env" in doc or "environment" in doc:
             ok &= bool(env.get("fingerprint"))
 
     print()

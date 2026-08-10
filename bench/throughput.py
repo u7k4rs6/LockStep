@@ -20,7 +20,7 @@ import torch  # noqa: E402
 from engine import envlock  # noqa: E402
 from engine.model.qwen3 import Qwen3  # noqa: E402
 from engine.sched.scheduler import Request, Scheduler  # noqa: E402
-from report.artifact import require_clean_tree, Artifact, relpath  # noqa: E402
+from report.artifact import SAME_PROCESS, require_clean_tree, Artifact, relpath  # noqa: E402
 
 WEIGHTS = REPO_ROOT / "weights" / "Qwen3-0.6B"
 RUNS = 5
@@ -77,7 +77,7 @@ def time_external(python: Path, engine: str, deterministic: bool, trace,
     try:
         out = subprocess.run(
             [str(python), str(script), payload],
-            capture_output=True, text=True, timeout=1800, check=True, env=env,
+            capture_output=True, text=True, timeout=1800, check=True, harness=env, subject=SAME_PROCESS,
         )
         return float(json.loads(out.stdout.strip().splitlines()[-1])["seconds"])
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
@@ -241,7 +241,7 @@ def main() -> int:
     print()
     print(f"env  {env.fingerprint()}")
     if not args.no_artifact:
-        path = Artifact(kind="throughput", env=env,
+        path = Artifact(kind="throughput", harness=env, subject=SAME_PROCESS,
                         payload={"trace_tokens": total_tokens, "runs": args.runs,
                                  "interleaved": True,
                                  "measurement_order_seed": 20260806,

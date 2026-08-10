@@ -17,7 +17,7 @@ EVIDENCE_DIR = REPO_ROOT / "evidence"
 def publish(source: Path, name: str | None = None) -> Path:
     """Copy one artifact into `evidence/`, refusing anything without an env."""
     artifact = json.loads(source.read_text())
-    if not artifact.get("env"):
+    if not (artifact.get("env") or artifact.get("environment")):
         raise SystemExit(
             f"refusing to publish {source}: no env tuple. A claim without one is "
             "invalid by construction and committing it would make the evidence "

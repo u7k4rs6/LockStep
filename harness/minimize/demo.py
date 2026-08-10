@@ -14,7 +14,7 @@ from engine.model.qwen3 import Qwen3  # noqa: E402
 from harness.fuzz.campaign import case_fails, print_repro, Finding  # noqa: E402
 from harness.fuzz.generators import draw_case, draw_config  # noqa: E402
 from harness.minimize.ddmin import minimize  # noqa: E402
-from report.artifact import Artifact, relpath  # noqa: E402
+from report.artifact import SAME_PROCESS, Artifact, relpath  # noqa: E402
 
 
 def main() -> int:
@@ -56,7 +56,7 @@ def main() -> int:
     env = envlock.capture()
     path = Artifact(
         kind="case",
-        env=env,
+        harness=env, subject=SAME_PROCESS,
         payload={
             "reason": reason,
             "config": config.describe(),

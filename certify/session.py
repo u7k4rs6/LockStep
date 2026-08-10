@@ -240,12 +240,11 @@ def main() -> int:
     env = envlock.capture()
     print(f"env  {env.fingerprint()}")
     if not args.no_artifact:
-        path = Artifact(kind="certify", env=env, payload={
+        path = Artifact(kind="certify", harness=env, subject=subject, payload={
             "engine": info.name, "mode": mode, "model": info.model,
             "block_size": args.block_size, "block_size_assumed": False,
             "block_size_source": info.discovered_from,
             "observable": describe(), "top_logprobs": TOP_LOGPROBS,
-            "subject_env": subject,
             "repeats": args.repeats, "results": results,
             "clean": clean, "total": len(results),
             "batched_cases": sum(1 for r in results if r.get("batched")),

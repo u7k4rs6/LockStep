@@ -343,7 +343,7 @@ if __name__ == "__main__":
     import argparse
 
     from engine import envlock
-    from report.artifact import Artifact, relpath
+    from report.artifact import SAME_PROCESS, Artifact, relpath
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--weights", type=Path, default=REPO_ROOT / "weights" / "Qwen3-0.6B")
@@ -364,5 +364,5 @@ if __name__ == "__main__":
     print(f"invariant set held: {table[0]['held']}")
 
     if not args.no_artifact:
-        path = Artifact(kind="ablation", env=env, payload={"rows": table}).write()
+        path = Artifact(kind="ablation", harness=env, subject=SAME_PROCESS, payload={"rows": table}).write()
         print(f"artifact  {relpath(path)}")

@@ -14,7 +14,9 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from engine import envlock  # noqa: E402
-from report.artifact import Artifact, load  # noqa: E402
+from report.artifact import (  # noqa: E402
+    SAME_PROCESS, Artifact, harness_env, load, subject_env,
+)
 
 
 def test_captured_lock_leaks_no_identity():
@@ -55,19 +57,45 @@ def test_registry_digest_tracks_the_registry_file():
     assert envlock.capture().kernel_registry_sha256 == registry.digest()
 
 
-def test_artifact_round_trips_with_its_env(tmp_path):
-    artifact = Artifact(kind="fidelity", payload={"positions": 3}, env=envlock.capture())
+def test_artifact_round_trips_with_both_environments(tmp_path):
+    artifact = Artifact(kind="fidelity", payload={"positions": 3},
+                        harness=envlock.capture(), subject=SAME_PROCESS)
     path = artifact.write(results_dir=tmp_path)
     data = load(path)
     assert data["kind"] == "fidelity"
     assert data["payload"]["positions"] == 3
-    assert data["env"]["fingerprint"] == artifact.env.fingerprint()
+    assert harness_env(data)["fingerprint"] == artifact.harness.fingerprint()
+    assert subject_env(data)["kind"] == "same-process"
+
+
+def test_an_artifact_cannot_be_produced_without_declaring_its_subject():
+    """The defect this schema exists to prevent, asserted rather than intended.
+
+    Six committed artifacts carried one environment block that named the
+    certifier while the claim beside it was about a server on a different torch.
+    Nothing raised, because nothing had to be declared.
+    """
+    with pytest.raises(TypeError):
+        Artifact(kind="fidelity", payload={}, harness=envlock.capture())
+
+
+def test_a_schema_1_artifact_refuses_to_yield_a_subject_tuple(tmp_path):
+    """Reading the harness block as the subject's is the substitution, not a fix."""
+    path = tmp_path / "v1.json"
+    path.write_text(json.dumps({
+        "schema_version": 1, "kind": "certify", "payload": {},
+        "env": {"fingerprint": "sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0"},
+    }))
+    data = load(path)
+    assert harness_env(data)["fingerprint"].endswith("torch 2.6.0")
+    with pytest.raises(KeyError, match="schema 1"):
+        subject_env(data)
 
 
 def test_artifact_sequence_does_not_collide(tmp_path):
     env = envlock.capture()
     names = {
-        Artifact(kind="fidelity", payload={}, env=env).write(results_dir=tmp_path).name
+        Artifact(kind="fidelity", payload={}, harness=env, subject=SAME_PROCESS).write(results_dir=tmp_path).name
         for _ in range(3)
     }
     assert len(names) == 3
