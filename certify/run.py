@@ -10,6 +10,7 @@ import json
 import os
 import sys
 import threading
+import time
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -370,6 +371,9 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
             if cache_mode == "cold":
                 cache_reset_ok = reset_prefix_cache(base_url)
 
+            # Wall clock, not monotonic: the trace this brackets is written by
+            # the engine's process, so the two clocks have to be the same one.
+            started_epoch = time.time()
             with BatchWitness(base_url) as witness:
                 if sequential:
                     batch = [complete(base_url, info.model, tokens, max_tokens)
@@ -382,6 +386,7 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
                         max_tokens, cap,
                         order_seed=repeat if order_mode == "permuted" else 0,
                     )
+            ended_epoch = time.time()
             observations.append(batch)
             for completion in batch:
                 widths.update(len(a) for a in completion.alternatives)
@@ -395,6 +400,8 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
                 "max_concurrent_running": witness.max_running,
                 "gauge_samples": witness.samples,
                 "cache_reset_ok": cache_reset_ok,
+                "started_epoch": started_epoch,
+                "ended_epoch": ended_epoch,
             })
 
         divergences = []

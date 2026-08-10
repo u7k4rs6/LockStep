@@ -32,10 +32,16 @@ BASE_URL = f"http://127.0.0.1:{PORT}"
 def launch_vllm(python: Path, block_size: int, invariant: bool, log: Path,
                 prefix_caching: bool = True, dev_endpoints: bool = False,
                 max_num_batched_tokens: int | None = None,
-                max_num_seqs: int | None = None):
+                max_num_seqs: int | None = None,
+                rmsnorm_trace: Path | None = None):
     """vLLM's OpenAI-compatible server, batch-invariant mode optional."""
     env = dict(os.environ)
     env["PATH"] = f"{python.parent}:{env.get('PATH', '')}"
+    if rmsnorm_trace is not None:
+        # Read by the LockStep patch in the subject venv's batch_invariant.py.
+        # Without the patch installed this is inert, which is why the artifact
+        # records whether the trace actually appeared rather than assuming it.
+        env["LOCKSTEP_RMSNORM_TRACE"] = str(rmsnorm_trace)
     if dev_endpoints:
         env["VLLM_SERVER_DEV_MODE"] = "1"
     if invariant:
@@ -137,6 +143,11 @@ def main() -> int:
     parser.add_argument("--allow-dirty", action="store_true",
                         help="produce a claim artifact from an uncommitted "
                              "tree; recorded in the artifact when used")
+    parser.add_argument("--rmsnorm-trace", type=Path, default=None,
+                        help="record num_tokens at every RMSNorm launch in the "
+                             "server's process. Requires the LockStep patch in "
+                             "the subject venv's batch_invariant.py; inert "
+                             "without it.")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
     provenance = require_clean_tree(args.allow_dirty)
@@ -176,7 +187,8 @@ def main() -> int:
                                   prefix_caching=args.cache_mode != "disabled",
                                   dev_endpoints=args.cache_mode in ("cold", "warm"),
                                   max_num_batched_tokens=args.max_num_batched_tokens,
-                                  max_num_seqs=args.max_num_seqs)
+                                  max_num_seqs=args.max_num_seqs,
+                                  rmsnorm_trace=args.rmsnorm_trace)
     try:
         if not wait_ready(process, args.startup_timeout, log):
             tail = log.read_text().splitlines()[-6:]
@@ -254,6 +266,9 @@ def main() -> int:
             "order_mode": args.order_mode,
             "max_num_batched_tokens": args.max_num_batched_tokens,
             "max_num_seqs": args.max_num_seqs,
+            "rmsnorm_trace": (str(args.rmsnorm_trace.name)
+                              if args.rmsnorm_trace else None),
+            "server_log": log.name,
             "max_concurrent_running": max(
                 (r.get("max_concurrent_running", 0) for r in results), default=0),
             "filler_widths": list(FILLER_WIDTHS),
