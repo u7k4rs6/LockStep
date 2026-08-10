@@ -458,6 +458,10 @@ def certify(base_url: str, info: EngineInfo, block_size: int, repeats: int,
             "alternatives_width": dict(widths),
             "positions_missing_logprob": sum(missing_lp.values()),
             "repeat_digests": digests,
+            # The per-repeat witnesses were computed and then discarded, which
+            # left the wall-clock window of each repeat unrecoverable and any
+            # trace written by the server unattributable to a repeat.
+            "witnesses": witnesses,
             "later_repeats_agree": all(
                 p["requests_differing"] == 0 for p in pair_results if p["pair"][0] > 0
             ),
