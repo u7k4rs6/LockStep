@@ -25,14 +25,41 @@ BANNER_VERSION = re.compile(r"\bversion (\d+\.\d+\.\d+\S*)")
 ENGINE_VERSION = re.compile(r"LLM engine \(v([^)]+)\)")
 NON_DEFAULT_ARGS = re.compile(r"non-default args: (\{.*?\})\s*$")
 
+# Everything a reader would need to reconstruct the subject: the engine and its
+# version tuple, the three libraries whose kernels are in play, and the driver.
+# The driver is read in the subject's process rather than copied from the
+# harness: they happen to be the same machine here, and writing down a value
+# because it "must" match is how the harness tuple ended up beside a claim about
+# a different environment in the first place.
 PROBE = (
     "import json, sys, torch;"
+    "_spec=__import__('importlib.util', fromlist=['x']).find_spec;"
+    "_ver=__import__('importlib.metadata', fromlist=['x']).version;"
+    "_opt=lambda name: (_ver(name) if _spec(name.split('[')[0]) else None);"
+    "_read=lambda p: (open(p).read() if __import__('os').path.exists(p) else '');"
+    "_drv=__import__('re').search(r'NVRM version:.*?\\b(\\d+\\.\\d+(?:\\.\\d+)?)\\b',"
+    "  _read('/proc/driver/nvidia/version'));"
+    "import vllm;"
+    "import vllm.model_executor.layers.batch_invariant as _bi;"
+    "_sha=lambda f: (__import__('hashlib').sha256(open(f,'rb').read()).hexdigest()"
+    "  if __import__('os').path.exists(f) else None);"
     "print(json.dumps({"
     "'torch_version': torch.__version__,"
     "'cuda_version': torch.version.cuda,"
     "'python_version': '.'.join(str(v) for v in sys.version_info[:3]),"
-    "'triton_version': __import__('triton').__version__"
-    "  if __import__('importlib.util', fromlist=['x']).find_spec('triton') else None,"
+    "'triton_version': __import__('triton').__version__ if _spec('triton') else None,"
+    "'flashinfer_version': __import__('flashinfer').__version__"
+    "  if _spec('flashinfer') else None,"
+    "'engine_package_version': vllm.__version__,"
+    "'engine_version_tuple': list(vllm.version.__version_tuple__),"
+    "'driver_version': _drv.group(1) if _drv else None,"
+    # These runs deliberately patch the subject to record num_tokens at every
+    # RMSNorm launch. An artifact that did not say so would describe a stock
+    # 0.26.0, which is not what ran. The digest is read in the subject's
+    # process, from the module the subject actually imported.
+    "'batch_invariant_file': _bi.__file__,"
+    "'batch_invariant_sha256': _sha(_bi.__file__),"
+    "'batch_invariant_stock_sha256': _sha(_bi.__file__ + '.lockstep-orig'),"
     "}))"
 )
 
@@ -127,8 +154,26 @@ def capture(python: Path, log: Path, engine_name: str) -> dict:
         "non_default_args": startup["non_default_args"],
         "torch_version": probe.get("torch_version"),
         "triton_version": probe.get("triton_version"),
+        "flashinfer_version": probe.get("flashinfer_version"),
         "cuda_version": probe.get("cuda_version"),
+        "driver_version": probe.get("driver_version"),
         "python_version": probe.get("python_version"),
+        "engine_package_version": probe.get("engine_package_version"),
+        "engine_version_tuple": probe.get("engine_version_tuple"),
+        "batch_invariant_file": scrub(probe.get("batch_invariant_file")),
+        "batch_invariant_sha256": probe.get("batch_invariant_sha256"),
+        "batch_invariant_stock_sha256": probe.get("batch_invariant_stock_sha256"),
+        "batch_invariant_is_stock": (
+            probe.get("batch_invariant_stock_sha256") is None
+            or probe.get("batch_invariant_sha256")
+            == probe.get("batch_invariant_stock_sha256")
+        ),
+        "engine_commit": None,
+        "engine_commit_note": "vLLM 0.26.0 is an installed wheel, not a git "
+                              "checkout: it ships no commit and none can be "
+                              "read back. The released version is the finest "
+                              "identifier available for this subject, and "
+                              "saying so is more useful than a plausible SHA.",
         "interpreter": scrub(str(python)),
         "note": "the environment of the engine under test. The artifact's own "
                 "env.lock describes the certifier, which is a different process "
