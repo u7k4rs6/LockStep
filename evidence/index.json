@@ -18,7 +18,7 @@
     "certify-readme-sample.json": "the run pasted verbatim in the README",
     "upstream-finding.json": "provenance index for vllm#51187; not a result artifact and carries no env of its own",
     "prediction-rmsnorm-blocksize.json": "pre-registration for the instrumented RMSNorm block-size run, committed before the run so its result cannot be fitted to it; not a result artifact and carries no env of its own",
-    "rmsnorm-blocksize.json": "the mechanism behind vllm#51187, measured rather than inferred: num_tokens at every fused_add_rms_norm launch across 10 server lifetimes and 2 controls, against the prediction committed beforehand. The subject is a deliberately patched 0.26.0 and the artifact carries both the patched and stock digests",
+    "rmsnorm-blocksize.json": "the mechanism behind vllm#51187, measured per token: two repeats agree iff every token was reduced at the same RMSNorm block width, 1120 pairs across 16 server lifetimes and three arms, no exceptions. Carries the pre-registration it was tested against, both instrument patches by digest, and the max-num-seqs and FlashInfer-sampler arms",
     "upstream-finding-server-flags.json": "supersedes the server_flags field of upstream-finding.json, which omitted --dtype float16 and so was not replayable. The original is unedited; corrections in evidence/ are added, never applied in place"
   }
 }
