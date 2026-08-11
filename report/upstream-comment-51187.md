@@ -29,17 +29,15 @@ server lifetimes of 5 byte-identical repeats each: 10 default, 2 at
 `--max-num-seqs 8`, 4 with the FlashInfer sampler disabled.
 
 Two repeats return identical logprobs if and only if every token was reduced at
-the same RMSNorm block width in both. 1120 pairwise comparisons across all 16
-lifetimes, no exceptions in either direction, so it holds across all three
-configurations rather than only the default one. At case level, a case diverged
-exactly when some repeat put 256 or more tokens into a launch, in all 112
-case-lifetimes.
+the same RMSNorm block width in both: 1120 pairwise comparisons across all 16
+lifetimes, no exceptions either way, so it holds across all three configurations
+and not just the default. Read at case granularity, all 112 case-lifetimes
+diverged exactly when some repeat put 256 or more tokens into a launch.
 
 **Why a fixed workload varies at all.** The 44 and 45 co-resident cases leave 270
 and 274 uncached prefill tokens. The scheduler sometimes puts nearly all of them
 into one launch and sometimes splits them, so a byte-identical workload lands on
-both sides of 256 within a single server lifetime. That is the step between
-batch-size dependence and repeat-to-repeat variance at a fixed workload.
+both sides of 256 within a single server lifetime.
 
 **The title's "at ~44 co-resident sequences" is causally wrong, and that is my
 error.** The governing quantity is tokens scheduled into one launch, whatever
@@ -54,14 +52,13 @@ count, and it is not uncached prefill either:
 | batch 32 | 45 | 274 | 272 | yes |
 | any of the above, `--max-num-seqs 8` | 8 | unchanged | 85 | no |
 
-The cache-hit row is the one that refutes the uncached framing: lowest uncached
-total of any case, highest max launch of the small ones, because its two requests
-are fully cached and decode while the fillers prefill, so decode tokens fold into
-the same launches. In this workload a filler contributes about 9 uncached tokens
-and a prefix-sharing request about 4.9, so sequence count is not even monotonic
-in the governing quantity. Two requests of 128 fresh tokens each would cross at a
-co-residency of 2. And `--max-num-seqs 8` is clean because it caps a launch at 85
-tokens, not because 8 sequences are few.
+The cache-hit row inverts the uncached ordering because its two requests are
+fully cached and decode while the fillers prefill, so decode tokens fold into the
+same launches. A filler contributes about 9 uncached tokens and a prefix-sharing
+request about 4.9, so sequence count is not even monotonic in the governing
+quantity: two requests of 128 fresh tokens each would cross at a co-residency of
+2, and `--max-num-seqs 8` is clean because it caps a launch at 85 tokens rather
+than because 8 sequences are few.
 
 Every crossing is a prefill or mixed step, and decode steps sit at 44 or 45, so
 the perturbation starts in prefill and reaches the decode logprobs through the KV
