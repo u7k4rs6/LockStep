@@ -97,7 +97,7 @@ Inert unless LOCKSTEP_RMSNORM_TRACE is set, which certify/session.py does via
      _rms_norm_kernel[grid](
 --- a/v1/worker/gpu/model_runner.py.lockstep-orig
 +++ a/v1/worker/gpu/model_runner.py
-@@ -118,6 +118,64 @@
+@@ -118,6 +118,66 @@
  logger = init_logger(__name__)
  
  
@@ -152,17 +152,19 @@ Inert unless LOCKSTEP_RMSNORM_TRACE is set, which certify/session.py does via
 +        f"{len(per)}\t{items}\n")
 +    global _ls_steps
 +    _ls_steps += 1
-+    # The server is stopped with SIGTERM, which does not run atexit handlers,
-+    # so durability cannot rely on interpreter shutdown. Flushing every 32 steps
-+    # bounds any loss to trailing decode steps, which cannot cross 256.
-+    if _ls_steps % 32 == 0:
-+        _ls_sched_handle.flush()
++    # Flush every step. The server is stopped with SIGTERM, which does not run
++    # atexit handlers, so anything still buffered is lost. Flushing every 32
++    # steps was not enough: the last repeat of the last case is the final
++    # activity before teardown, and it sat entirely in the buffer, so that
++    # repeat appeared to have run 1 step instead of 26. One write per forward
++    # pass is a few microseconds against a step of milliseconds.
++    _ls_sched_handle.flush()
 +
 +
  class GPUModelRunner(LoRAModelRunnerMixin):
      def __init__(self, vllm_config: VllmConfig, device: torch.device):
          self.vllm_config = vllm_config
-@@ -1157,6 +1215,7 @@
+@@ -1157,6 +1217,7 @@
          is_profile: bool = False,
      ) -> ModelRunnerOutput | IntermediateTensors | None:
          if not dummy_run:
@@ -172,7 +174,7 @@ Inert unless LOCKSTEP_RMSNORM_TRACE is set, which certify/session.py does via
              self.finish_requests(scheduler_output)
 --- a/v1/worker/gpu_model_runner.py.lockstep-orig
 +++ a/v1/worker/gpu_model_runner.py
-@@ -449,6 +449,64 @@
+@@ -449,6 +449,66 @@
      slot_mappings: dict[str, torch.Tensor] | list[dict[str, torch.Tensor]] | None
  
  
@@ -227,17 +229,19 @@ Inert unless LOCKSTEP_RMSNORM_TRACE is set, which certify/session.py does via
 +        f"{len(per)}\t{items}\n")
 +    global _ls_steps
 +    _ls_steps += 1
-+    # The server is stopped with SIGTERM, which does not run atexit handlers,
-+    # so durability cannot rely on interpreter shutdown. Flushing every 32 steps
-+    # bounds any loss to trailing decode steps, which cannot cross 256.
-+    if _ls_steps % 32 == 0:
-+        _ls_sched_handle.flush()
++    # Flush every step. The server is stopped with SIGTERM, which does not run
++    # atexit handlers, so anything still buffered is lost. Flushing every 32
++    # steps was not enough: the last repeat of the last case is the final
++    # activity before teardown, and it sat entirely in the buffer, so that
++    # repeat appeared to have run 1 step instead of 26. One write per forward
++    # pass is a few microseconds against a step of milliseconds.
++    _ls_sched_handle.flush()
 +
 +
  class GPUModelRunner(
      LoRAModelRunnerMixin, KVConnectorModelRunnerMixin, ECConnectorModelRunnerMixin
  ):
-@@ -4113,6 +4171,7 @@
+@@ -4113,6 +4173,7 @@
          scheduler_output: "SchedulerOutput",
          intermediate_tensors: IntermediateTensors | None = None,
      ) -> ModelRunnerOutput | AsyncModelRunnerOutput | IntermediateTensors | None:
