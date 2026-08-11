@@ -33,7 +33,17 @@ CXX = "fused_add_rms_norm_cxx"
 
 
 def block_width(num_tokens: int, hidden: int) -> int:
-    """What the pre-fix launcher would pick. dim3 block(min(hidden, max))."""
+    """What the pre-fix fused_add_rms_norm launcher would pick.
+
+    `dim3 block(std::min(hidden_size, max_block_size))`. This is the FUSED-ADD
+    expression specifically. The non-fused `rms_norm` launcher divides first,
+    `min(hidden_size / gcd(16 / sizeof(scalar_t), hidden_size), max_block_size)`,
+    so it has a different boundary and this function does not describe it. Only
+    the fused-add op is reached under batch invariance, and `candidates()`
+    filters to it, so the distinction does not change any number here. It is
+    named because assuming one expression covered both already produced one
+    wrong derivation.
+    """
     max_block_size = 1024 if num_tokens < NARROW_BLOCK_THRESHOLD else 256
     return min(hidden, max_block_size)
 

@@ -386,6 +386,20 @@ def main() -> int:
                 "32/32 because both sizes exceed 256, while rms_norm fails "
                 "16/32 because 512/8 = 64 stays under the clamp and 4096/8 = "
                 "512 does not.",
+            "worked_example_qk_norm": "Qwen3's q_norm and k_norm are "
+                "residual-free, so they take the non-fused launcher. At "
+                "head_dim 128 and fp16 the vec_size is gcd(8, 128) = 8 and the "
+                "width is min(16, ...) = 16 either way, so they cannot be "
+                "affected. An earlier writeup reached the same conclusion using "
+                "min(128, ...), which is the fused-add expression applied to a "
+                "call that does not use it: right answer, wrong branch, and "
+                "invisible until the two expressions were known to differ.",
+            "why_hidden_1024_settles_it_twice": "in these runs the model's "
+                "hidden size is 1024, and 1024 / 8 = 128, so min(128, 1024) and "
+                "min(128, 256) are both 128. The non-fused op could not flip "
+                "here even if the engine did reach it. That is independent of "
+                "the dispatch argument below and does not depend on which path "
+                "the engine takes.",
             "which_of_the_two_the_engine_reaches": "under VLLM_BATCH_INVARIANT=1 "
                 "only fused_add_rms_norm, because rms_norm_batch_invariant "
                 "returns into it whenever a residual is present and sends only "
