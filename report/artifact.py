@@ -198,17 +198,33 @@ class SubjectNotRecorded(KeyError):
     """A schema-1 artifact was asked for the environment it never recorded."""
 
 
+def plain(value):
+    """Strip Record wrappers so the result is JSON-serializable.
+
+    Record wraps nested dicts on the way out, so `dict(record)` yields a dict
+    whose values are still Records and json.dumps refuses it. The strictness is
+    for reading fields, not for carrying data into a new artifact.
+    """
+    if isinstance(value, Record):
+        return {key: plain(value[key]) for key in value}
+    if isinstance(value, dict):
+        return {key: plain(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [plain(item) for item in value]
+    return value
+
+
 def harness_env(doc) -> dict:
     """The tuple of the process that took the measurement. Both schemas."""
     if "environment" in doc:
-        return dict(doc["environment"]["harness"])
-    return dict(doc["env"])
+        return plain(doc["environment"]["harness"])
+    return plain(doc["env"])
 
 
 def subject_env(doc) -> dict:
     """The tuple of the thing measured. Absent by construction in schema 1."""
     if "environment" in doc:
-        return dict(doc["environment"]["subject"])
+        return plain(doc["environment"]["subject"])
     raise SubjectNotRecorded(
         "this artifact is schema 1, which had one environment block and used it "
         "for the harness. The subject's tuple was never recorded, so it cannot "
