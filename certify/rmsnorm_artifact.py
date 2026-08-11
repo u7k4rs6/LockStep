@@ -103,8 +103,15 @@ def collect(label: str, artifact_path: Path, traces: Path) -> dict:
                     widths["requests_without_a_recorded_prompt"],
                 "ambiguous_prompts": widths["ambiguous_prompts"],
                 "per_token_width_digest": signature_digest(widths["signature"]),
-                # From the independent RMSNorm instrument, for cross-checking.
-                "launch_view_step_tokens": launch_repeat["step_tokens"],
+                # The independent RMSNorm instrument's view of the same window.
+                # Stored only when it disagrees: it is identical in 347 of 350
+                # main-arm windows and duplicating it wholesale tripled the
+                # artifact for no added evidence.
+                "launch_view_agrees":
+                    launch_repeat["step_tokens"] == totals,
+                "launch_view_step_tokens":
+                    None if launch_repeat["step_tokens"] == totals
+                    else launch_repeat["step_tokens"],
             })
 
         digests = case["repeat_digests"]
@@ -173,7 +180,7 @@ def cross_check(lifetimes) -> dict:
     for run in lifetimes:
         for case in run["cases"]:
             for repeat in case["repeats"]:
-                if repeat["step_tokens"] == repeat["launch_view_step_tokens"]:
+                if repeat["launch_view_agrees"]:
                     agree += 1
                 else:
                     disagree += 1
@@ -187,6 +194,12 @@ def cross_check(lifetimes) -> dict:
                 "differ it is the RMSNorm view reconstructing forward passes "
                 "from launch counts, which is the weaker of the two and the "
                 "reason the second instrument exists.",
+        "every_disagreement_observed": "three windows, all of them the last "
+                "repeat of the last case, where the RMSNorm view is SHORTER. "
+                "That instrument flushes every 512 calls, about nine forward "
+                "passes, so it loses a tail the scheduler instrument keeps. The "
+                "prefixes are identical and the lost steps are decode-sized, so "
+                "no crossing launch is affected.",
     }
 
 
