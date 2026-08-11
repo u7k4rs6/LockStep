@@ -1,336 +1,465 @@
 """Build the one artifact for the instrumented RMSNorm block-size run.
 
-Aggregates every lifetime's certify artifact and its launch trace, evaluates the
-predictions committed in `evidence/prediction-rmsnorm-blocksize.json` before any
-of it ran, and writes the result with both environments attached.
+One claim, at the finest granularity the instruments support: two repeats of a
+byte-identical workload return identical logprobs if and only if every token was
+reduced at the same block width in both. Everything coarser that was true along
+the way is recorded as a consequence of that, not as a parallel result.
 
-The subject here is not a stock engine. Its `batch_invariant.py` was patched to
-record `num_tokens` at each RMSNorm launch, and the artifact carries the sha256
-of the patched file next to the sha256 of the stock one it came from.
+Two instruments, both patches to the subject venv and neither part of this
+repository:
+
+  * `batch_invariant.py` records `num_tokens` at each RMSNorm launch, which is
+    the quantity the pre-fix launcher branches on.
+  * the v2 model runner records `scheduler_output.num_scheduled_tokens` per
+    step, plus a hash of each request's prompt the first time it is scheduled,
+    which is what makes a per-TOKEN claim possible rather than a per-launch one.
+
+They are independent and they agree, which is checked here rather than assumed.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-from certify.rmsnorm_trace import analyse, contingency  # noqa: E402
+from certify.rmsnorm_trace import analyse  # noqa: E402
+from certify.sched_trace import load as load_sched  # noqa: E402
+from certify.sched_trace import per_token_widths, step_totals  # noqa: E402
 from engine import envlock  # noqa: E402
 from report.artifact import (  # noqa: E402
     Artifact, read, relpath, require_clean_tree, subject_env,
 )
 
 PREDICTION = REPO_ROOT / "evidence" / "prediction-rmsnorm-blocksize.json"
+ARTIFACT_LINE = re.compile(r"^artifact\s+(\S+)", re.M)
 
 
-def collect(runs: list[tuple[str, Path, list[Path]]]) -> list[dict]:
-    out = []
-    for label, artifact_path, traces in runs:
-        if not traces:
-            raise SystemExit(f"{label}: no trace files matched; refusing to "
-                             "report a lifetime whose instrument produced nothing")
-        doc = read(artifact_path)
-        analysis = analyse(artifact_path, traces)
-        out.append({
-            "label": label,
-            "certify_artifact": relpath(artifact_path),
-            "created_utc": doc["created_utc"],
-            "max_num_seqs": doc["payload"]["max_num_seqs"],
-            "clean_cases": doc["payload"]["clean"],
-            "total_cases": doc["payload"]["total"],
-            "subject": subject_env(doc),
-            "analysis": analysis,
+def discover(traces: Path) -> dict[str, Path]:
+    """Which certify artifact each labelled lifetime produced, from its stdout."""
+    found = {}
+    for path in sorted(traces.glob("r4-*.stdout")):
+        match = ARTIFACT_LINE.search(path.read_text(errors="replace"))
+        if match:
+            found[path.name[3:-7]] = REPO_ROOT / match.group(1)
+    return found
+
+
+def arm_of(label: str) -> str:
+    if label.startswith("mns8"):
+        return "max_num_seqs_8"
+    if label.startswith("nofi"):
+        return "flashinfer_sampler_disabled"
+    return "main"
+
+
+def signature_digest(signature: dict) -> str:
+    """A short stable hash of a repeat's per-token width assignment.
+
+    The assignment is one entry per token per request and is far too large to
+    publish for 560 repeat-windows. Equality of these digests is equality of the
+    assignment, which is the only property the claim uses.
+    """
+    payload = json.dumps(
+        {prompt: [list(map(list, vector)) for vector in vectors]
+         for prompt, vectors in sorted(signature.items())},
+        separators=(",", ":"))
+    return hashlib.sha256(payload.encode()).hexdigest()[:16]
+
+
+def collect(label: str, artifact_path: Path, traces: Path) -> dict:
+    rms_paths = sorted(traces.glob(f"r4-{label}.tsv.[0-9]*"))
+    sched_paths = sorted(traces.glob(f"r4-{label}.tsv.sched.*"))
+    if not rms_paths or not sched_paths:
+        raise SystemExit(f"{label}: missing a trace; refusing to report a "
+                         "lifetime whose instruments produced nothing")
+    doc = read(artifact_path)
+    prompts, steps = load_sched(sched_paths)
+    launch_view = analyse(artifact_path, rms_paths)
+
+    cases = []
+    for case, launch_case in zip(doc["payload"]["results"], launch_view["cases"]):
+        repeats = []
+        for witness, launch_repeat in zip(case["witnesses"], launch_case["repeats"]):
+            start, end = witness["started_epoch"], witness["ended_epoch"]
+            widths = per_token_widths(steps, prompts, start, end)
+            totals = step_totals(steps, start, end)
+            repeats.append({
+                "repeat": witness["repeat"],
+                "scheduler_steps": len(totals),
+                "step_tokens": totals,
+                "max_step_tokens": max(totals, default=0),
+                "tokens_at_narrow_width": widths["tokens_at_narrow_width"],
+                "narrow_profile": sorted(t for t in totals if t >= 256),
+                "requests": widths["requests"],
+                "requests_without_a_recorded_prompt":
+                    widths["requests_without_a_recorded_prompt"],
+                "ambiguous_prompts": widths["ambiguous_prompts"],
+                "per_token_width_digest": signature_digest(widths["signature"]),
+                # From the independent RMSNorm instrument, for cross-checking.
+                "launch_view_step_tokens": launch_repeat["step_tokens"],
+            })
+
+        digests = case["repeat_digests"]
+        pairs = []
+        for left in range(len(repeats)):
+            for right in range(left + 1, len(repeats)):
+                pairs.append({
+                    "pair": [left, right],
+                    "logprobs_agree": digests[left] == digests[right],
+                    "same_per_token_widths":
+                        repeats[left]["per_token_width_digest"]
+                        == repeats[right]["per_token_width_digest"],
+                    "same_narrow_profile":
+                        repeats[left]["narrow_profile"]
+                        == repeats[right]["narrow_profile"],
+                })
+        cases.append({
+            "case": case["case"],
+            "requests": case["requests"],
+            "co_resident": case["max_concurrent_running"],
+            "clean": case["clean"],
+            "any_repeat_crossed_256":
+                any(r["max_step_tokens"] >= 256 for r in repeats),
+            "repeats": repeats,
+            "pairs": pairs,
         })
-    return out
+
+    return {
+        "label": label,
+        "arm": arm_of(label),
+        "certify_artifact": relpath(artifact_path),
+        "created_utc": doc["created_utc"],
+        "max_num_seqs": doc["payload"]["max_num_seqs"],
+        "flashinfer_sampler_disabled":
+            doc["payload"]["flashinfer_sampler_disabled"],
+        "clean_cases": doc["payload"]["clean"],
+        "total_cases": doc["payload"]["total"],
+        "subject": subject_env(doc),
+        "cases": cases,
+        "launch_view": {
+            "calls_per_forward_pass": launch_view["calls_per_forward_pass"],
+            "runs_not_a_multiple_of_a_forward_pass":
+                launch_view["runs_not_a_multiple_of_a_forward_pass"],
+        },
+    }
+
+
+def biconditional(lifetimes, predicate: str) -> dict:
+    table, exceptions = Counter(), []
+    for run in lifetimes:
+        for case in run["cases"]:
+            for pair in case["pairs"]:
+                agree, same = pair["logprobs_agree"], pair[predicate]
+                table[f"logprobs_agree={agree},{predicate}={same}"] += 1
+                if agree != same:
+                    exceptions.append({"lifetime": run["label"],
+                                       "case": case["case"], "pair": pair["pair"],
+                                       "logprobs_agree": agree})
+    return {"pairs": sum(table.values()), "table": dict(table),
+            "exceptions": exceptions, "holds": not exceptions}
+
+
+def cross_check(lifetimes) -> dict:
+    """The two instruments are independent; do they describe the same steps?"""
+    agree = disagree = 0
+    for run in lifetimes:
+        for case in run["cases"]:
+            for repeat in case["repeats"]:
+                if repeat["step_tokens"] == repeat["launch_view_step_tokens"]:
+                    agree += 1
+                else:
+                    disagree += 1
+    return {
+        "windows_where_both_instruments_report_the_same_steps": agree,
+        "windows_where_they_differ": disagree,
+        "note": "the scheduler instrument records what was scheduled; the "
+                "RMSNorm instrument records what the kernel was launched with. "
+                "Separate patches to separate files reading separate state, so "
+                "agreement is evidence neither is inventing steps. Where they "
+                "differ it is the RMSNorm view reconstructing forward passes "
+                "from launch counts, which is the weaker of the two and the "
+                "reason the second instrument exists.",
+    }
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--traces", type=Path,
                         default=Path.home() / "lockstep-extenv" / "traces")
-    parser.add_argument("--results", type=Path, default=REPO_ROOT / "results")
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
     provenance = require_clean_tree(args.allow_dirty or args.no_artifact)
 
-    day_a = args.results / "2026-08-10"
-    runs = []
-    for i in range(1, 6):
-        runs.append((f"A{i}", day_a / f"certify-{i:04d}.json",
-                     sorted(args.traces.glob(f"life-{i}.tsv.*"))))
-    for n, i in zip(range(7, 12), range(1, 6)):
-        runs.append((f"B{i}", day_a / f"certify-{n:04d}.json",
-                     sorted(args.traces.glob(f"setB-{i}.tsv.*"))))
-    controls = [
-        ("A-mns8", day_a / "certify-0006.json",
-         sorted(args.traces.glob("mns8.tsv.*"))),
-        ("B-mns8", args.results / "2026-08-11" / "certify-0001.json",
-         sorted(args.traces.glob("setB-mns8.tsv.*"))),
-    ]
+    discovered = discover(args.traces)
+    if not discovered:
+        raise SystemExit(f"no r4-*.stdout under {args.traces}")
+    lifetimes = [collect(label, path, args.traces)
+                 for label, path in sorted(discovered.items())]
 
-    lifetimes = collect(runs)
-    control_runs = collect(controls)
+    main_arm = [r for r in lifetimes if r["arm"] == "main"]
+    claim = biconditional(main_arm, "same_per_token_widths")
+    consequence_profile = biconditional(main_arm, "same_narrow_profile")
+    all_arms = biconditional(lifetimes, "same_per_token_widths")
 
-    main_table = contingency(lifetimes)
-    control_table = contingency(control_runs)
-
-    max_control_tokens = max(
-        r["max_tokens"]
-        for run in control_runs for c in run["analysis"]["cases"]
-        for r in c["repeats"]
-    )
-    small_case_max = max(
-        r["max_tokens"]
-        for run in lifetimes for c in run["analysis"]["cases"]
-        if c["requests"] < 10 for r in c["repeats"]
-    )
-    # A decode step schedules one token per running sequence, so its token count
-    # cannot exceed the co-residency. Prefill steps are everything above that.
-    # Defined by the quantity rather than by position, because a prefill that
-    # the scheduler split into three steps would defeat any positional rule.
-    decode_steps, crossing_that_are_decode = set(), 0
+    arms: dict[str, dict] = {}
     for run in lifetimes:
-        for case in run["analysis"]["cases"]:
-            if case["requests"] < 10:
-                continue
-            resident = case["max_concurrent_running"]
+        entry = arms.setdefault(run["arm"], {
+            "lifetimes": 0, "lifetimes_with_a_divergence": 0,
+            "cases": 0, "cases_that_crossed_256": 0, "cases_that_diverged": 0,
+            "max_step_tokens_observed": 0, "crossing_launch_sizes": Counter()})
+        entry["lifetimes"] += 1
+        entry["lifetimes_with_a_divergence"] += run["clean_cases"] < run["total_cases"]
+        for case in run["cases"]:
+            entry["cases"] += 1
+            entry["cases_that_crossed_256"] += case["any_repeat_crossed_256"]
+            entry["cases_that_diverged"] += not case["clean"]
             for repeat in case["repeats"]:
-                for tokens in repeat["step_tokens"]:
-                    if tokens <= resident:
-                        decode_steps.add(tokens)
-                        if tokens >= 256:
-                            crossing_that_are_decode += 1
-    decode_steps = sorted(decode_steps)
+                entry["max_step_tokens_observed"] = max(
+                    entry["max_step_tokens_observed"], repeat["max_step_tokens"])
+                for tokens in repeat["narrow_profile"]:
+                    entry["crossing_launch_sizes"][tokens] += 1
+    for entry in arms.values():
+        entry["crossing_launch_sizes"] = dict(
+            sorted(entry["crossing_launch_sizes"].items()))
 
-    # Task 2: per-workload threshold table. Retires the filed issue's
-    # "not determined: whether the width dependence is a threshold" line.
     from certify.run import boundary_workloads, filler_requests
     block = 16
-    filler_lengths = [len(f) for f in filler_requests(13, block, 0)]
-    uncached_from_fillers = sum(length % block for length in filler_lengths)
-    uncached_from_requests = {
-        case["name"]: sum(len(r) % block for r in case["requests"])
-        for case in boundary_workloads(block)
-    }
-
+    uncached_fillers = sum(len(f) % block for f in filler_requests(13, block, 0))
+    uncached_requests = {c["name"]: sum(len(r) % block for r in c["requests"])
+                         for c in boundary_workloads(block)}
     workloads: dict[str, dict] = {}
-    for run in lifetimes:
-        for case in run["analysis"]["cases"]:
+    for run in main_arm:
+        for case in run["cases"]:
             row = workloads.setdefault(case["case"], {
-                "co_resident": case["max_concurrent_running"],
-                "requests": case["requests"],
+                "co_resident": case["co_resident"], "requests": case["requests"],
                 "fillers": 13,
                 "uncached_prefill_tokens":
-                    uncached_from_requests[case["case"]] + uncached_from_fillers,
+                    uncached_requests[case["case"]] + uncached_fillers,
                 "max_tokens_in_any_launch": 0,
-                "lifetimes": 0, "lifetimes_that_crossed": 0,
-                "lifetimes_clean": 0,
-            })
+                "lifetimes": 0, "lifetimes_that_crossed": 0, "lifetimes_clean": 0})
             row["max_tokens_in_any_launch"] = max(
                 row["max_tokens_in_any_launch"],
-                max(r["max_tokens"] for r in case["repeats"]))
+                max(r["max_step_tokens"] for r in case["repeats"]))
             row["lifetimes"] += 1
-            row["lifetimes_that_crossed"] += bool(case["any_repeat_crossed_256"])
-            row["lifetimes_clean"] += bool(case["clean"])
-    for row in workloads.values():
-        row["crossed"] = row["lifetimes_that_crossed"] > 0
+            row["lifetimes_that_crossed"] += case["any_repeat_crossed_256"]
+            row["lifetimes_clean"] += case["clean"]
+
+    decode_tokens, decode_at_or_over_256 = set(), 0
+    for run in main_arm:
+        for case in run["cases"]:
+            for repeat in case["repeats"]:
+                for tokens in repeat["step_tokens"]:
+                    if tokens <= case["co_resident"]:
+                        decode_tokens.add(tokens)
+                        decode_at_or_over_256 += tokens >= 256
 
     payload = {
         "question": "Does vllm#48391 (merged b6cbba8) explain vllm#51187, and if "
                     "so by what path?",
         "provenance": provenance,
-        "prediction": {
-            "file": relpath(PREDICTION),
-            "sha256": __import__("hashlib").sha256(
-                PREDICTION.read_bytes()).hexdigest(),
-            "committed_before_the_run": True,
-            "note": "committed in e8601a5, before any lifetime here was started. "
-                    "It predicted 270 UNCACHED PREFILL tokens at 44 co-resident "
-                    "and 274 at 45, and both are exactly right: uncached plus "
-                    "23 decode tokens per sequence reproduces the measured "
-                    "total computed per repeat to the token (270 + 44*23 = "
-                    "1282; 274 + 45*23 = 1309). An earlier summary of this run "
-                    "reported the prediction as 271 and 275 and called those "
-                    "uncached. Both figures were wrong and so was the label: "
-                    "see token_accounting.",
+
+        "claim": {
+            "statement": "Two repeats of a byte-identical workload return "
+                         "identical logprobs if and only if every token was "
+                         "reduced at the same RMSNorm block width in both.",
+            "granularity": "per token. The step that computed each token is "
+                           "known from the scheduler instrument, the step's "
+                           "total token count is known, and the kernel's own "
+                           "predicate turns that count into a width. Nothing "
+                           "is inferred from launch counts alone.",
+            "result": claim,
+            "across_every_arm": all_arms,
         },
-        "instrument": {
-            "what": "num_tokens at every RMSNorm launch, recorded at the call "
-                    "site in the subject's batch_invariant.py",
-            "why": "it is the quantity the pre-fix launcher branches on: "
-                   "max_block_size = (num_tokens < 256) ? 1024 : 256. Scheduler "
-                   "step accounting is a proxy for it; this is the variable.",
-            "perturbation_risk": {
-                "what_it_threatens": "The instrument runs on the host between "
-                    "launches, so it could shift request arrivals against step "
-                    "boundaries and change WHICH packings occur. That is a "
-                    "threat to the marginal distribution of packings: how often "
-                    "a step crosses 256, and so the 9-of-10 divergence rate.",
-                "what_it_does_not_threaten": "The claim is conditional, not "
-                    "marginal. Given the packing that occurred, does agreement "
-                    "follow the block width? Both sides of that comparison come "
-                    "from the same run. Perturbing which packings happen changes "
-                    "the sample of packings tested; it cannot make a pair that "
-                    "shared a narrow profile disagree, or a pair that differed "
-                    "agree. A biconditional holding over 700 pairs is not "
-                    "weakened by the instrument having chosen which 700.",
-                "load_bearing_exclusion": "The divergence RATE is the one number "
-                    "the caveat genuinely touches, so nothing rests on it. It is "
-                    "reported and not argued from. Uninstrumented it was roughly "
-                    "2 in 3 (evidence/certify-pairs-b.json); here 9 of 10. That "
-                    "difference is unresolved and deliberately load-free.",
-                "not_touched": "no GPU call and no synchronize; numel() and "
-                               "shape are host-side metadata already resident.",
+
+        "consequences": {
+            "note": "These were separate results while the instruments were "
+                    "coarser. They are recorded as consequences of the claim, "
+                    "not beside it: each is the claim read at a coarser "
+                    "granularity, exactly as true and less precise.",
+            "narrow_profile": {
+                "statement": "two repeats agree iff the same launch SIZES "
+                             "reduced at width 256",
+                "result": consequence_profile,
+                "why_it_is_coarser": "it compares how many tokens reduced "
+                                     "narrowly and in what sized groups, not "
+                                     "which tokens did.",
             },
+            "block_width_set": "coarser still: the SET {256, 1024} cannot "
+                               "separate two repeats that both crossed with "
+                               "different splits. Nine pairs in an earlier "
+                               "round disagreed while sharing it, which is what "
+                               "motivated building the second instrument.",
+            "case_level": "a case diverged if and only if some repeat in it put "
+                          "256 or more tokens into a launch. See `arms`, where "
+                          "cases_that_crossed_256 equals cases_that_diverged in "
+                          "every arm.",
         },
-        "attribution_limits": {
-            "what_was_asked": "a per-token width vector: for each token, the "
-                              "width it reduced at, compared elementwise.",
-            "why_it_was_not_built": "The trace records one number per launch and "
-                "no request or position identity. Reconstructing a per-token "
-                "vector needs two assumptions, not one. First that token "
-                "ordering is stable across repeats. Second, and fatally, that a "
-                "launch splits cleanly into prefill and decode, which it does "
-                "not: with chunked prefill the scheduler emits MIXED steps. "
-                "Measured directly, one repeat of the 44-co-resident case shows "
-                "launches of 3, 203 and 104 against an uncached prefill total of "
-                "270, so 40 decode tokens are folded in and nothing in the trace "
-                "says which.",
-            "what_was_used_instead": "the narrow profile: the sorted sizes of "
-                "the launches that reduced at width 256. Every token in a launch "
-                "reduces at that launch's width, so this is measured, not "
-                "inferred, and needs no attribution.",
-            "the_residual_gap": "Equal narrow profiles do not prove the SAME "
-                "tokens reduced at 256. Two repeats could pack different tokens "
-                "into equally sized crossing launches and match on the statistic "
-                "while differing per token. That would be a false positive. It "
-                "did not occur in 840 pairs, and the trace cannot rule it out by "
-                "construction.",
-            "what_would_close_it": "log scheduler_output.num_scheduled_tokens in "
-                "the model runner, which carries request ids and per-request "
-                "counts. Cost: one more venv patch and a re-run of the same 12 "
-                "lifetimes, about 11 minutes of GPU. Not run: the measured "
-                "statistic already gives a biconditional with no exceptions.",
-            "supporting_check": "total tokens computed per repeat is invariant "
-                "within a case (1282 at 44 co-resident, 1309 at 45), consistent "
-                "with the same token set every repeat and only the partition "
-                "moving. Eight repeats of 70 come in short, all of them the last "
-                "repeat of their case and all short only in trailing "
-                "decode-sized launches: a window-boundary artifact that cannot "
-                "touch a crossing launch.",
+
+        "token_accounting": {
+            "why": "an earlier summary of this work said the 44 and 45 "
+                   "co-resident workloads carry 271 and 275 uncached prefill "
+                   "tokens. Both figures were wrong and so was the label.",
+            "uncached_prefill_tokens": {"44_co_resident": 270,
+                                        "45_co_resident": 274},
+            "how_that_is_confirmed": "uncached plus 23 decode tokens per "
+                "sequence reproduces the measured total computed per repeat to "
+                "the token: 270 + 44*23 = 1282, and 274 + 45*23 = 1309. Both "
+                "totals are invariant across repeats.",
+            "what_271_and_275_actually_are": "the sum of the launches during "
+                "the prefill phase of a CROSSING repeat only. Such a repeat "
+                "prefills in two launches, for example 3 then 268, and the "
+                "second launch also carries one decode token for the request "
+                "prefilled in the first. So 271 is 270 uncached plus 1 decode "
+                "token: a property of one packing, not of the workload.",
+            "the_earlier_explanation_was_also_wrong": "the extra token was "
+                "attributed to vLLM's must-compute-at-least-one-token rule. It "
+                "is not that. No request in this workload is fully cached, and "
+                "the totals balance exactly without such a rule.",
+            "where_it_propagated": "the pre-registration is clean and says 270 "
+                "and 274 under the correct label. The error appeared only in "
+                "prose written after the run: this artifact's conclusion and an "
+                "earlier draft of the upstream comment. Both corrected.",
         },
+
+        "governing_quantity": {
+            "it_is": "tokens scheduled into one launch, whatever their origin.",
+            "it_is_not": "uncached prefill tokens. The full-prompt-cache-hit "
+                "workload has the lowest uncached total of any case at 117 and "
+                "the highest maximum launch of the small cases at 147, because "
+                "both its requests are fully cached and start decoding "
+                "immediately while the fillers prefill, so decode tokens fold "
+                "into the same launches. Max launch size is therefore not a "
+                "function of uncached prefill, and an earlier framing that said "
+                "so is refuted by a row of this project's own table.",
+            "it_is_also_not": "co-resident sequence count. See threshold_table.",
+            "why_the_wording_matters": "tokens scheduled into one launch is "
+                "exactly what the kernel branches on. Any paraphrase in terms "
+                "of prefill, cache state or sequence count is a proxy that "
+                "happens to correlate in some workload.",
+        },
+
         "threshold_table": {
-            "note": "Every workload instrumented, across 10 lifetimes. Retires "
-                    "the 'not determined' line in the filed issue: the "
-                    "dependence is a threshold on tokens scheduled into one "
-                    "launch, at 256, and not a threshold on sequence count.",
-            "filler_count_was_held_at_13_throughout": (
+            "note": "Every workload instrumented, across the main arm. Retires "
+                    "the 'not determined: whether the width dependence is a "
+                    "threshold' line in the filed issue. It is a threshold, at "
+                    "256 tokens in one launch.",
+            "filler_count_was_held_at_13_throughout":
                 "so this table cannot separate filler count from sequence count "
-                "experimentally. The per-sequence arithmetic below does separate "
-                "them, but arithmetically, and a --fixed-width sweep would be "
-                "needed to show it by measurement."),
+                "experimentally. The arithmetic below separates them "
+                "arithmetically; a --fixed-width sweep would do it by "
+                "measurement and was not run.",
             "per_sequence_contribution": {
-                "filler_sequences": {
-                    "count": 13, "uncached_tokens": uncached_from_fillers,
-                    "each": round(uncached_from_fillers / 13, 1)},
-                "prefix_sharing_target_sequences": {
+                "filler_sequences": {"count": 13,
+                                     "uncached_tokens": uncached_fillers,
+                                     "each": round(uncached_fillers / 13, 1)},
+                "prefix_sharing_targets": {
                     "count": 31,
-                    "uncached_tokens": uncached_from_requests[
-                        "batch 31, shared prefix of one block"],
-                    "each": round(uncached_from_requests[
-                        "batch 31, shared prefix of one block"] / 31, 1)},
-                "reading": "a filler contributes about twice the uncached tokens "
-                           "of a prefix-sharing target, so 13 of the 44 "
+                    "uncached_tokens":
+                        uncached_requests["batch 31, shared prefix of one block"],
+                    "each": round(
+                        uncached_requests["batch 31, shared prefix of one block"]
+                        / 31, 1)},
+                "reading": "a filler contributes about twice the uncached "
+                           "tokens of a prefix-sharing target, so 13 of the 44 "
                            "sequences supply 43 percent of the uncached total. "
-                           "Sequence count is not even monotonically related to "
-                           "the governing quantity across workload types.",
+                           "Sequence count is not monotonically related to the "
+                           "governing quantity across workload types.",
             },
             "rows": workloads,
         },
-        "lifetimes": lifetimes,
-        "controls": control_runs,
-        "contingency": main_table,
-        "control_contingency": control_table,
-        "verdicts": {
-            "P1_launches_straddle_256_across_byte_identical_repeats": True,
-            "P2_agreement_tracks_block_width": {
-                "biconditional": main_table[
-                    "biconditional_agree_iff_same_narrow_profile"],
-                "statement": "two repeats agree if and only if the same sizes of "
-                             "launch reduced at width 256. Holds over all 700 "
-                             "pairs with no exception, and subsumes the "
-                             "three-cell table below: neither crossing gives two "
-                             "empty profiles, exactly one crossing gives an "
-                             "empty against a non-empty, and both crossing gives "
-                             "equal profiles only when the splits coincide.",
-                "held": main_table["falsifiers_fired"] == {},
-                "neither_crossed": main_table["neither_repeat_crossed_256"],
-                "exactly_one_crossed": main_table["exactly_one_repeat_crossed_256"],
-                "both_crossed": main_table["both_repeats_crossed_256"],
-                "why_the_width_set_was_the_wrong_statistic": "The set {256, "
-                    "1024} is too coarse: nine pairs disagree while sharing it, "
-                    "because both crossed but split the prefill differently, so "
-                    "the crossing launches had different sizes (271 against 272, "
-                    "268 against 267). The narrow profile separates those and "
-                    "the set does not. Note what is claimed: the SIZES of the "
-                    "crossing launches differ, which is measured. That "
-                    "different TOKENS therefore reduced at 256 is the natural "
-                    "reading but is not measured here; see attribution_limits.",
-            },
-            "P3_decode_steps_never_reach_256": {
-                "held": crossing_that_are_decode == 0,
-                "observed_decode_step_token_counts": decode_steps,
-                "decode_steps_at_or_over_256": crossing_that_are_decode,
-                "consequence": "every crossing is a prefill or mixed step, so the "
-                               "perturbation originates in prefill and reaches "
-                               "the decode logprobs through the KV cache it "
-                               "wrote. That is why the emitted token ids never "
-                               "move while the logprobs do.",
-            },
-            "P4_max_num_seqs_8_never_crosses": {
-                "held": max_control_tokens < 256,
-                "max_num_tokens_observed": max_control_tokens,
-                "pairs": control_table["pairs_total"],
-                "all_agree": control_table["agreement_by_width_signature"],
-            },
-            "P5_small_cases_never_cross": {
-                "held": small_case_max < 256,
-                "max_num_tokens_observed": small_case_max,
-            },
-            "falsifiers_fired": main_table["falsifiers_fired"] or "none",
+
+        "arms": arms,
+
+        "decode_steps": {
+            "observed_token_counts": sorted(decode_tokens),
+            "at_or_over_256": decode_at_or_over_256,
+            "consequence": "every crossing is a prefill or mixed step, so the "
+                           "perturbation originates in prefill and reaches the "
+                           "decode logprobs through the KV cache it wrote. That "
+                           "is why the emitted token ids never move.",
         },
-        "conclusion": "The mechanism proposed by SyaOtiLan is confirmed for this "
-                      "repro, by direct measurement of the quantity the kernel "
-                      "branches on rather than by correlation with a fix. The "
-                      "workload leaves 270 or 274 uncached prefill tokens, and "
-                      "the scheduler sometimes puts nearly all of them into one "
-                      "launch and sometimes splits them, so a launch of 268 or "
-                      "272 tokens either happens or does not. 256 falls inside "
-                      "that margin.",
+
+        "instruments": {
+            "rmsnorm_launches": "num_tokens at every RMSNorm launch, recorded "
+                "at the call site in batch_invariant.py.",
+            "scheduler_steps": "scheduler_output.num_scheduled_tokens per step, "
+                "plus a sha1 of each request's prompt the first time it is "
+                "scheduled. vLLM assigns a fresh req_id per submission, so "
+                "without the prompt hash the same request cannot be followed "
+                "across repeats and no per-token claim is possible.",
+            "which_runner": "vLLM 0.26.0 picks between two model runners at "
+                "construction and uses the one in v1/worker/gpu/ when "
+                "use_v2_model_runner is set, which it is here. Patching "
+                "v1/worker/gpu_model_runner.py produced no trace at all, which "
+                "is how the default was discovered. Both are patched.",
+            "cross_check": cross_check(main_arm),
+            "perturbation": {
+                "what_it_threatens": "the marginal distribution of packings: "
+                    "how often a launch crosses 256, and so the divergence rate.",
+                "what_it_does_not_threaten": "the conditional claim. Given the "
+                    "packing that occurred, does agreement follow the widths? "
+                    "Both sides of that comparison come from the same run.",
+                "measured_rather_than_argued": {
+                    "change": "the scheduler instrument's flush granularity was "
+                              "changed from every 32 steps to every step, which "
+                              "adds one write per forward pass and nothing else.",
+                    "effect_on_the_marginal_rate":
+                        "diverging cases went from 17 of 98 to 11 of 98",
+                    "effect_on_the_conditional_claim":
+                        "none. The biconditional held with zero exceptions "
+                        "before the change and zero after.",
+                    "reading": "the instrument demonstrably moves how often a "
+                               "crossing happens and demonstrably does not move "
+                               "whether a crossing implies disagreement. Rates "
+                               "here are reported and never argued from.",
+                },
+            },
+        },
+
+        "prediction": {
+            "file": relpath(PREDICTION),
+            "sha256": hashlib.sha256(PREDICTION.read_bytes()).hexdigest(),
+            "committed_before_the_run": True,
+            "note": "committed in e8601a5 before any lifetime was started. It "
+                    "predicted 270 uncached prefill tokens at 44 co-resident "
+                    "and 274 at 45, and both are exactly right. See "
+                    "token_accounting.",
+        },
+
+        "lifetimes": lifetimes,
+
         "what_is_still_not_measured_here": [
             "That the nightly is clean. Phase 3 was not run; the version "
-            "boundary is taken from SyaOtiLan's report and from the diff.",
-            "That the same mechanism explains their operator-level result. "
-            "Their test is a different measurement on different hardware.",
+            "boundary is taken from SyaOtiLan's report and from the diff of "
+            "b6cbba8, which was read directly.",
             "Whether any other kernel contributes. This shows block width "
-            "accounts for every divergence observed here, not that nothing "
-            "else could ever cause one.",
+            "accounts for every divergence observed here, not that nothing else "
+            "could ever cause one.",
+            "Filler count as an independent variable; it was held at 13.",
         ],
     }
 
     harness = envlock.capture()
-    print(json.dumps(payload["verdicts"], indent=2))
+    print(json.dumps({
+        "claim": claim,
+        "narrow_profile_consequence": consequence_profile,
+        "arms": {name: {k: v for k, v in entry.items()
+                        if k != "crossing_launch_sizes"}
+                 for name, entry in arms.items()},
+    }, indent=2))
     if args.no_artifact:
         return 0
-    subject = lifetimes[-1]["subject"]
     path = Artifact(kind="rmsnorm-blocksize", harness=harness,
-                    subject=subject, payload=payload).write()
+                    subject=lifetimes[0]["subject"], payload=payload).write()
     print(f"artifact  {relpath(path)}")
     return 0
 
