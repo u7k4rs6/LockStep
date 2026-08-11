@@ -50,24 +50,75 @@ def load_trace(paths: list[Path]) -> list[tuple[float, str, int, int]]:
     return rows
 
 
-def steps_in_window(rows, start: float, end: float) -> list[tuple[int, int]]:
-    """The C++ launches inside a repeat's window, collapsed to one per step.
+def candidates(rows, start: float, end: float) -> list[tuple[int, int]]:
+    """C++ launches inside a repeat's window whose block width can actually move."""
+    return [
+        (num_tokens, hidden)
+        for epoch, kind, num_tokens, hidden in rows
+        # min(hidden, max_block_size) cannot move when hidden <= 256.
+        if kind == CXX and hidden > NARROW_BLOCK_THRESHOLD and start <= epoch <= end
+    ]
 
-    A forward pass issues 56 fused_add_rms_norm calls at the same num_tokens
-    (28 layers, all but layer 0's first norm, plus the final norm). Collapsing
-    runs of equal num_tokens turns the call trace into the step trace without
-    assuming how many calls a step contains.
+
+def calls_per_forward(rows) -> int:
+    """How many of these launches one forward pass issues, derived not assumed.
+
+    Qwen3-0.6B should give 56: two norms in each of 28 layers, plus the final
+    norm, less layer 0's first norm, which has no residual and goes to Triton.
+    Deriving it from the trace instead means this module does not silently
+    assume a model shape, and a mismatch shows up as a strange number rather
+    than as a plausible wrong answer.
+
+    Consecutive forward passes at the same num_tokens produce a run of length
+    56k, so the single most common run length is one pass. The GCD would be
+    exact if every run were clean, and it is not: across a full trace one run in
+    186 has a length that is not a multiple of 56, which drives a GCD to 1. The
+    mode survives that; `runs_not_a_multiple` reports it rather than hiding it.
     """
+    counts = Counter(run_lengths(rows))
+    return counts.most_common(1)[0][0] if counts else 0
+
+
+def run_lengths(rows) -> list[int]:
+    """Lengths of maximal runs of consecutive launches at the same num_tokens."""
+    lengths, run, previous = [], 0, None
+    for num_tokens, _ in rows:
+        if num_tokens != previous and run:
+            lengths.append(run)
+            run = 0
+        previous, run = num_tokens, run + 1
+    if run:
+        lengths.append(run)
+    return lengths
+
+
+def steps_in_window(rows, start: float, end: float, per_forward: int
+                    ) -> list[tuple[int, int]]:
+    """One entry per forward pass, in order.
+
+    Collapsing runs of equal num_tokens would merge a repeat's 24 consecutive
+    decode steps into one entry: harmless for the block-width question, wrong
+    for everything else. Each run of length L at the same num_tokens is L /
+    per_forward passes.
+
+    Divided per run rather than by chunking the window from its start, so a
+    single malformed run cannot shift the grouping of everything after it.
+    """
+    launches = candidates(rows, start, end)
+    if per_forward <= 0:
+        return []
     steps: list[tuple[int, int]] = []
-    for epoch, kind, num_tokens, hidden in rows:
-        if kind != CXX or not (start <= epoch <= end):
-            continue
-        if hidden <= NARROW_BLOCK_THRESHOLD:
-            # min(hidden, max_block_size) cannot move; not a candidate.
-            continue
-        if steps and steps[-1][0] == num_tokens:
-            continue
-        steps.append((num_tokens, hidden))
+    run, previous_n, previous_h = 0, None, None
+    for num_tokens, hidden in launches:
+        if num_tokens != previous_n and run:
+            steps.extend([(previous_n, previous_h)]
+                         * max(1, round(run / per_forward)))
+            run = 0
+        previous_n, previous_h = num_tokens, hidden
+        run += 1
+    if run:
+        steps.extend([(previous_n, previous_h)]
+                     * max(1, round(run / per_forward)))
     return steps
 
 
@@ -89,13 +140,15 @@ def analyse(artifact_path: Path, trace_paths: list[Path]) -> dict:
     doc = read(artifact_path)
     payload = doc["payload"]
     rows = load_trace(trace_paths)
+    per_forward = calls_per_forward(
+        candidates(rows, float("-inf"), float("inf")))
 
     cases = []
     for result in payload["results"]:
         repeats = []
         for witness in result["witnesses"]:
             steps = steps_in_window(rows, witness["started_epoch"],
-                                    witness["ended_epoch"])
+                                    witness["ended_epoch"], per_forward)
             summary = summarize_repeat(steps)
             summary["repeat"] = witness["repeat"]
             repeats.append(summary)
@@ -131,6 +184,11 @@ def analyse(artifact_path: Path, trace_paths: list[Path]) -> dict:
     return {
         "trace_lines": len(rows),
         "trace_kinds": dict(Counter(k for _, k, _, _ in rows)),
+        "calls_per_forward_pass": per_forward,
+        "runs_not_a_multiple_of_a_forward_pass": sum(
+            1 for length in run_lengths(candidates(rows, float("-inf"), float("inf")))
+            if per_forward and length % per_forward
+        ),
         "cases": cases,
     }
 
@@ -152,6 +210,47 @@ def verdicts(cases: list[dict]) -> dict:
             if agree and not same_width:
                 counterexamples["F3"].append(where)
     return {"tally": dict(tally), "counterexamples": counterexamples}
+
+
+def contingency(runs: list[dict]) -> dict:
+    """Agreement against block width, over every pair in every lifetime.
+
+    Three populations, because the interesting one is small. Pairs where neither
+    repeat crossed 256 should always agree; pairs where exactly one crossed
+    should never agree; pairs where both crossed depend on whether the same
+    tokens landed in the crossing step, which the width-set signature cannot see.
+    """
+    table = Counter()
+    neither, one, both = Counter(), Counter(), Counter()
+    fired = Counter()
+    for run in runs:
+        for case in run["analysis"]["cases"]:
+            by_repeat = {r["repeat"]: r for r in case["repeats"]}
+            for pair in case["pairs"]:
+                left, right = (by_repeat[i] for i in pair["pair"])
+                agree = pair["digests_agree"]
+                table[f"agree={agree},same_widths={pair['same_block_widths']}"] += 1
+                crossed = (left["used_narrow_block"], right["used_narrow_block"])
+                if not any(crossed):
+                    neither[agree] += 1
+                    if not agree:
+                        fired["F2"] += 1
+                elif all(crossed):
+                    both[f"agree={agree},same_step_tokens={pair['same_step_tokens']}"] += 1
+                else:
+                    one[agree] += 1
+                if not agree and pair["same_step_tokens"]:
+                    fired["F1"] += 1
+                if agree and not pair["same_block_widths"]:
+                    fired["F3"] += 1
+    return {
+        "pairs_total": sum(table.values()),
+        "agreement_by_width_signature": dict(table),
+        "neither_repeat_crossed_256": {str(k): v for k, v in neither.items()},
+        "exactly_one_repeat_crossed_256": {str(k): v for k, v in one.items()},
+        "both_repeats_crossed_256": dict(both),
+        "falsifiers_fired": dict(fired),
+    }
 
 
 def main() -> int:
