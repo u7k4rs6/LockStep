@@ -151,8 +151,14 @@ def main() -> int:
                 PREDICTION.read_bytes()).hexdigest(),
             "committed_before_the_run": True,
             "note": "committed in e8601a5, before any lifetime here was started. "
-                    "Its arithmetic predicted a crossing total of 270 tokens at "
-                    "44 co-resident and 274 at 45.",
+                    "It predicted 270 UNCACHED PREFILL tokens at 44 co-resident "
+                    "and 274 at 45, and both are exactly right: uncached plus "
+                    "23 decode tokens per sequence reproduces the measured "
+                    "total computed per repeat to the token (270 + 44*23 = "
+                    "1282; 274 + 45*23 = 1309). An earlier summary of this run "
+                    "reported the prediction as 271 and 275 and called those "
+                    "uncached. Both figures were wrong and so was the label: "
+                    "see token_accounting.",
         },
         "instrument": {
             "what": "num_tokens at every RMSNorm launch, recorded at the call "
@@ -194,7 +200,7 @@ def main() -> int:
                 "not: with chunked prefill the scheduler emits MIXED steps. "
                 "Measured directly, one repeat of the 44-co-resident case shows "
                 "launches of 3, 203 and 104 against an uncached prefill total of "
-                "271, so 39 decode tokens are folded in and nothing in the trace "
+                "270, so 40 decode tokens are folded in and nothing in the trace "
                 "says which.",
             "what_was_used_instead": "the narrow profile: the sorted sizes of "
                 "the launches that reduced at width 256. Every token in a launch "
@@ -302,9 +308,11 @@ def main() -> int:
         "conclusion": "The mechanism proposed by SyaOtiLan is confirmed for this "
                       "repro, by direct measurement of the quantity the kernel "
                       "branches on rather than by correlation with a fix. The "
-                      "workload puts 271 or 275 uncached tokens into a prefill "
-                      "that the scheduler sometimes packs into one step and "
-                      "sometimes splits, and 256 falls inside that margin.",
+                      "workload leaves 270 or 274 uncached prefill tokens, and "
+                      "the scheduler sometimes puts nearly all of them into one "
+                      "launch and sometimes splits them, so a launch of 268 or "
+                      "272 tokens either happens or does not. 256 falls inside "
+                      "that margin.",
         "what_is_still_not_measured_here": [
             "That the nightly is clean. Phase 3 was not run; the version "
             "boundary is taken from SyaOtiLan's report and from the diff.",

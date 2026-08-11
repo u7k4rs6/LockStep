@@ -1,20 +1,33 @@
 The instrumentation applied to the subject venv for evidence/rmsnorm-blocksize.json.
 
-Not part of this repository's engine. Apply against
-  <subject-venv>/lib/python3.12/site-packages/vllm/model_executor/layers/batch_invariant.py
-of a stock vLLM 0.26.0, whose sha256 is
-  2cfcd9ac7d9b954155f012ba44ac21f970ea28ab770248037a00988725176f98
-which patches to
-  7b2de9c35e5261a07f94397f3ad0dedd1e59d5eee19977286f924814c9d1ad67
-The artifact records both digests, so which of the two ran is checkable rather
-than remembered. The venv was restored to stock after the runs; keeping a
-silently patched engine around is the same defect this work exists to document.
+Not part of this repository's engine. Two patches:
+
+1. model_executor/layers/batch_invariant.py
+     records num_tokens at every RMSNorm launch.
+     stock   2cfcd9ac7d9b954155f012ba44ac21f970ea28ab770248037a00988725176f98
+     patched 7b2de9c35e5261a07f94397f3ad0dedd1e59d5eee19977286f924814c9d1ad67
+
+2. v1/worker/gpu/model_runner.py  and  v1/worker/gpu_model_runner.py
+     record scheduler_output.num_scheduled_tokens per step, plus a hash of each
+     request's prompt the first time it is scheduled, so the same request can be
+     identified across repeats. vLLM assigns a fresh req_id per submission, so
+     req_id alone cannot be matched.
+
+     Both runners are patched because vLLM 0.26.0 chooses between them at
+     construction: gpu_worker.py picks GPUModelRunnerV2 from v1/worker/gpu/ when
+     vllm_config.use_v2_model_runner is set, which it is on this configuration.
+     Patching only v1/worker/gpu_model_runner.py produced no trace at all, which
+     is how the v2 default was discovered.
+
+The two instruments are independent and cross-check: the scheduler steps match
+the RMSNorm forward passes exactly, offset by the single 2048-token startup
+profiling run, which is a dummy_run and is deliberately not recorded.
 
 Inert unless LOCKSTEP_RMSNORM_TRACE is set, which certify/session.py does via
 --rmsnorm-trace.
 
---- a/batch_invariant.py.lockstep-orig
-+++ a/batch_invariant.py
+--- a/model_executor/layers/batch_invariant.py.lockstep-orig
++++ a/model_executor/layers/batch_invariant.py
 @@ -824,6 +824,45 @@
          tl.store(output_row_start_ptr + col_idx, output, mask=mask)
  
@@ -82,3 +95,153 @@ Inert unless LOCKSTEP_RMSNORM_TRACE is set, which certify/session.py does via
      BLOCK_SIZE = 1024
      grid = (n_rows,)
      _rms_norm_kernel[grid](
+--- a/v1/worker/gpu/model_runner.py.lockstep-orig
++++ a/v1/worker/gpu/model_runner.py
+@@ -118,6 +118,64 @@
+ logger = init_logger(__name__)
+ 
+ 
++
++# ---------------------------------------------------------------------------
++# LockStep instrumentation. NOT upstream. Reverted by restoring the sibling
++# .lockstep-orig file.
++#
++# Records what the scheduler put into each forward pass: the per-request token
++# counts, and, the first time a request is seen, a hash of its prompt so the
++# same request can be identified across repeats (vLLM assigns a fresh req_id
++# every submission, so req_id alone cannot be matched across repeats).
++#
++# Written to a sibling of the RMSNorm trace rather than into it, so the existing
++# trace format and its reader are untouched. Host-side only: no GPU call, no
++# synchronize.
++# ---------------------------------------------------------------------------
++import atexit as _ls_atexit
++import hashlib as _ls_hashlib
++import os as _ls_os
++import time as _ls_time
++
++_LS_TRACE = _ls_os.environ.get("LOCKSTEP_RMSNORM_TRACE")
++_ls_sched_handle = None
++_ls_seen_reqs = set()
++_ls_steps = 0
++
++
++def _ls_record_sched(scheduler_output) -> None:
++    global _ls_sched_handle
++    if not _LS_TRACE:
++        return
++    if _ls_sched_handle is None:
++        _ls_sched_handle = open(f"{_LS_TRACE}.sched.{_ls_os.getpid()}", "a",
++                                buffering=1 << 20)
++        _ls_atexit.register(
++            lambda: (_ls_sched_handle.flush(), _ls_sched_handle.close()))
++    now = _ls_time.time()
++    for new in getattr(scheduler_output, "scheduled_new_reqs", ()) or ():
++        if new.req_id in _ls_seen_reqs:
++            continue
++        _ls_seen_reqs.add(new.req_id)
++        tokens = new.prompt_token_ids or []
++        digest = _ls_hashlib.sha1(
++            ",".join(str(t) for t in tokens).encode()).hexdigest()[:16]
++        _ls_sched_handle.write(f"{now:.6f}\tnew\t{new.req_id}\t{digest}\t"
++                               f"{len(tokens)}\n")
++    per = scheduler_output.num_scheduled_tokens
++    items = ",".join(f"{k}={v}" for k, v in sorted(per.items()))
++    _ls_sched_handle.write(
++        f"{now:.6f}\tstep\t{scheduler_output.total_num_scheduled_tokens}\t"
++        f"{len(per)}\t{items}\n")
++    global _ls_steps
++    _ls_steps += 1
++    # The server is stopped with SIGTERM, which does not run atexit handlers,
++    # so durability cannot rely on interpreter shutdown. Flushing every 32 steps
++    # bounds any loss to trailing decode steps, which cannot cross 256.
++    if _ls_steps % 32 == 0:
++        _ls_sched_handle.flush()
++
++
+ class GPUModelRunner(LoRAModelRunnerMixin):
+     def __init__(self, vllm_config: VllmConfig, device: torch.device):
+         self.vllm_config = vllm_config
+@@ -1157,6 +1215,7 @@
+         is_profile: bool = False,
+     ) -> ModelRunnerOutput | IntermediateTensors | None:
+         if not dummy_run:
++            _ls_record_sched(scheduler_output)
+             # Update the request states.
+             self.update_pp_decode_requests()
+             self.finish_requests(scheduler_output)
+--- a/v1/worker/gpu_model_runner.py.lockstep-orig
++++ a/v1/worker/gpu_model_runner.py
+@@ -449,6 +449,64 @@
+     slot_mappings: dict[str, torch.Tensor] | list[dict[str, torch.Tensor]] | None
+ 
+ 
++
++# ---------------------------------------------------------------------------
++# LockStep instrumentation. NOT upstream. Reverted by restoring the sibling
++# .lockstep-orig file.
++#
++# Records what the scheduler put into each forward pass: the per-request token
++# counts, and, the first time a request is seen, a hash of its prompt so the
++# same request can be identified across repeats (vLLM assigns a fresh req_id
++# every submission, so req_id alone cannot be matched across repeats).
++#
++# Written to a sibling of the RMSNorm trace rather than into it, so the existing
++# trace format and its reader are untouched. Host-side only: no GPU call, no
++# synchronize.
++# ---------------------------------------------------------------------------
++import atexit as _ls_atexit
++import hashlib as _ls_hashlib
++import os as _ls_os
++import time as _ls_time
++
++_LS_TRACE = _ls_os.environ.get("LOCKSTEP_RMSNORM_TRACE")
++_ls_sched_handle = None
++_ls_seen_reqs = set()
++_ls_steps = 0
++
++
++def _ls_record_sched(scheduler_output) -> None:
++    global _ls_sched_handle
++    if not _LS_TRACE:
++        return
++    if _ls_sched_handle is None:
++        _ls_sched_handle = open(f"{_LS_TRACE}.sched.{_ls_os.getpid()}", "a",
++                                buffering=1 << 20)
++        _ls_atexit.register(
++            lambda: (_ls_sched_handle.flush(), _ls_sched_handle.close()))
++    now = _ls_time.time()
++    for new in getattr(scheduler_output, "scheduled_new_reqs", ()) or ():
++        if new.req_id in _ls_seen_reqs:
++            continue
++        _ls_seen_reqs.add(new.req_id)
++        tokens = new.prompt_token_ids or []
++        digest = _ls_hashlib.sha1(
++            ",".join(str(t) for t in tokens).encode()).hexdigest()[:16]
++        _ls_sched_handle.write(f"{now:.6f}\tnew\t{new.req_id}\t{digest}\t"
++                               f"{len(tokens)}\n")
++    per = scheduler_output.num_scheduled_tokens
++    items = ",".join(f"{k}={v}" for k, v in sorted(per.items()))
++    _ls_sched_handle.write(
++        f"{now:.6f}\tstep\t{scheduler_output.total_num_scheduled_tokens}\t"
++        f"{len(per)}\t{items}\n")
++    global _ls_steps
++    _ls_steps += 1
++    # The server is stopped with SIGTERM, which does not run atexit handlers,
++    # so durability cannot rely on interpreter shutdown. Flushing every 32 steps
++    # bounds any loss to trailing decode steps, which cannot cross 256.
++    if _ls_steps % 32 == 0:
++        _ls_sched_handle.flush()
++
++
+ class GPUModelRunner(
+     LoRAModelRunnerMixin, KVConnectorModelRunnerMixin, ECConnectorModelRunnerMixin
+ ):
+@@ -4113,6 +4171,7 @@
+         scheduler_output: "SchedulerOutput",
+         intermediate_tensors: IntermediateTensors | None = None,
+     ) -> ModelRunnerOutput | AsyncModelRunnerOutput | IntermediateTensors | None:
++        _ls_record_sched(scheduler_output)
+         if self.execute_model_state is not None:
+             raise RuntimeError(
+                 "State error: sample_tokens() must be called "

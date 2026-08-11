@@ -33,10 +33,16 @@ def launch_vllm(python: Path, block_size: int, invariant: bool, log: Path,
                 prefix_caching: bool = True, dev_endpoints: bool = False,
                 max_num_batched_tokens: int | None = None,
                 max_num_seqs: int | None = None,
-                rmsnorm_trace: Path | None = None):
+                rmsnorm_trace: Path | None = None,
+                flashinfer_sampler: bool | None = None):
     """vLLM's OpenAI-compatible server, batch-invariant mode optional."""
     env = dict(os.environ)
     env["PATH"] = f"{python.parent}:{env.get('PATH', '')}"
+    if flashinfer_sampler is False:
+        # SyaOtiLan reported this arm clean on vllm#51187 and flagged that an
+        # all-greedy workload may bypass the FlashInfer sampling call entirely,
+        # so a clean result here need not implicate the sampler.
+        env["VLLM_USE_FLASHINFER_SAMPLER"] = "0"
     if rmsnorm_trace is not None:
         # Read by the LockStep patch in the subject venv's batch_invariant.py.
         # Without the patch installed this is inert, which is why the artifact
@@ -148,6 +154,9 @@ def main() -> int:
                              "server's process. Requires the LockStep patch in "
                              "the subject venv's batch_invariant.py; inert "
                              "without it.")
+    parser.add_argument("--no-flashinfer-sampler", action="store_true",
+                        help="set VLLM_USE_FLASHINFER_SAMPLER=0; the arm "
+                             "reported clean on vllm#51187")
     parser.add_argument("--no-artifact", action="store_true")
     args = parser.parse_args()
     provenance = require_clean_tree(args.allow_dirty)
@@ -188,7 +197,9 @@ def main() -> int:
                                   dev_endpoints=args.cache_mode in ("cold", "warm"),
                                   max_num_batched_tokens=args.max_num_batched_tokens,
                                   max_num_seqs=args.max_num_seqs,
-                                  rmsnorm_trace=args.rmsnorm_trace)
+                                  rmsnorm_trace=args.rmsnorm_trace,
+                                  flashinfer_sampler=(
+                                      False if args.no_flashinfer_sampler else None))
     try:
         if not wait_ready(process, args.startup_timeout, log):
             tail = log.read_text().splitlines()[-6:]
@@ -268,6 +279,7 @@ def main() -> int:
             "max_num_seqs": args.max_num_seqs,
             "rmsnorm_trace": (str(args.rmsnorm_trace.name)
                               if args.rmsnorm_trace else None),
+            "flashinfer_sampler_disabled": bool(args.no_flashinfer_sampler),
             "server_log": log.name,
             "max_concurrent_running": max(
                 (r.get("max_concurrent_running", 0) for r in results), default=0),
