@@ -1,0 +1,84 @@
+The instrumentation applied to the subject venv for evidence/rmsnorm-blocksize.json.
+
+Not part of this repository's engine. Apply against
+  <subject-venv>/lib/python3.12/site-packages/vllm/model_executor/layers/batch_invariant.py
+of a stock vLLM 0.26.0, whose sha256 is
+  2cfcd9ac7d9b954155f012ba44ac21f970ea28ab770248037a00988725176f98
+which patches to
+  7b2de9c35e5261a07f94397f3ad0dedd1e59d5eee19977286f924814c9d1ad67
+The artifact records both digests, so which of the two ran is checkable rather
+than remembered. The venv was restored to stock after the runs; keeping a
+silently patched engine around is the same defect this work exists to document.
+
+Inert unless LOCKSTEP_RMSNORM_TRACE is set, which certify/session.py does via
+--rmsnorm-trace.
+
+--- a/batch_invariant.py.lockstep-orig
++++ a/batch_invariant.py
+@@ -824,6 +824,45 @@
+         tl.store(output_row_start_ptr + col_idx, output, mask=mask)
+ 
+ 
++# ---------------------------------------------------------------------------
++# LockStep instrumentation. NOT upstream. Reverted by restoring the sibling
++# .lockstep-orig file.
++#
++# Records num_tokens at every RMSNorm launch, which is the exact quantity the
++# pre-fix block-size branch in csrc/libtorch_stable/layernorm_kernels.cu reads:
++#     const int max_block_size = (num_tokens < 256) ? 1024 : 256;
++# Scheduler step accounting is a proxy for this; this is the variable itself.
++#
++# Deliberately does nothing that touches the GPU: numel() and shape are host-side
++# metadata, the write is buffered, and there is no synchronize. The instrument
++# must not perturb the packing it exists to measure.
++# ---------------------------------------------------------------------------
++import atexit as _ls_atexit
++import os as _ls_os
++import time as _ls_time
++
++_LS_TRACE = _ls_os.environ.get("LOCKSTEP_RMSNORM_TRACE")
++_ls_handle = None
++_ls_calls = 0
++
++
++def _ls_record(kind: str, tensor) -> None:
++    global _ls_handle, _ls_calls
++    if not _LS_TRACE:
++        return
++    if _ls_handle is None:
++        _ls_handle = open(f"{_LS_TRACE}.{_ls_os.getpid()}", "a", buffering=1 << 20)
++        _ls_atexit.register(lambda: (_ls_handle.flush(), _ls_handle.close()))
++    hidden = tensor.shape[-1]
++    num_tokens = tensor.numel() // hidden
++    # The kernel compares (num_tokens < 256), so 256 itself selects the narrow
++    # block. Recorded raw; the predicate is applied when the trace is read.
++    _ls_handle.write(f"{_ls_time.time():.6f}\t{kind}\t{num_tokens}\t{hidden}\n")
++    _ls_calls += 1
++    if _ls_calls % 512 == 0:
++        _ls_handle.flush()
++
++
+ def rms_norm_batch_invariant(
+     input: torch.Tensor,
+     weight: torch.Tensor | None,
+@@ -851,6 +890,9 @@
+         )
+         import vllm._custom_ops as ops
+ 
++        # The C++ kernel, reached under VLLM_BATCH_INVARIANT=1 whenever a
++        # residual is present. This is the launch whose block size moves.
++        _ls_record("fused_add_rms_norm_cxx", input)
+         ops.fused_add_rms_norm(input, residual, weight, eps)
+         return input, residual
+ 
+@@ -870,6 +912,10 @@
+     n_rows, n_cols = input_2d.shape
+ 
+     output = torch.empty_like(input_2d)
++    # The Triton path, taken only when residual is None. BLOCK_SIZE is pinned
++    # below, so this path is invariant already; recorded to show it, not to
++    # assume it.
++    _ls_record("rms_norm_triton", input_2d)
+     BLOCK_SIZE = 1024
+     grid = (n_rows,)
+     _rms_norm_kernel[grid](
