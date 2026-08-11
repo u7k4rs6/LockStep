@@ -480,6 +480,22 @@ def main() -> int:
                                "crossing happens and demonstrably does not move "
                                "whether a crossing implies disagreement. Rates "
                                "here are reported and never argued from.",
+                    "the_earlier_run_by_arm": {
+                        "main": "10 lifetimes, 9 with a divergence, 12 of 70 "
+                                "cases diverging",
+                        "max_num_seqs_8": "2 lifetimes, 0 with a divergence, "
+                                          "0 of 14 cases",
+                        "flashinfer_sampler_disabled":
+                            "4 lifetimes, 3 with a divergence, 5 of 28 cases",
+                        "why_these_are_literals": "the earlier run's certify "
+                            "artifacts live under results/, which is gitignored, "
+                            "so they are not committed and these figures cannot "
+                            "be recomputed from this repository. They are "
+                            "recorded here as numbers with that limitation "
+                            "stated, rather than cited from files a reader "
+                            "cannot open. The lifetimes in `lifetimes` below "
+                            "are the committed set and are fully recomputable.",
+                    },
                 },
             },
         },
