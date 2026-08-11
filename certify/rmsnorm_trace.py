@@ -122,15 +122,34 @@ def steps_in_window(rows, start: float, end: float, per_forward: int
     return steps
 
 
+def narrow_profile(step_tokens) -> tuple[int, ...]:
+    """The sizes of the launches that reduced at the narrow width, sorted.
+
+    This is the finest statistic the trace supports. It is *measured*: each
+    launch's token count is recorded directly, and every token in a launch
+    reduces at that launch's width, so the number of tokens that reduced at 256
+    is the sum of these with no attribution required.
+
+    It is not the per-token width vector. Building that would need to know which
+    tokens were in which launch, and the trace records only counts. See
+    `attribution_limits` in certify/rmsnorm_artifact.py.
+    """
+    return tuple(sorted(n for n in step_tokens if n >= NARROW_BLOCK_THRESHOLD))
+
+
 def summarize_repeat(steps) -> dict:
     widths = sorted({block_width(n, h) for n, h in steps})
-    crossing = [n for n, _ in steps if n >= NARROW_BLOCK_THRESHOLD]
+    step_tokens = [n for n, _ in steps]
+    crossing = [n for n in step_tokens if n >= NARROW_BLOCK_THRESHOLD]
     return {
         "steps": len(steps),
-        "step_tokens": [n for n, _ in steps],
-        "max_tokens": max((n for n, _ in steps), default=0),
+        "step_tokens": step_tokens,
+        "max_tokens": max(step_tokens, default=0),
         "launches_at_or_over_256": len(crossing),
         "crossing_step_tokens": crossing,
+        "narrow_profile": list(narrow_profile(step_tokens)),
+        "tokens_reduced_at_narrow_width": sum(crossing),
+        "total_tokens_computed": sum(step_tokens),
         "block_widths_used": widths,
         "used_narrow_block": 256 in widths,
     }
@@ -156,6 +175,7 @@ def analyse(artifact_path: Path, trace_paths: list[Path]) -> dict:
         digests = result["repeat_digests"]
         width_signatures = [tuple(r["block_widths_used"]) for r in repeats]
         token_signatures = [tuple(r["step_tokens"]) for r in repeats]
+        narrow_signatures = [tuple(r["narrow_profile"]) for r in repeats]
 
         # The prediction, evaluated pairwise. Agreement is digest equality;
         # the predictor is whether the pair used the same set of block widths.
@@ -167,6 +187,11 @@ def analyse(artifact_path: Path, trace_paths: list[Path]) -> dict:
                     "digests_agree": digests[left] == digests[right],
                     "same_block_widths": width_signatures[left] == width_signatures[right],
                     "same_step_tokens": token_signatures[left] == token_signatures[right],
+                    "same_narrow_profile":
+                        narrow_signatures[left] == narrow_signatures[right],
+                    "same_narrow_token_count":
+                        repeats[left]["tokens_reduced_at_narrow_width"]
+                        == repeats[right]["tokens_reduced_at_narrow_width"],
                 })
 
         cases.append({
@@ -223,6 +248,9 @@ def contingency(runs: list[dict]) -> dict:
     table = Counter()
     neither, one, both = Counter(), Counter(), Counter()
     fired = Counter()
+    # The biconditional, over every pair rather than only the contested cell.
+    biconditional = Counter()
+    exceptions = []
     for run in runs:
         for case in run["analysis"]["cases"]:
             by_repeat = {r["repeat"]: r for r in case["repeats"]}
@@ -243,6 +271,15 @@ def contingency(runs: list[dict]) -> dict:
                     fired["F1"] += 1
                 if agree and not pair["same_block_widths"]:
                     fired["F3"] += 1
+                same_narrow = pair["same_narrow_profile"]
+                biconditional[f"agree={agree},same_narrow_profile={same_narrow}"] += 1
+                if agree != same_narrow:
+                    exceptions.append({
+                        "case": case["case"], "pair": pair["pair"],
+                        "left": left["narrow_profile"],
+                        "right": right["narrow_profile"],
+                        "digests_agree": agree,
+                    })
     return {
         "pairs_total": sum(table.values()),
         "agreement_by_width_signature": dict(table),
@@ -250,6 +287,11 @@ def contingency(runs: list[dict]) -> dict:
         "exactly_one_repeat_crossed_256": {str(k): v for k, v in one.items()},
         "both_repeats_crossed_256": dict(both),
         "falsifiers_fired": dict(fired),
+        "biconditional_agree_iff_same_narrow_profile": {
+            "table": dict(biconditional),
+            "exceptions": exceptions,
+            "holds": not exceptions,
+        },
     }
 
 

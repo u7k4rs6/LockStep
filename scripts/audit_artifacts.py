@@ -32,6 +32,9 @@ NOT_ARTIFACTS = {
     "prediction-rmsnorm-blocksize.json": "a pre-registration, written before the "
                                          "run it predicts; it has no result and "
                                          "so no environment to report",
+    "upstream-finding-server-flags.json": "a supersession record correcting one "
+                                          "field of upstream-finding.json, which "
+                                          "is itself not a result artifact",
 }
 
 
@@ -79,7 +82,8 @@ def main() -> int:
                         "were written; those are deliberately not being re-run",
             )
         if subject is None:
-            print(f"   {path.name:<32} not recorded (predates the field)")
+            print(f"   {path.name:<32} not recorded (schema "
+                  f"{doc.optional('schema_version', 1, because='schema 1 files predate the field')})")
         else:
             print(f"   {path.name:<32} {subject['engine']}, "
                   f"torch {subject['torch_version']}, {subject['python_version']}")

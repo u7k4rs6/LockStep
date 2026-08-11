@@ -1,0 +1,33 @@
+{
+  "kind": "supersession",
+  "note": "Corrects one field of evidence/upstream-finding.json. The original is unchanged and stays byte-identical; nothing in evidence/ is edited in place. This file exists because the field it corrects made that artifact unreplayable, which for a provenance record is the whole job.",
+  "supersedes": {
+    "artifact": "upstream-finding.json",
+    "field": "subject.server_flags",
+    "recorded_value": "--enforce-eager --max-model-len 1024 --block-size 16 --gpu-memory-utilization 0.55",
+    "sha256_of_the_superseded_artifact": "4375190c01348017",
+    "sha256_note": "first 16 hex characters, as printed by scripts/verify_no_gpu.py; the full digest is recomputable from the file, which has not changed."
+  },
+
+  "defect": {
+    "what": "The recorded flag string omits --dtype float16.",
+    "why_it_matters": "A replay driven from that string launches the server with no --dtype, which resolves to auto, which reads weights/Qwen3-0.6B/config.json, which says bfloat16. The replay would therefore run a different precision from the run being replayed and could fail to reproduce, with nothing in the record to explain why.",
+    "how_it_was_found": "Reading certify/session.py while answering an unrelated question about which dtype the finding actually used. The omission was not detected by any check, because no check compares a recorded flag string against the command that produced it.",
+    "class": "the same class as the environment defect in report/artifact.py schema 1: a field, written by hand, plausible, never checked against the thing it describes."
+  },
+
+  "correct_value": {
+    "server_flags": "--model <repo>/weights/Qwen3-0.6B --served-model-name qwen3 --dtype float16 --host 127.0.0.1 --port 30011 --gpu-memory-utilization 0.55 --max-model-len 1024 --block-size 16 --enforce-eager",
+    "source": "certify/session.py launch_vllm(), which is the only thing that started these servers",
+    "corroborated_by": "the server's own startup banner in the archived log, which prints non-default args: {'host': '127.0.0.1', 'port': 30011, 'model': '<repo>/weights/Qwen3-0.6B', 'dtype': 'float16', 'max_model_len': 1024, 'enforce_eager': True, 'served_model_name': ['qwen3'], 'block_size': 16, 'gpu_memory_utilization': 0.55} and, further down, dtype=torch.float16",
+    "log": "vllm-certify-1-warm-fixed-w13.log, the lifetime that produced certify-pairs-b.json"
+  },
+
+  "what_this_does_not_change": {
+    "the_filed_issue": "vllm#51187's Environment block already says float16 and is correct. No correction was filed upstream, because there is nothing upstream to correct.",
+    "the_result": "every run backing the finding passed --dtype float16 explicitly. The dtype was never in doubt at run time; only the written record of it was incomplete.",
+    "the_model_config": "weights/Qwen3-0.6B/config.json says bfloat16 and is not wrong. The flag overrides it. A reader comparing the two without the flag string would reasonably conclude the runs were bf16, which is exactly the trap this file closes."
+  },
+
+  "cross_check_that_settles_it_independently": "The reproducer on a different GPU reported max logprob deltas of 4.685e-02 and 3.906e-02 for the 44 and 45 co-resident cases. The filed issue reports the same two values to every digit given. Two runs at different precisions could not agree to four significant figures, so both ran the same dtype, and both records say float16."
+}

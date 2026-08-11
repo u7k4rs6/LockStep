@@ -130,3 +130,42 @@ def test_corpus_sha_defaults_to_null_not_a_placeholder():
     """A placeholder string can be published and read as a real value."""
     assert envlock.capture().corpus_sha256 is None
     assert envlock.capture().to_dict()["corpus_sha256"] is None
+
+
+def test_schema_1_artifacts_in_evidence_degrade_rather_than_crash():
+    """The artifacts backing vllm#51187 are schema 1 and must stay readable.
+
+    subject_env() raising on them is correct: they never recorded a subject.
+    What must not happen is a reader crashing on the whole directory, or
+    quietly substituting the harness block, because those artifacts are the
+    evidence for a filed upstream issue and are deliberately never re-run.
+    """
+    from report.artifact import SubjectNotRecorded, harness_env, read, subject_env
+
+    evidence = Path(__file__).resolve().parent.parent / "evidence"
+    schema_1 = []
+    for path in sorted(evidence.glob("certify-*.json")):
+        doc = read(path)
+        # Every artifact yields a harness tuple under either schema.
+        assert harness_env(doc)["fingerprint"]
+        if doc.optional("schema_version", 1, because="schema 1 predates it") == 1:
+            schema_1.append(path.name)
+            with pytest.raises(SubjectNotRecorded):
+                subject_env(doc)
+
+    assert schema_1, (
+        "no schema 1 certify artifacts found in evidence/. If they were "
+        "migrated, this test is obsolete; if they were re-run, the artifacts "
+        "backing vllm#51187 were replaced, which is the thing not to do."
+    )
+
+
+def test_the_audit_runs_over_the_committed_evidence_directory():
+    """End to end: the report path handles both schemas without crashing."""
+    import subprocess
+
+    root = Path(__file__).resolve().parent.parent
+    done = subprocess.run([sys.executable, str(root / "scripts" / "audit_artifacts.py")],
+                          capture_output=True, text=True, timeout=120)
+    assert done.returncode == 0, done.stdout[-2000:] + done.stderr[-2000:]
+    assert "not recorded (schema 1)" in done.stdout
