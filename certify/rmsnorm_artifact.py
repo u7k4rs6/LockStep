@@ -360,6 +360,38 @@ def main() -> int:
                 "happens to correlate in some workload.",
         },
 
+        "which_models_are_affected": {
+            "condition": "hidden_size strictly greater than 256, for the "
+                         "fused_add_rms_norm path.",
+            "why_strictly": "the launcher is dim3 block(std::min(hidden_size, "
+                "max_block_size)) and max_block_size flips between 1024 and "
+                "256. At hidden_size exactly 256 both branches give min(256, "
+                "1024) = min(256, 256) = 256, so the reduction width never "
+                "moves and that model cannot be affected. An earlier draft of "
+                "the upstream comment said 'at or above 256' and was wrong at "
+                "the boundary by one model width.",
+            "verified_at_source": "read at the v0.26.0 and v0.27.0 tags. It is "
+                "a plain std::min: no rounding, no warp alignment, no clamp to "
+                "a power of two, and LAUNCH_FUSED_ADD_RMS_NORM passes the "
+                "resulting dim3 straight to the kernel without modifying it. "
+                "The strict inequality depends on that, which is why it was "
+                "re-read rather than recalled.",
+            "the_non_fused_rms_norm_has_a_different_boundary": "its launcher is "
+                "std::min(hidden_size / calculated_vec_size, max_block_size) "
+                "with calculated_vec_size = std::gcd(16 / sizeof(scalar_t), "
+                "hidden_size), which is 8 at fp16 for any hidden size divisible "
+                "by 8. So that op needs hidden_size / 8 > 256, i.e. hidden_size "
+                "> 2048. This predicts SyaOtiLan's operator table exactly: at "
+                "hidden 512 and 4096 with 16 seeds, fused_add_rms_norm fails "
+                "32/32 because both sizes exceed 256, while rms_norm fails "
+                "16/32 because 512/8 = 64 stays under the clamp and 4096/8 = "
+                "512 does not.",
+            "which_of_the_two_the_engine_reaches": "under VLLM_BATCH_INVARIANT=1 "
+                "only fused_add_rms_norm, because rms_norm_batch_invariant "
+                "returns into it whenever a residual is present and sends only "
+                "the residual-free path to Triton.",
+        },
+
         "threshold_table": {
             "note": "Every workload instrumented, across the main arm. Retires "
                     "the 'not determined: whether the width dependence is a "
