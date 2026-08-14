@@ -209,6 +209,14 @@ already recorded by hand in `evidence/upstream-finding.json`. `scripts/audit_art
 prints which artifacts carry the field and which predate it, rather than letting an
 absent field read as agreement.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/claims-dark.svg">
+  <img alt="Five claims with what verifies each. I1 batch invariance, I2 schedule invariance, I3 replay determinism and I4 RNG isolation all hold. F1 fidelity passes 7 of 7 bounds against an fp64 CPU reference." src="docs/img/claims-light.svg" width="840">
+</picture>
+
+<details>
+<summary>The five claims as a table, with the scope each is stated under</summary>
+
 | ID | Statement | How verified | Status | Scope |
 |---|---|---|---|---|
 | **[I1](#test-oracles-and-what-each-one-cannot-see)** | Batch invariance. For any set of cohabitant requests, `r`'s output is bit-identical to canonical execution `C(r)` | MR1 and MR5, bitwise on fp16 logit bytes, batch sizes {1, 2, 3, 4, 8, 16, 31, 32} | holds | sm_89, block sizes 8 to 128 |
@@ -216,6 +224,8 @@ absent field read as agreement.
 | **[I3](#evidence-and-replaying-it)** | Replay determinism. Identical `(W, sigma, seeds)` twice yields an identical trajectory hash over all engine state | MR6, 8 workload shapes, and a cross-process replay under differing `PYTHONHASHSEED` | holds | as above |
 | **[I4](#test-oracles-and-what-each-one-cannot-see)** | RNG isolation. `r`'s tokens are a function only of `(seed, uid, position)` and `r`'s logits | MR7, 11 perturbations: each request removed in turn, one added, order reversed, each re-run alone | holds | as above |
 | **[F1](#test-oracles-and-what-each-one-cannot-see)** | Fidelity. Batch-1 logits against an fp64 CPU reference, within the bounds in `docs/kickoff/02-technical-architecture.md` 7.1 | `bench/fidelity.py`, exact KL over the full 151936-token vocabulary at 2756 positions | passes 7 of 7 bounds | corpus `sha256:59759d5b…` |
+
+</details>
 
 The trajectory hash covers emitted tokens, raw fp16 logit bytes, the packed work
 list, the allocator ledger, and the prefix cache index. Output bits alone would
@@ -344,17 +354,35 @@ repair, it is a new claim.
 
 ## The three numbers
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/three-numbers-dark.svg">
+  <img alt="65 of 65 relation runs bitwise identical, 10 of 10 seeded faults killed with none equivalent, and lockstep invariant at 5.2 to 5.7 times the wall time of vLLM batch-invariant in eager mode." src="docs/img/three-numbers-light.svg" width="840">
+</picture>
+
+<details>
+<summary>The same three numbers as a table, with the command that reproduces each</summary>
+
 | # | Claim | Value | Reproduce |
 |---|---|---|---|
 | 1 | Invariance under adversarial scheduling | **65 of 65** relation runs bitwise identical across 5 block sizes, 13 relations including path equivalence and EOS finishing | `python3 -m harness.mr.run` |
 | 2 | Harness power | **10 of 10** seeded faults killed, 0 equivalent, 0 not-exercised; median time to detection 10.6 s | `python3 -m harness.fuzz.campaign --seeded-faults` |
 | 3 | Cost of determinism | lockstep invariant is **5.2x to 5.7x** vLLM batch-invariant eager across two sound runs; **1.05x to 1.10x** against its own fast path | `python3 -m bench.throughput` |
 
+</details>
+
 Claim 3, on a committed 8-request 2972-token trace, four of eight prompts
 crossing the 512-token attention split. Median of 5 samples, every measurement in
 its own process, interleaved under a committed shuffle seed. Two runs of the
 final design, reported as a range because a single run of it would overstate the
 precision:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/throughput-dark.svg">
+  <img alt="Wall time for six configurations, run A solid and run B faded, and the 15 percent kill criterion drawn as a scale: the eager comparison at 14.6 and 16.6 percent straddles the bar, the graphed comparison at 10.6 and 11.5 percent sits below it." src="docs/img/throughput-light.svg" width="840">
+</picture>
+
+<details>
+<summary>Per-configuration wall time for both runs, with the worst sample spread</summary>
 
 | configuration | run A | run B | worst sample spread |
 |---|---|---|---|
@@ -365,6 +393,8 @@ precision:
 | vLLM default, CUDA graphs | 0.343s | 0.341s | 1.08x |
 | vLLM `VLLM_BATCH_INVARIANT=1`, CUDA graphs | 0.484s | 0.475s | 1.27x |
 | SGLang deterministic | not measured | | |
+
+</details>
 
 **Absolute standing**: lockstep invariant is **5.2x to 5.7x the wall time of vLLM
 batch-invariant in eager mode**. **Cost of determinism inside this engine**:
@@ -470,10 +500,20 @@ rather than estimated or omitted.
 Claim 2, before and after the third observer was added. The operator set and the
 campaign are otherwise identical, and the difference is one mutant:
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/mutation-dark.svg">
+  <img alt="Ten mutation operators. Nine killed by the invariance relations and F1 alone, with the reversed split-combine fold surviving as O10. Ten killed once golden bytes are added as an observer outside the process." src="docs/img/mutation-light.svg" width="840">
+</picture>
+
+<details>
+<summary>The same before and after, as a table</summary>
+
 | | killed | survived | not exercised |
 |---|---|---|---|
 | invariance relations and F1 only | 9 of 10 | 1 | 0 |
 | with golden bytes | **10 of 10** | 0 | 0 |
+
+</details>
 
 The one mutant golden bytes adds is the reversed split-combine fold, which is a
 real fault that neither the invariance relations nor F1 can see, for the reasons
@@ -540,10 +580,20 @@ subsystem it was written to target. A phase that only hits what it was built to
 hit is a probe wearing a campaign's name.
 
 | population | 2-grams | 3-grams | credited as exploration |
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/coverage-dark.svg">
+  <img alt="19 of 25 two-grams and 43 of 79 three-grams reached, split between the swarm campaign and the eviction campaign, with probe-only cells outlined and never-reached cells hatched. The denominator was corrected from 27 and 84." src="docs/img/coverage-light.svg" width="840">
+</picture>
+
+<details>
+<summary>Coverage by campaign, as a table</summary>
+
 |---|---|---|---|
 | swarm campaign, 72 cases | 15 of 25 | 28 of 79 | yes |
 | plus the eviction campaign, 132 cases | **19 of 25** | **43 of 79** | **yes, on evidence, see below** |
 | plus transition probes, 212 cases | 20 of 25 | 46 of 79 | no |
+
+</details>
 
 **The eviction campaign was nearly excluded on an argument that turned out to be
 false.** It is written to reach eviction states, so the expectation was that the
@@ -710,6 +760,11 @@ is that it does not.
 That distribution is the most useful thing in the table. Most instances were
 caught by a run contradicting a declaration. Several were not, and the reason
 each escaped is worth more than the fix:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/thesis-dark.svg">
+  <img alt="Eighteen tiles for seventeen findings, placed by finding index and laned by who found them: eight from this project's own machinery, five from an outside audit, one from an anomaly, two from readers not looking for defects, and two from this project auditing itself later. Findings 9 to 15 came from outside the repository." src="docs/img/thesis-light.svg" width="840">
+</picture>
 
 | # | Declared | Actually |
 |---|---|---|
@@ -908,6 +963,11 @@ cross-referenced on the batch-invariance tracker
 [#27433](https://github.com/vllm-project/vllm/issues/27433#issuecomment-5195555951).
 **Everything below is scoped exactly as that issue is scoped.** If this section
 ever says more than the issue does, the issue is right and this is wrong.
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/certification-dark.svg">
+  <img alt="Seven boundary cases against vLLM batch-invariant mode: five clean, and two diverged at 44 and 45 co-resident with logprob deltas of 4.685e-02 and 3.906e-02 and no token divergence. The max-num-seqs control restores reproducibility at 8." src="docs/img/certification-light.svg" width="840">
+</picture>
 
 ### The first result was withdrawn, and why
 

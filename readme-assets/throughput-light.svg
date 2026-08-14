@@ -1,0 +1,155 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 578" width="840" height="578" role="img" aria-labelledby="ttl dsc">
+<title id="ttl">Wall time across six configurations, and the kill criterion</title>
+<desc id="dsc">Wall time for six configurations, run A solid and run B faded: lockstep fast and invariant, and vLLM default and batch-invariant, each eager and graphed. Below, the 15 percent kill criterion, with the eager comparison at 14.6 and 16.6 percent straddling the bar and the graphed comparison at 10.6 and 11.5 percent consistently below it.</desc>
+<defs>
+<linearGradient id="gstep" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#6C2D6C"/><stop offset="1" stop-color="#9A4C9A"/>
+</linearGradient>
+<linearGradient id="gdrift" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#93304A"/><stop offset="1" stop-color="#B85070"/>
+</linearGradient>
+<linearGradient id="gslate" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#7A7B7B"/><stop offset="1" stop-color="#6A6B6B"/>
+</linearGradient>
+<linearGradient id="grule" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#BFC0C0"/>
+  <stop offset="1" stop-color="#BFC0C0" stop-opacity="0"/>
+</linearGradient>
+<pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+  <circle cx="1" cy="1" r="0.8" fill="#BFC0C0" opacity="0.5"/>
+</pattern>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#949595" stroke-width="1.6" opacity="0.42"/>
+</pattern>
+<pattern id="hatchd" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#93304A" stroke-width="1.6" opacity="0.7"/>
+</pattern>
+<filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+  <feGaussianBlur stdDeviation="0.01" result="b"/>
+  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+</defs>
+<rect x="0.0" y="0.0" width="840.0" height="578.0" rx="16" fill="#F3F4F4" stroke="#D6D7D7" stroke-width="1"/>
+<rect x="1.0" y="1.0" width="838.0" height="576.0" rx="15" fill="url(#dots)" opacity="0.5"/>
+<rect x="22.0" y="26.0" width="7.0" height="7.0" rx="1.5" fill="#6C2D6C"/>
+<text x="39.0" y="33.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#6C2D6C" font-weight="700" letter-spacing="2.2">CLAIM 3 THROUGHPUT</text>
+<rect x="193.6" y="29.2" width="524.4" height="1.0" fill="url(#grule)"/>
+<path d="M 738 30 L 752 30 L 760 22 L 772 22 L 780 30 L 808 30" fill="none" stroke="#6C2D6C" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 738 30 L 752 30 L 760 22 L 772 22 L 780 30 L 808 30" fill="none" stroke="#9A4C9A" stroke-width="2" stroke-dasharray="1 3.4" stroke-linecap="round"/>
+<text x="22.0" y="68.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="18" fill="#2C2C2C" font-weight="700" letter-spacing="-0.3">Cost of determinism, two runs of the settled design</text>
+<text x="22.0" y="90.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#6A6B6B">8 requests, 2972 tokens, median of 5 samples, every measurement in its own process</text>
+<line x1="28.0" y1="108.0" x2="28.0" y2="522.0" stroke="#BFC0C0" stroke-width="1" opacity="0.9"/>
+<line x1="28.0" y1="108.0" x2="35.0" y2="108.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="121.0" x2="32.0" y2="121.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="134.0" x2="32.0" y2="134.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="147.0" x2="32.0" y2="147.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="160.0" x2="35.0" y2="160.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="173.0" x2="32.0" y2="173.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="186.0" x2="32.0" y2="186.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="199.0" x2="32.0" y2="199.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="212.0" x2="35.0" y2="212.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="225.0" x2="32.0" y2="225.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="238.0" x2="32.0" y2="238.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="251.0" x2="32.0" y2="251.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="264.0" x2="35.0" y2="264.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="277.0" x2="32.0" y2="277.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="290.0" x2="32.0" y2="290.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="303.0" x2="32.0" y2="303.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="316.0" x2="35.0" y2="316.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="329.0" x2="32.0" y2="329.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="342.0" x2="32.0" y2="342.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="355.0" x2="32.0" y2="355.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="368.0" x2="35.0" y2="368.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="381.0" x2="32.0" y2="381.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="394.0" x2="32.0" y2="394.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="407.0" x2="32.0" y2="407.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="420.0" x2="35.0" y2="420.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="433.0" x2="32.0" y2="433.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="446.0" x2="32.0" y2="446.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="459.0" x2="32.0" y2="459.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="472.0" x2="35.0" y2="472.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="485.0" x2="32.0" y2="485.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="498.0" x2="32.0" y2="498.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="511.0" x2="32.0" y2="511.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="22.0" y1="544.0" x2="818.0" y2="544.0" stroke="#DEDFDF" stroke-width="1"/>
+<rect x="22.0" y="557.0" width="5.0" height="5.0" rx="1" fill="#949595" opacity="0.8"/>
+<text x="36.0" y="562.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" font-weight="700" letter-spacing="1.6">SOURCE</text>
+<text x="98.0" y="562.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">evidence/throughput-0004.json  ::  docs/kickoff/01-PRD.md s11</text>
+<text x="818.0" y="562.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" font-weight="700" text-anchor="end" letter-spacing="1.6">LOCKSTEP</text>
+<line x1="248.0" y1="114.0" x2="248.0" y2="362.0" stroke="#DEDFDF" stroke-width="1"/>
+<text x="248.0" y="378.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" text-anchor="middle">0s</text>
+<line x1="360.9" y1="114.0" x2="360.9" y2="362.0" stroke="#DEDFDF" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="360.9" y="378.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" text-anchor="middle">1s</text>
+<line x1="473.9" y1="114.0" x2="473.9" y2="362.0" stroke="#DEDFDF" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="473.9" y="378.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" text-anchor="middle">2s</text>
+<line x1="586.8" y1="114.0" x2="586.8" y2="362.0" stroke="#DEDFDF" stroke-width="1" stroke-dasharray="2 4"/>
+<text x="586.8" y="378.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" text-anchor="middle">3s</text>
+<text x="232.0" y="138.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" text-anchor="end">lockstep, fast mode</text>
+<rect x="248.0" y="125.0" width="330.9" height="10.0" rx="2" fill="url(#gslate)"/>
+<rect x="248.0" y="139.0" width="318.8" height="10.0" rx="2" fill="url(#gslate)" opacity="0.38"/>
+<text x="648.0" y="134.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#2C2C2C" font-weight="600">2.930</text>
+<text x="648.0" y="148.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#6A6B6B">2.823</text>
+<text x="706.0" y="141.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">spread 1.24x</text>
+<text x="232.0" y="180.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" text-anchor="end">lockstep, invariant</text>
+<rect x="248.0" y="167.0" width="364.3" height="10.0" rx="2" fill="url(#gstep)"/>
+<rect x="248.0" y="181.0" width="334.0" height="10.0" rx="2" fill="url(#gstep)" opacity="0.38"/>
+<text x="648.0" y="176.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#2C2C2C" font-weight="600">3.226</text>
+<text x="648.0" y="190.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#6A6B6B">2.957</text>
+<text x="706.0" y="183.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">spread 1.17x</text>
+<text x="232.0" y="222.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" text-anchor="end">vLLM default, eager</text>
+<rect x="248.0" y="209.0" width="53.1" height="10.0" rx="2" fill="url(#gslate)"/>
+<rect x="248.0" y="223.0" width="55.3" height="10.0" rx="2" fill="url(#gslate)" opacity="0.38"/>
+<text x="648.0" y="218.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#2C2C2C" font-weight="600">0.470</text>
+<text x="648.0" y="232.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#6A6B6B">0.490</text>
+<text x="706.0" y="225.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#93304A">spread 1.27x</text>
+<text x="232.0" y="264.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" text-anchor="end">vLLM batch-invariant, eager</text>
+<rect x="248.0" y="251.0" width="63.6" height="10.0" rx="2" fill="url(#gstep)"/>
+<rect x="248.0" y="265.0" width="64.8" height="10.0" rx="2" fill="url(#gstep)" opacity="0.38"/>
+<text x="648.0" y="260.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#2C2C2C" font-weight="600">0.563</text>
+<text x="648.0" y="274.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#6A6B6B">0.574</text>
+<text x="706.0" y="267.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">spread 1.15x</text>
+<text x="232.0" y="306.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" text-anchor="end">vLLM default, CUDA graphs</text>
+<rect x="248.0" y="293.0" width="38.7" height="10.0" rx="2" fill="url(#gslate)"/>
+<rect x="248.0" y="307.0" width="38.5" height="10.0" rx="2" fill="url(#gslate)" opacity="0.38"/>
+<text x="648.0" y="302.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#2C2C2C" font-weight="600">0.343</text>
+<text x="648.0" y="316.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#6A6B6B">0.341</text>
+<text x="706.0" y="309.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">spread 1.08x</text>
+<text x="232.0" y="348.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" text-anchor="end">vLLM batch-invariant, graphs</text>
+<rect x="248.0" y="335.0" width="54.7" height="10.0" rx="2" fill="url(#gstep)"/>
+<rect x="248.0" y="349.0" width="53.6" height="10.0" rx="2" fill="url(#gstep)" opacity="0.38"/>
+<text x="648.0" y="344.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#2C2C2C" font-weight="600">0.484</text>
+<text x="648.0" y="358.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#6A6B6B">0.475</text>
+<text x="706.0" y="351.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#93304A">spread 1.27x</text>
+<rect x="52.0" y="394.0" width="752.0" height="138.0" rx="8" fill="#EAEBEB" stroke="#D6D7D7" stroke-width="1"/>
+<text x="70.0" y="420.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#93304A" font-weight="700" letter-spacing="2">KILL CRITERION</text>
+<text x="194.0" y="420.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#6A6B6B">set in week one, before anything was built: below 15 percent of vLLM default</text>
+<rect x="98.0" y="502.0" width="456.0" height="4.0" rx="2" fill="#BFC0C0"/>
+<line x1="98.0" y1="498.0" x2="98.0" y2="510.0" stroke="#BFC0C0" stroke-width="1"/>
+<text x="98.0" y="524.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595" text-anchor="middle">0%</text>
+<line x1="212.0" y1="498.0" x2="212.0" y2="510.0" stroke="#BFC0C0" stroke-width="1"/>
+<text x="212.0" y="524.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595" text-anchor="middle">5%</text>
+<line x1="326.0" y1="498.0" x2="326.0" y2="510.0" stroke="#BFC0C0" stroke-width="1"/>
+<text x="326.0" y="524.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595" text-anchor="middle">10%</text>
+<line x1="440.0" y1="498.0" x2="440.0" y2="510.0" stroke="#BFC0C0" stroke-width="1"/>
+<text x="440.0" y="524.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595" text-anchor="middle">15%</text>
+<line x1="554.0" y1="498.0" x2="554.0" y2="510.0" stroke="#BFC0C0" stroke-width="1"/>
+<text x="554.0" y="524.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595" text-anchor="middle">20%</text>
+<line x1="440.0" y1="444.0" x2="440.0" y2="510.0" stroke="#2C2C2C" stroke-width="1.4" stroke-dasharray="3 3" opacity="0.85"/>
+<text x="86.0" y="462.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595" font-weight="700" text-anchor="end">A</text>
+<text x="86.0" y="484.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595" font-weight="700" text-anchor="end">B</text>
+<circle cx="430.9" cy="458.0" r="4.5" fill="#93304A"/>
+<text x="439.9" y="461.6" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#93304A" font-weight="700">14.6</text>
+<circle cx="476.5" cy="480.0" r="4.5" fill="#93304A"/>
+<text x="485.5" y="483.6" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#93304A" font-weight="700">16.6</text>
+<circle cx="339.7" cy="458.0" r="4.5" fill="#6C2D6C"/>
+<text x="348.7" y="461.6" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#6C2D6C" font-weight="700">10.6</text>
+<circle cx="360.2" cy="480.0" r="4.5" fill="#6C2D6C"/>
+<text x="369.2" y="483.6" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#6C2D6C" font-weight="700">11.5</text>
+<text x="572.0" y="452.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#93304A" font-weight="700">eager</text>
+<text x="618.0" y="452.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#6A6B6B">14.6 and 16.6, straddling</text>
+<text x="572.0" y="470.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#6C2D6C" font-weight="700">graphs</text>
+<text x="618.0" y="470.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#6A6B6B">10.6 and 11.5, below it</text>
+<text x="572.0" y="494.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">the bar is finer than this</text>
+<text x="572.0" y="508.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">measurement can resolve</text>
+<text x="70.0" y="442.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">solid bar run A, faded bar run B. two runs do not establish a distribution, which is why both are drawn.</text>
+</svg>
