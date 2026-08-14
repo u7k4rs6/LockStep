@@ -169,7 +169,7 @@ recomputes a committed trajectory hash and compares it. It is
 | [The three numbers](#the-three-numbers) | invariance, harness power, cost of determinism |
 | [Coverage](#coverage-with-the-denominator-it-is-actually-against) | against the corrected 25 and 79 denominators |
 | [What this does not claim](#what-this-does-not-claim) | the limits, stated before a reader finds them |
-| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | sixteen times this project failed its own test |
+| [The thesis, on its author](#the-thesis-demonstrated-on-its-author) | seventeen times this project failed its own test |
 | [Certification](#certification-black-box-differential-testing-of-vllm) | black-box differential testing of vLLM, one finding filed |
 | [Evidence and replay](#evidence-and-replaying-it) | every number's artifact, and how to re-run it |
 | [Prior art](#prior-art) | and what is actually different here |
@@ -638,12 +638,14 @@ generated tokens. Boundary predicates reach 17 of 20.
 
 Lockstep exists because engines claim a compatibility surface wider than their
 test surface. That is not a hypothesis about other people's code. It happened
-sixteen times in this repository. Rows 1 to 8 were found by this project's own
+seventeen times in this repository. Rows 1 to 8 were found by this project's own
 machinery or while fixing what it found; rows 9 to 12b were found by an outside
 audit; row 13 came from an anomaly in the results and belongs to neither; rows 14
 and 15 came from readers who were not looking for defects, one reviewing style
 and one reading the directory tree; row 16 turned up while auditing the artifacts
-for an unrelated property.
+for an unrelated property, and row 17 is what that audit should have caught,
+found months later while chasing a root cause an outside reproducer had already
+supplied.
 
 Row 16 was a judgement call, so the reasoning is stated rather than assumed. Two
 dead filenames on their own would be a broken link and would not have earned a
@@ -654,7 +656,36 @@ artifact that produced it. `tests/test_evidence_index.py` now checks both
 directions and would have caught it on the commit that introduced it, which is
 the mechanism working rather than a promise that it will not recur.
 
-The last two are the ones worth sitting with. Row 15 in particular: this
+Row 17 is the same audit asking a question it had not asked the first time, and
+it is the one that cost something outside this repository. Auditing artifact
+environments established that thirteen artifacts agreed on one tuple. Agreement
+is a question about consistency. Nobody asked whether the tuple described the
+thing being measured, and for every certify artifact it did not: it fingerprinted
+the process making the requests while the claim was about a server in another
+virtual environment two torch versions ahead. That is not silence about the
+subject, it is a wrong value in the field a reader is told the claim is scoped
+to, which is the shape of `Comparison.notes` in row 14 and of `.get("killed", 0)`
+before it. A field that is present, read, and meaningless is worse than an absent
+one, because an absent field cannot be mistaken for agreement.
+
+The consequence was external. Clean-revision discipline was applied to the
+harness rigorously enough that `evidence/certify-clean-revision.json` exists for
+no purpose except pinning a harness SHA, while the subject was a released wheel
+under no revision discipline at all. So nobody here asked whether upstream main
+had moved. A finding was filed against a version whose fix had already merged,
+and the mechanism was supplied by an outside reproducer rather than found here.
+
+The rest belongs in the row because it is about discipline rather than about who
+got there first. The proposed mechanism was verified here independently and
+pushed past the report that prompted it: a pre-registration committed before
+anything ran, direct measurement of the quantity the kernel actually branches on,
+and a correction to the granularity of the claim, from the set of reduction
+widths a repeat used to the width each individual token was reduced at. The
+artifacts written since carry the subject's tuple, read from the server's own
+startup output and its own interpreter, and `subject_env()` raises on the older
+schema rather than handing back the harness block.
+
+Rows 14 and 15 are the ones worth sitting with. Row 15 in particular: this
 repository's entire argument is that a declared surface wider than the tested one
 is where bugs live, and it declared five CI gates and shipped none of them. It
 took someone opening the directory listing.
@@ -687,7 +718,7 @@ each escaped is worth more than the fix:
 | 3 | Eviction under memory pressure, tested | Admission counted only free blocks, so a request serviceable by evicting was refused and the eviction path was unreachable |
 
 <details>
-<summary>Thirteen more, including the four an outside audit found, one from an anomaly neither predicted, and two from readers not looking for defects at all</summary>
+<summary>Fourteen more, including the four an outside audit found, one from an anomaly neither predicted, and two from readers not looking for defects at all</summary>
 
 | # | Declared | Actually |
 |---|---|---|
@@ -701,6 +732,7 @@ each escaped is worth more than the fix:
 | 11 | A concurrency cap in the security config | `max_concurrency: 1` sat in `certify/config.json` from week 8 and no code path read it. Enforcing it later revealed it also made batching impossible, so the one setting that would have prevented finding 9 was both unenforced and wrong |
 | 12 | One edit applied to two files | It matched in one and silently no-op'd in the other, so an artifact shipped without the fields that prove its own batch witness fired. Caught by reading the artifact back, not by the edit reporting success |
 | 16 | An evidence table mapping every published figure to the artifact backing it | Two rows named files deleted five commits earlier, and one carried **55 of 55** against an actual 65 of 65. So the README stated two different values for the same claim, in one document, across 12 commits, and the audit that corrected the headline number never looked at the table pointing to it. The table's whole function is to make a number checkable, and nothing checked the table. **Found while auditing artifact environments for something else** |
+| 17 | Every claim scoped to the environment tuple in `env.lock`, embedded in every result artifact | `engine/envlock.py` built that tuple by importing torch in the harness process and running `git rev-parse` on this repo. So every certification artifact printed `sm_89 / cu12.4 / triton 3.2.0 / torch 2.6.0` beside a claim about a vLLM server running `torch 2.11.0 / cu13.0` in a different virtual environment, and no artifact recorded which revision of the subject was under test. The scope line described the observer and read as though it described the observed. **Found while chasing a root cause an outside reproducer had already supplied** |
 | 15 | Five CI gates, declared in the architecture doc section 12 | No `.github/` directory existed, so none of them ran. Bitwise invariance every commit, a nightly fuzz campaign with a coverage floor, a throughput regression band, and two static gates, all declared and none wired to anything. **Found by a third party reading the directory tree** |
 | 14 | Abstraction sized for what the design needs | Four definitions with no caller anywhere: `PagedKVCache.evictable`, `ReplayPolicy`, `ScriptedChunkPolicy`, `Request.needs_compute`. And `Comparison.notes`, computed on every certification comparison and never read, one of which reports that the engines exposed fewer alternatives than requested, so the certifier could narrow its own observable and say nothing. **Found by a reviewer looking at style, not correctness** |
 | 13 | An observable comparing repeated runs for identical output | Every comparison was repeat 0 against a later repeat, so "the engine is nondeterministic" and "the first batch differs and everything after it agrees" were indistinguishable. Structurally the same error as comparing a mutant only against canonical, in the file written to certify determinism |
@@ -1066,4 +1098,3 @@ change a reader can apply.
 Artifacts written since carry `engine_revision`, so newer findings pin themselves
 and need none of this.
 </details>
-
