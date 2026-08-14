@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 442" width="840" height="442" role="img" aria-labelledby="ttl dsc">
+<title id="ttl">What this project does not claim</title>
+<desc id="dsc">Eight limits: no novelty on the kernels, no cross-hardware guarantee, no throughput superiority, one model only, no copy-on-write, ten mutation operators rather than fifty, coverage against a derived model, and execution counters proving only that the path ran.</desc>
+<defs>
+<linearGradient id="gstep" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#6C2D6C"/><stop offset="1" stop-color="#9A4C9A"/>
+</linearGradient>
+<linearGradient id="gdrift" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#93304A"/><stop offset="1" stop-color="#B85070"/>
+</linearGradient>
+<linearGradient id="gslate" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#7A7B7B"/><stop offset="1" stop-color="#6A6B6B"/>
+</linearGradient>
+<linearGradient id="grule" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#BFC0C0"/>
+  <stop offset="1" stop-color="#BFC0C0" stop-opacity="0"/>
+</linearGradient>
+<pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+  <circle cx="1" cy="1" r="0.8" fill="#BFC0C0" opacity="0.5"/>
+</pattern>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#949595" stroke-width="1.6" opacity="0.42"/>
+</pattern>
+<pattern id="hatchd" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#93304A" stroke-width="1.6" opacity="0.7"/>
+</pattern>
+<filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+  <feGaussianBlur stdDeviation="0.01" result="b"/>
+  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+</defs>
+<rect x="0.0" y="0.0" width="840.0" height="442.0" rx="16" fill="#F3F4F4" stroke="#D6D7D7" stroke-width="1"/>
+<rect x="1.0" y="1.0" width="838.0" height="440.0" rx="15" fill="url(#dots)" opacity="0.5"/>
+<rect x="22.0" y="26.0" width="7.0" height="7.0" rx="1.5" fill="#93304A"/>
+<text x="39.0" y="33.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#93304A" font-weight="700" letter-spacing="2.2">WHAT THIS DOES NOT CLAIM</text>
+<rect x="242.8" y="29.2" width="475.2" height="1.0" fill="url(#grule)"/>
+<path d="M 738 30 L 752 30 L 760 22 L 772 22 L 780 30 L 808 30" fill="none" stroke="#6C2D6C" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 780 30 L 788 39 L 808 39" fill="none" stroke="#93304A" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="1 3.4"/>
+<circle cx="780" cy="30" r="2.8" fill="#93304A"/>
+<text x="22.0" y="68.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="18" fill="#2C2C2C" font-weight="700" letter-spacing="-0.3">The limits, stated before a reader finds them</text>
+<text x="22.0" y="90.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#6A6B6B">each one is a place where the declared surface stops</text>
+<line x1="28.0" y1="108.0" x2="28.0" y2="386.0" stroke="#BFC0C0" stroke-width="1" opacity="0.9"/>
+<line x1="28.0" y1="108.0" x2="35.0" y2="108.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="121.0" x2="32.0" y2="121.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="134.0" x2="32.0" y2="134.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="147.0" x2="32.0" y2="147.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="160.0" x2="35.0" y2="160.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="173.0" x2="32.0" y2="173.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="186.0" x2="32.0" y2="186.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="199.0" x2="32.0" y2="199.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="212.0" x2="35.0" y2="212.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="225.0" x2="32.0" y2="225.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="238.0" x2="32.0" y2="238.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="251.0" x2="32.0" y2="251.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="264.0" x2="35.0" y2="264.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="277.0" x2="32.0" y2="277.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="290.0" x2="32.0" y2="290.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="303.0" x2="32.0" y2="303.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="316.0" x2="35.0" y2="316.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="329.0" x2="32.0" y2="329.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="342.0" x2="32.0" y2="342.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="355.0" x2="32.0" y2="355.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="368.0" x2="35.0" y2="368.0" stroke="#BFC0C0" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="381.0" x2="32.0" y2="381.0" stroke="#BFC0C0" stroke-width="1" opacity="0.45"/>
+<line x1="22.0" y1="408.0" x2="818.0" y2="408.0" stroke="#DEDFDF" stroke-width="1"/>
+<rect x="22.0" y="421.0" width="5.0" height="5.0" rx="1" fill="#949595" opacity="0.8"/>
+<text x="36.0" y="426.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" font-weight="700" letter-spacing="1.6">SOURCE</text>
+<text x="98.0" y="426.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595">README.md  ::  docs/kickoff/01-PRD.md</text>
+<text x="818.0" y="426.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#949595" font-weight="700" text-anchor="end" letter-spacing="1.6">LOCKSTEP</text>
+<rect x="52.0" y="116.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="70.0" cy="138" r="3.4" fill="#93304A"/>
+<text x="84.0" y="142.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">no novelty on the kernels</text>
+<text x="84.0" y="159.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">diagnosed by Thinking Machines, shipped by vLLM and</text>
+<text x="84.0" y="171.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">SGLang. reimplemented so the harness can mutate it</text>
+<rect x="438.0" y="116.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="456.0" cy="138" r="3.4" fill="#93304A"/>
+<text x="470.0" y="142.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">no cross-hardware guarantee</text>
+<text x="470.0" y="159.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">every bitwise claim is scoped to one environment tuple.</text>
+<text x="470.0" y="171.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">nothing is known to hold on another GPU or torch</text>
+<rect x="52.0" y="190.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="70.0" cy="212" r="3.4" fill="#93304A"/>
+<text x="84.0" y="216.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">no throughput superiority</text>
+<text x="84.0" y="233.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">a correctness-reference engine, no CUDA graphs, no</text>
+<text x="84.0" y="245.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">attempt to be fast</text>
+<rect x="438.0" y="190.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="456.0" cy="212" r="3.4" fill="#93304A"/>
+<text x="470.0" y="216.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">one model</text>
+<text x="470.0" y="233.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">Qwen3-0.6B fp16 only</text>
+<rect x="52.0" y="264.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="70.0" cy="286" r="3.4" fill="#93304A"/>
+<text x="84.0" y="290.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">no copy-on-write</text>
+<text x="84.0" y="307.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">prefix sharing is whole-block only, which holds only</text>
+<text x="84.0" y="319.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">because there is no fork API. add one and COW comes back</text>
+<rect x="438.0" y="264.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="456.0" cy="286" r="3.4" fill="#93304A"/>
+<text x="470.0" y="290.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">ten operators, not fifty</text>
+<text x="470.0" y="307.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">a thin denominator, and three earlier ones were deleted</text>
+<text x="470.0" y="319.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">with the unreachable code they targeted</text>
+<rect x="52.0" y="338.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="70.0" cy="360" r="3.4" fill="#93304A"/>
+<text x="84.0" y="364.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">coverage is against a model</text>
+<text x="84.0" y="381.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">the denominator comes from a declared transition</text>
+<text x="84.0" y="393.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">relation, checked both ways. it is still a model</text>
+<rect x="438.0" y="338.0" width="366.0" height="64.0" rx="7" fill="#FFFFFF" stroke="#D6D7D7" stroke-width="1"/>
+<circle cx="456.0" cy="360" r="3.4" fill="#93304A"/>
+<text x="470.0" y="364.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12" fill="#2C2C2C" font-weight="600">counters prove the path ran</text>
+<text x="470.0" y="381.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">not that the patch took effect, and not that the fault</text>
+<text x="470.0" y="393.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#949595">was injected. three claims, three checks</text>
+</svg>

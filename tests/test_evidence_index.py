@@ -92,10 +92,44 @@ def test_every_evidence_file_the_readme_names_exists(named):
     )
 
 
-def test_readme_evidence_table_covers_what_backs_the_claims():
-    text = README.read_text()
+EVIDENCE_FIGURE = REPO_ROOT / "docs" / "img" / "evidence-light.svg"
+
+BRACE = re.compile(r"([\w.-]+)\{([\w,]+)\}([\w.-]+)")
+
+
+def _expand(text: str) -> str:
+    """`certify-pairs-{a,b,mns8}.json` names three files, so expand it.
+
+    The figure uses the brace shorthand. Left unexpanded, a check for
+    `certify-pairs-mns8.json` fails against a figure that does name it.
+    """
+    for match in BRACE.finditer(text):
+        head, options, tail = match.groups()
+        text += "".join(f" {head}{option}{tail}" for option in options.split(","))
+    return text
+
+
+def test_the_evidence_mapping_names_what_backs_the_claims():
+    """A reader must be able to get from a published number to its artifact.
+
+    This used to read a markdown table. That table is now the evidence panel, so
+    the check follows it into the figure rather than being dropped: promoting a
+    new artifact without regenerating the panel still fails here.
+    """
+    haystack = _expand(README.read_text() + EVIDENCE_FIGURE.read_text())
     for name in index()["selected"].values():
-        assert f"evidence/{name}" in text, (
-            f"{name} backs a published figure but the README's evidence table "
-            "does not name it, so a reader cannot get from a number to its artifact"
+        assert name in haystack, (
+            f"{name} backs a published figure but neither the README nor "
+            "docs/img/evidence-light.svg names it, so a reader cannot get from "
+            "a number to the artifact behind it"
         )
+
+
+def test_both_themes_of_the_evidence_panel_say_the_same_thing():
+    """A figure a reader sees depends on their theme, so both must agree."""
+    dark = (REPO_ROOT / "docs" / "img" / "evidence-dark.svg").read_text()
+    light = EVIDENCE_FIGURE.read_text()
+    names = lambda s: set(re.findall(r"[\w-]+\.json", s))
+    assert names(dark) == names(light), (
+        f"the two themes name different artifacts: {names(dark) ^ names(light)}"
+    )

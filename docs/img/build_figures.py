@@ -151,6 +151,13 @@ SOURCE = {
     "mutation": "evidence/fuzz-0002.json",
     "thesis": "README.md  ::  tests/test_thesis_table.py",
     "certification": "evidence/certify-pairs-{a,b,mns8}.json  ::  vllm-project/vllm#51187",
+    "hero": "evidence/  ::  vllm-project/vllm#51187",
+    "architecture": "docs/kickoff/02-technical-architecture.md",
+    "observers": "harness/mr/  ::  harness/fuzz/golden.py",
+    "limits": "README.md  ::  docs/kickoff/01-PRD.md",
+    "prior-art": "docs/kickoff/02-technical-architecture.md s2",
+    "evidence": "evidence/index.json",
+    "gates": ".github/workflows/ci.yml  ::  Makefile",
 }
 
 # --------------------------------------------------------------- plumbing ---
@@ -316,6 +323,39 @@ def render(name, P, theme, height, body):
            f'<desc id="dsc">{esc(DESCS[name])}</desc>\n'
            + defs(P) + "\n" + "\n".join(body) + "\n</svg>\n")
     (OUT / f"{name}-{theme}.svg").write_text(svg, encoding="utf-8")
+
+
+def arrow(x1, y1, x2, y2, colour="grid_hi", sw=1.2, dash=None, P=None):
+    out = [line(x1, y1, x2, y2, colour, sw, dash=dash, P=P)]
+    if x2 >= x1:
+        out.append(f'<path d="M {x2:.1f} {y2:.1f} l -6 -3.4 l 0 6.8 z" fill="{P[colour]}"/>')
+    else:
+        out.append(f'<path d="M {x2:.1f} {y2:.1f} l 6 -3.4 l 0 6.8 z" fill="{P[colour]}"/>')
+    return out
+
+
+def wrap(text, n):
+    lines, cur = [], ""
+    for word in text.split():
+        if cur and len(cur) + 1 + len(word) > n:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = f"{cur} {word}".strip()
+    if cur:
+        lines.append(cur)
+    return lines
+
+
+def box(x, y, w, h, label, sub=None, colour=None, P=None, size=11.5):
+    out = [rect(x, y, w, h, "panel", colour or "edge", r=7, sw=1.2 if colour else 1, P=P)]
+    if colour:
+        out.append(rect(x, y, 3, h, colour, r=1.5, P=P))
+    ty = y + h / 2 + (0 if sub is None else -4)
+    out.append(mono(x + w / 2, ty + 4, label, size, "ink", 600, "middle", P=P))
+    if sub:
+        out.append(mono(x + w / 2, ty + 19, sub, 9, "faint", anchor="middle", P=P))
+    return out
 
 
 # ---------------------------------------------------------------- figures ---
@@ -660,6 +700,292 @@ def fig_certification(P):
     return b, y + 152 + 46
 
 
+
+def fig_hero(P):
+    h = 396
+    b = [rect(0, 0, W, h, "ground", "edge", r=16, sw=1, P=P),
+         rect(1, 1, W - 2, h - 2, raw_fill="url(#dots)", r=15, op=0.55, P=P)]
+    b.append(f'<text x="{MX+14}" y="96" font-family="{MONO}" font-size="52" '
+             f'font-weight="700" letter-spacing="-1.5" fill="url(#gstep)" '
+             f'filter="url(#soft)">LOCKSTEP</text>')
+    b.append(txt(MX + 18, 124, "a batch-invariant inference engine, and the harness that "
+                               "tries to prove it wrong", 13.5, "muted", P=P))
+    b.append(mono(RX + 14, 62, "sm_89  ::  torch 2.6.0  ::  Qwen3-0.6B fp16", 9.5, "faint",
+                  anchor="end", P=P))
+    b.append(mono(RX + 14, 80, "every claim scoped to this tuple", 9.5, "faint",
+                  anchor="end", P=P))
+
+    ty = 222
+    fork = MX + 470
+    base = (f"M {MX+18} {ty} L {MX+120} {ty} L {MX+150} {ty-28} L {MX+250} {ty-28} "
+            f"L {MX+280} {ty} L {fork} {ty}")
+    b.append(f'<path d="{base}" fill="none" stroke="{P["step"]}" stroke-width="6" '
+             f'stroke-linejoin="round" stroke-linecap="round" opacity="0.5"/>')
+    b.append(f'<path d="{base}" fill="none" stroke="{P["step_hi"]}" stroke-width="1.8" '
+             f'stroke-linejoin="round" stroke-linecap="round"/>')
+    b.append(f'<path d="M {fork} {ty} L {RX-16} {ty}" fill="none" stroke="{P["step"]}" '
+             f'stroke-width="2.4" stroke-linecap="round"/>')
+    b.append(f'<path d="M {fork} {ty} L {fork+34} {ty+32} L {RX-16} {ty+32}" fill="none" '
+             f'stroke="{P["drift"]}" stroke-width="2.4" stroke-linejoin="round" '
+             f'stroke-linecap="round" stroke-dasharray="7 5"/>')
+    b.append(f'<circle cx="{fork}" cy="{ty}" r="5.5" fill="{P["drift"]}"/>')
+    b.append(line(fork, ty - 46, fork, ty - 10, "drift", 1, dash="3 3", op=0.85, P=P))
+    b.append(mono(fork + 12, ty - 52, "44 co-resident, byte-identical, same order",
+                  10, "drift", 700, P=P))
+    b.append(mono(MX + 18, ty - 54, "TWO TRACES, EXACTLY OVERLAID", 9.5, "faint", 700,
+                  ls="2.2", P=P))
+    b.append(mono(MX + 18, ty + 30, "bitwise identical under any schedule, preemption "
+                                    "or eviction", 10, "step", P=P))
+    b.append(mono(RX - 16, ty + 54, "logprobs disagree  ->  vllm-project/vllm#51187", 10,
+                  "drift", 700, "end", P=P))
+
+    y = 300
+    b.append(line(MX, y - 22, RX + 14, y - 22, "grid", 1, P=P))
+    stats = [("65 / 65", "relation runs, bitwise", "step"),
+             ("10 / 10", "seeded faults killed", "step"),
+             ("19 / 25", "lifecycle 2-grams reached", "step"),
+             ("1", "finding filed upstream", "drift")]
+    cw = (RX + 14 - MX) / 4
+    for i, (big, lab, colour) in enumerate(stats):
+        x = MX + i * cw
+        if i:
+            b.append(line(x - 14, y - 8, x - 14, y + 42, "grid", 1, P=P))
+        b.append(f'<text x="{x:.1f}" y="{y+22}" font-family="{MONO}" font-size="26" '
+                 f'font-weight="700" fill="url(#g{colour})">{big}</text>')
+        b.append(mono(x, y + 42, lab, 10, "faint", P=P))
+    b.append(mono(MX, h - 22, "the engine is a fixture. the harness is the product.", 10,
+                  "muted", 700, P=P))
+    b.append(mono(RX + 14, h - 22, "u7k4rs6/LockStep", 10, "faint", anchor="end", P=P))
+    return b, h
+
+
+def fig_architecture(P):
+    b = []
+    y = TOP + 6
+    ins = [("workload W", "the requests"), ("schedule sigma", "the interleaving"),
+           ("seeds", "sampling, keyed")]
+    for i, (lab, sub) in enumerate(ins):
+        b += box(LX, y + i * 46, 150, 38, lab, sub, "step", P, size=10.5)
+    ex = LX + 180
+    b += arrow(LX + 154, y + 66, ex - 6, y + 66, "grid_hi", 1.2, P=P)
+    b += box(ex, y + 22, 150, 88, "lockstep engine", "paged KV, preemption", None, P)
+    rx0 = ex + 182
+    b += arrow(ex + 154, y + 46, rx0 - 6, y + 46, "grid_hi", 1.2, P=P)
+    b += arrow(ex + 154, y + 90, rx0 - 6, y + 90, "grid_hi", 1.2, P=P)
+    b += box(rx0, y + 28, 168, 38, "run under sigma", None, "step", P, size=10.5)
+    b += box(rx0, y + 72, 168, 38, "canonical, batch 1", None, "step", P, size=10.5)
+    ox = rx0 + 200
+    b += arrow(rx0 + 172, y + 46, ox - 6, y + 60, "grid_hi", 1.2, P=P)
+    b += arrow(rx0 + 172, y + 90, ox - 6, y + 76, "grid_hi", 1.2, P=P)
+    b += box(ox, y + 28, RX - ox, 82, "oracles", "bitwise, no tolerance", "drift", P)
+    b.append(mono(rx0 + 84, y + 128, "the same engine re-run, not a second implementation",
+                  9.5, "faint", anchor="middle", P=P))
+    y += 152
+    for x, w, kicker, chips, note, colour in (
+            (LX, (CW - 24) / 2, "INTERNAL, WHITE BOX",
+             ["ddmin", "witness.json", "report.html"],
+             "sees the whole trajectory hash, so a finding minimises to a 1-minimal case "
+             "and replays by hash", "step"),
+            (LX + (CW - 24) / 2 + 24, (CW - 24) / 2, "EXTERNAL, BLACK BOX",
+             ["certifier", "HTTP", "vLLM, SGLang"],
+             "sees logprobs and nothing else, which is why a clean result means no "
+             "divergence at that observable", "drift")):
+        b.append(rect(x, y, w, 118, "panel_alt", "edge", r=8, sw=1, P=P))
+        b.append(mono(x + 16, y + 24, kicker, 9.5, colour, 700, ls="2", P=P))
+        cx = x + 16
+        for j, c in enumerate(chips):
+            cs, cwid = chip(cx, y + 52, c, colour, P)
+            b += cs
+            cx += cwid + 8
+            if j < len(chips) - 1:
+                b.append(mono(cx - 5, y + 56, "->", 9.5, "faint", P=P))
+                cx += 12
+        for j, ln in enumerate(wrap(note, 54)[:2]):
+            b.append(mono(x + 16, y + 82 + j * 14, ln, 9.5, "faint", P=P))
+    return b, y + 118 + 46
+
+
+def fig_observers(P):
+    rows = [("I1 to I4", "the engine", "itself, under a perturbed schedule",
+             "any perturbation uniform across schedules", "step"),
+            ("F1", "the engine", "an fp64 CPU reference",
+             "anything inside the 0.5 tolerance", "step"),
+            ("golden bytes", "the engine", "a committed sha256 baseline",
+             "any fault present when the baseline was written", "step"),
+            ("PATH-EQ", "the observed path", "the path the scheduler serves",
+             "anything both implementations get wrong identically", "drift")]
+    b = []
+    y = TOP
+    b.append(mono(LX + 14, y, "OBSERVER", 9, "faint", 700, ls="1.8", P=P))
+    b.append(mono(LX + 150, y, "COMPARES", 9, "faint", 700, ls="1.8", P=P))
+    b.append(mono(LX + 290, y, "AGAINST", 9, "faint", 700, ls="1.8", P=P))
+    b.append(mono(LX + 480, y, "BLIND TO", 9, "faint", 700, ls="1.8", P=P))
+    y += 12
+    for name, cmp_, against, blind, colour in rows:
+        b.append(rect(LX, y, CW, 44, "panel", "edge", r=7, sw=1, P=P))
+        b.append(rect(LX, y + 10, 3, 24, colour, r=1.5, P=P))
+        b.append(mono(LX + 14, y + 27, name, 11.5, colour, 700, P=P))
+        b.append(txt(LX + 150, y + 27, cmp_, 11, "muted", P=P))
+        b.append(txt(LX + 290, y + 27, against, 11, "muted", P=P))
+        b.append(txt(LX + 480, y + 27, blind, 11, "ink", P=P))
+        y += 50
+    y += 8
+    b.append(rect(LX, y, CW, 104, "drift_wash", "drift", r=8, sw=1, P=P))
+    b.append(mono(LX + 18, y + 26, "THE ONE THEY SHARED", 9.5, "drift", 700, ls="2", P=P))
+    b.append(txt(LX + 18, y + 50, "three observers with distinct blind spots still share one "
+                                  "if all three read a file the engine does not serve from.",
+                 11.5, "ink", P=P))
+    b.append(txt(LX + 18, y + 70, "I1 to I4, F1 and golden bytes all called model.forward, "
+                                  "while every served request goes through forward_batch.",
+                 11, "muted", P=P))
+    b.append(txt(LX + 18, y + 86, "PATH-EQ closed it: 3 prompts, 730 positions, bitwise, "
+                                  "and all four committed digests unchanged by the move.",
+                 11, "muted", P=P))
+    return b, y + 104 + 46
+
+
+def fig_limits(P):
+    items = [("no novelty on the kernels", "diagnosed by Thinking Machines, shipped by "
+              "vLLM and SGLang. reimplemented so the harness can mutate it"),
+             ("no cross-hardware guarantee", "every bitwise claim is scoped to one "
+              "environment tuple. nothing is known to hold on another GPU or torch"),
+             ("no throughput superiority", "a correctness-reference engine, no CUDA graphs, "
+              "no attempt to be fast"),
+             ("one model", "Qwen3-0.6B fp16 only"),
+             ("no copy-on-write", "prefix sharing is whole-block only, which holds only "
+              "because there is no fork API. add one and COW comes back"),
+             ("ten operators, not fifty", "a thin denominator, and three earlier ones were "
+              "deleted with the unreachable code they targeted"),
+             ("coverage is against a model", "the denominator comes from a declared "
+              "transition relation, checked both ways. it is still a model"),
+             ("counters prove the path ran", "not that the patch took effect, and not that "
+              "the fault was injected. three claims, three checks")]
+    b = []
+    y = TOP
+    colw = (CW - 20) / 2
+    for i, (title, note) in enumerate(items):
+        x = LX + (i % 2) * (colw + 20)
+        yy = y + (i // 2) * 74
+        b.append(rect(x, yy, colw, 64, "panel", "edge", r=7, sw=1, P=P))
+        b.append(f'<circle cx="{x+18}" cy="{yy+22}" r="3.4" fill="{P["drift"]}"/>')
+        b.append(txt(x + 32, yy + 26, title, 12, "ink", SANS, 600, P=P))
+        for j, ln in enumerate(wrap(note, 56)[:2]):
+            b.append(mono(x + 32, yy + 43 + j * 12, ln, 9, "faint", P=P))
+    return b, y + 4 * 74 + 30
+
+
+def fig_prior_art(P):
+    rows = [("Thinking Machines", "the diagnosis, taken as given", "batch_invariant_ops"),
+            ("vLLM, SGLang", "shipped deterministic modes", "the subjects certified here"),
+            ("GRIEF", "greybox fuzzing of serving systems", "confirms by replay against a "
+             "live server"),
+            ("LLM-42", "argues invariance is over-constrained", "conceded, and the price "
+             "is measured"),
+            ("MarginGate", "sparse margin-triggered verification", "adjacent to F1's "
+             "near-tie threshold"),
+            ("swarm, ddmin, mutants", "Groce 2012, Zeller 2002, Just 2014", "the methods "
+             "this harness is built from")]
+    b = []
+    y = TOP
+    for name, what, rel in rows:
+        b.append(rect(LX, y, CW, 42, "panel", "edge", r=7, sw=1, P=P))
+        b.append(mono(LX + 16, y + 26, name, 11.5, "step", 700, P=P))
+        b.append(txt(LX + 190, y + 26, what, 11.5, "ink", P=P))
+        b.append(mono(LX + 440, y + 26, rel, 9.5, "faint", P=P))
+        y += 48
+    y += 10
+    b.append(rect(LX, y, CW, 88, "step_wash", "step", r=8, sw=1, P=P))
+    b.append(mono(LX + 18, y + 26, "WHAT IS ACTUALLY DIFFERENT", 9.5, "step", 700,
+                  ls="2", P=P))
+    b.append(txt(LX + 18, y + 50, "the schedule is supplied rather than observed, so "
+                                  "minimisation is exact rather than confirmed.", 11.5,
+                 "ink", P=P))
+    b.append(txt(LX + 18, y + 70, "ddmin proves a case 1-minimal, and the replay is a hash "
+                                  "comparison rather than a re-observation.", 11.5,
+                 "muted", P=P))
+    return b, y + 88 + 46
+
+
+def fig_evidence(P):
+    rows = [("verify-0002.json", "claim 1, 65 of 65 relation runs"),
+            ("fuzz-0002.json", "claim 2, 10 of 10 killed over 192 cases"),
+            ("throughput-0004.json", "claim 3, isolated and interleaved"),
+            ("fidelity-0001.json", "F1, 7 of 7 bounds"),
+            ("case-0003.json", "the eviction finding, minimised and 1-minimal"),
+            ("case-witness.json", "a replay witness, runs on a fresh clone"),
+            ("certify-pairs-{a,b,mns8}.json", "the three runs vllm#51187 rests on"),
+            ("certify-clean-revision.json", "the same finding at a clean revision"),
+            ("upstream-finding.json", "provenance for the filed issue")]
+    b = []
+    y = TOP
+    b.append(mono(LX + 14, y, "COMMITTED UNDER evidence/", 9, "faint", 700, ls="1.8", P=P))
+    b.append(mono(LX + 340, y, "BACKS", 9, "faint", 700, ls="1.8", P=P))
+    y += 12
+    for name, backs in rows:
+        b.append(rect(LX, y, CW, 32, "panel", "edge", r=6, sw=1, P=P))
+        b.append(f'<circle cx="{LX+16}" cy="{y+16}" r="3" fill="{P["step"]}"/>')
+        b.append(mono(LX + 30, y + 20, name, 10.5, "ink", 600, P=P))
+        b.append(line(LX + 300, y + 16, LX + 330, y + 16, "grid_hi", 1, P=P))
+        b.append(txt(LX + 340, y + 20, backs, 11, "muted", P=P))
+        y += 37
+    y += 8
+    b.append(rect(LX, y, CW, 74, "panel_alt", "edge", r=8, sw=1, P=P))
+    b.append(mono(LX + 18, y + 26, "REPLAY", 9.5, "step", 700, ls="2", P=P))
+    b.append(mono(LX + 90, y + 26, "uv run ./lockstep replay evidence/case-witness.json",
+                  11, "ink", 600, P=P))
+    b.append(txt(LX + 18, y + 50, "recomputes a committed trajectory hash in a fresh process "
+                                  "and compares. no GPU, no server, seconds after a clone.",
+                 11, "muted", P=P))
+    b.append(txt(LX + 18, y + 66, "results/ stays gitignored: bulk campaign output, "
+                                  "superseded every run, and no published number points at "
+                                  "one.", 11, "muted", P=P))
+    return b, y + 74 + 46
+
+
+def fig_gates(P):
+    auto = ["no atomics, no autotune, no torch reductions in engine/",
+            "the static gate is not vacuous: lifting the exception hits once",
+            "secret scan", "every source file parses",
+            "coverage denominators recomputed from the transition relation",
+            "artifacts carry an environment tuple and the repro rebuilds",
+            "tests that do not need CUDA", "the report builds from committed evidence"]
+    manual = [("make claim1", "bitwise invariance, MR1 to MR8 and PATH-EQ"),
+              ("make claim2", "fuzz campaign with the coverage floor"),
+              ("make claim3", "throughput regression"),
+              ("make certify", "certification against a local vLLM")]
+    b = []
+    y = TOP
+    colw = (CW - 24) / 2
+    b.append(rect(LX, y, colw, 218, "panel", "edge", r=8, sw=1, P=P))
+    b.append(mono(LX + 16, y + 26, "AUTOMATED, EVERY PUSH", 9.5, "step", 700, ls="2", P=P))
+    for i, item in enumerate(auto):
+        yy = y + 50 + i * 20
+        b.append(tick_mark(LX + 22, yy - 4, "step", P, 11))
+        b.append(mono(LX + 36, yy, item, 9, "muted", P=P))
+    x2 = LX + colw + 24
+    b.append(rect(x2, y, colw, 218, "panel", "edge", r=8, sw=1, P=P))
+    b.append(mono(x2 + 16, y + 26, "MANUAL, NEEDS A GPU", 9.5, "drift", 700, ls="2", P=P))
+    for i, (cmd, what) in enumerate(manual):
+        yy = y + 56 + i * 38
+        b.append(mono(x2 + 22, yy, cmd, 10.5, "ink", 600, P=P))
+        b.append(mono(x2 + 22, yy + 15, what, 9, "faint", P=P))
+    b.append(mono(x2 + 22, y + 196, "their artifacts are committed with the revision", 9,
+                  "faint", P=P))
+    b.append(mono(x2 + 22, y + 208, "that produced them, which is the substitute", 9,
+                  "faint", P=P))
+    y += 232
+    b.append(rect(LX, y, CW, 80, "drift_wash", "drift", r=8, sw=1, P=P))
+    b.append(mono(LX + 18, y + 26, "FOR MOST OF THIS PROJECT NONE OF THESE RAN", 9.5,
+                  "drift", 700, ls="1.6", P=P))
+    b.append(txt(LX + 18, y + 48, "five CI gates were declared in the architecture doc and "
+                                  "no .github/ directory existed. found by a third party",
+                 11, "muted", P=P))
+    b.append(txt(LX + 18, y + 66, "reading the directory tree, which is row 15 of the "
+                                  "thesis table.", 11, "muted", P=P))
+    return b, y + 80 + 46
+
+
+
 FIGS = [
     ("claims", fig_claims, "CLAIMS", "Five relations, and what measures each one",
      "every claim scoped to one environment tuple, bitwise unless a tolerance is stated",
@@ -679,6 +1005,25 @@ FIGS = [
     ("thesis", fig_thesis, "THE THESIS, ON ITS AUTHOR",
      "Seventeen times this repository declared more surface than it tested",
      "placed by finding index, laned by who found it", True, "drift"),
+    ("architecture", fig_architecture, "HOW IT FITS TOGETHER",
+     "Workload and schedule are separate inputs",
+     "which is what makes minimisation exact rather than confirmed", False, "step"),
+    ("observers", fig_observers, "TEST ORACLES",
+     "Four observers, and what each one cannot see",
+     "metamorphic relations, a reference, a committed baseline, and a path equivalence",
+     True, "drift"),
+    ("limits", fig_limits, "WHAT THIS DOES NOT CLAIM",
+     "The limits, stated before a reader finds them",
+     "each one is a place where the declared surface stops", True, "drift"),
+    ("prior-art", fig_prior_art, "PRIOR ART",
+     "Checked against its source rather than cited from memory",
+     "and what is actually different here", False, "step"),
+    ("evidence", fig_evidence, "EVIDENCE",
+     "Every published number, and the artifact behind it",
+     "committed on purpose, replayable on a fresh clone", False, "step"),
+    ("gates", fig_gates, "GATES",
+     "What runs on every push, and what runs by hand",
+     "hosted runners have no NVIDIA device, so the split is explicit", True, "drift"),
     ("certification", fig_certification, "CERTIFICATION",
      "Black-box differential testing of vLLM batch-invariant mode",
      "concurrent submission, co-residency read from the engine's own gauge, every pair "
@@ -686,6 +1031,13 @@ FIGS = [
 ]
 
 TITLES = {
+    "hero": "Lockstep",
+    "architecture": "How the pieces fit together",
+    "observers": "Four test oracles and their blind spots",
+    "limits": "What this project does not claim",
+    "prior-art": "Prior art, and what differs here",
+    "evidence": "Committed evidence artifacts and what each backs",
+    "gates": "Which gates run automatically and which run by hand",
     "claims": "Claims I1 to I4 and F1",
     "three-numbers": "The three headline numbers",
     "throughput": "Wall time across six configurations, and the kill criterion",
@@ -696,6 +1048,36 @@ TITLES = {
 }
 
 DESCS = {
+    "hero": "Lockstep: a batch-invariant inference engine and the harness that tries to "
+            "prove it wrong. Two traces of one workload run coincident and then fork at 44 "
+            "co-resident byte-identical requests, where logprobs disagree, which became "
+            "vllm-project/vllm issue 51187. 65 of 65 relation runs bitwise, 10 of 10 seeded "
+            "faults killed, 19 of 25 lifecycle 2-grams reached, one finding filed upstream.",
+    "architecture": "Workload, schedule and seeds feed the engine, which runs the workload "
+                    "under the given schedule and again under a canonical batch-1 schedule. "
+                    "Oracles compare the two bitwise. An internal white-box loop runs through "
+                    "ddmin, a witness artifact and the report; an external black-box loop "
+                    "reads logprobs over HTTP from vLLM or SGLang.",
+    "observers": "Four observers. I1 to I4 compare the engine against itself under a "
+                 "perturbed schedule, F1 against an fp64 reference, golden bytes against a "
+                 "committed baseline, and PATH-EQ compares the observed path against the "
+                 "path the scheduler serves. The first three shared a blind spot because all "
+                 "read model.forward while every served request goes through forward_batch.",
+    "limits": "Eight limits: no novelty on the kernels, no cross-hardware guarantee, no "
+              "throughput superiority, one model only, no copy-on-write, ten mutation "
+              "operators rather than fifty, coverage against a derived model, and execution "
+              "counters proving only that the path ran.",
+    "prior-art": "Thinking Machines, vLLM and SGLang, GRIEF, LLM-42, MarginGate, and the "
+                 "swarm testing, ddmin and mutation testing literature. What differs here is "
+                 "that the schedule is supplied rather than observed, so minimisation is "
+                 "exact rather than confirmed.",
+    "evidence": "Nine committed artifacts under evidence/ and what each one backs, from the "
+                "relation runs and the fuzz campaign to the three runs the upstream filing "
+                "rests on. A replay command recomputes a committed trajectory hash on a "
+                "fresh clone with no GPU.",
+    "gates": "Eight checks automated on every push, four manual gates that need a GPU, and "
+             "the note that for most of this project none of the declared CI gates ran "
+             "because no .github directory existed.",
     "claims": "Five claims with what verifies each. I1 batch invariance, I2 schedule "
               "invariance, I3 replay determinism and I4 RNG isolation all hold. F1 fidelity "
               "passes 7 of 7 bounds against an fp64 CPU reference.",
@@ -725,6 +1107,10 @@ DESCS = {
 
 
 def main():
+    for theme, P in (("dark", DARK), ("light", LIGHT)):
+        body, height = fig_hero(P)
+        render("hero", P, theme, int(round(height)), body)
+    print(f"{'hero':16s} 396px")
     for name, fn, kick, title, sub, forked, accent in FIGS:
         for theme, P in (("dark", DARK), ("light", LIGHT)):
             body, height = fn(P)

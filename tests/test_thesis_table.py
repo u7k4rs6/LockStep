@@ -1,15 +1,11 @@
-"""The thesis table's counts, derived from the table rather than remembered.
+"""The thesis table's row count and the counts stated in prose must agree.
 
-Three places in README.md state how many entries the table has. All three were
-written by hand. A table that catalogues off-by-one errors and undercounts
-itself would be the most embarrassing possible instance of its own subject, so
-the numbers are derived here and the prose is asserted against them.
+`12b` is a row label and not a count, so the number of rows and the highest row
+number are different quantities that can drift apart while both look right.
 
-The counting convention is the one already in the file, inferred from all three
-statements agreeing under it and no other: **rows whose label is a plain
-integer**. `12b` is a row and is deliberately not a count, because it refines
-row 12 rather than adding a failure. Change the convention and all three
-numbers move together, which is the point of deriving them in one place.
+The table used to sit under a `## The thesis` heading. It now lives inside the
+`<details>` beneath the thesis panel, so this locates it by its own header row
+rather than by a heading that a redesign can remove.
 """
 
 from __future__ import annotations
@@ -22,19 +18,18 @@ import pytest
 README = Path(__file__).resolve().parent.parent / "README.md"
 
 WORDS = {
-    1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
-    8: "eight", 9: "nine", 10: "ten", 11: "eleven", 12: "twelve",
-    13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
+    12: "twelve", 13: "thirteen", 14: "fourteen", 15: "fifteen", 16: "sixteen",
     17: "seventeen", 18: "eighteen", 19: "nineteen", 20: "twenty",
 }
 
 ROW = re.compile(r"^\| (\d+b?) \|", re.M)
+HEADER = "| # | Declared | Actually |"
 
 
 def thesis_section() -> str:
     text = README.read_text()
-    start = text.index("## The thesis, demonstrated on its author")
-    end = text.index("\n## ", start + 10)
+    start = text.index(HEADER)
+    end = text.index("</details>", start)
     return text[start:end]
 
 
@@ -44,13 +39,6 @@ def labels() -> list[str]:
 
 def numbered() -> list[int]:
     return [int(label) for label in labels() if label.isdigit()]
-
-
-def inside_details() -> list[int]:
-    section = thesis_section()
-    start = section.index("<details>")
-    end = section.index("</details>", start)
-    return [int(x) for x in ROW.findall(section[start:end]) if x.isdigit()]
 
 
 def test_every_label_is_unique_and_numbering_has_no_gap():
@@ -63,25 +51,32 @@ def test_every_label_is_unique_and_numbering_has_no_gap():
     )
 
 
-def test_the_three_stated_counts_match_the_table():
+def test_the_stated_counts_match_the_table():
     text = README.read_text()
-    total, in_details = len(numbered()), len(inside_details())
+    total = len(numbered())
+    word = WORDS[total]
 
-    total_word = WORDS[total]
-    assert text.count(f"{total_word} times this project failed its own test") == 1, (
-        f"the navigation table should say '{total_word} times this project "
-        f"failed its own test'; the table has {total} numbered rows"
+    assert f"{word} times in this repository" in text, (
+        f"the thesis paragraph should say '{word} times in this repository'; "
+        f"the table has {total} numbered rows"
     )
-    assert f"It happened\n{total_word} times in this repository." in text or (
-        f"{total_word} times in this repository." in text), (
-        f"the thesis paragraph should say '{total_word} times in this repository'"
+    assert f"<summary>All {word}," in text, (
+        f"the collapsed summary should open '<summary>All {word},'; the table "
+        f"has {total} numbered rows"
     )
 
-    details_word = WORDS[in_details].capitalize()
-    assert f"<summary>{details_word} more," in text, (
-        f"the collapsed summary should open '{details_word} more,'; the table "
-        f"has {in_details} numbered rows inside <details>"
-    )
+
+def test_no_other_count_word_is_claimed_anywhere():
+    """A stale 'sixteen' left behind elsewhere is exactly how row 16 happened."""
+    text = README.read_text()
+    correct = WORDS[len(numbered())]
+    for n, word in WORDS.items():
+        if word == correct:
+            continue
+        assert f"{word} times in this repository" not in text, (
+            f"the README also claims '{word} times in this repository' while the "
+            f"table has {len(numbered())} rows"
+        )
 
 
 def test_the_highest_row_number_is_not_assumed_to_be_the_count():

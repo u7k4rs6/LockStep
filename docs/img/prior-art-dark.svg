@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 548" width="840" height="548" role="img" aria-labelledby="ttl dsc">
+<title id="ttl">Prior art, and what differs here</title>
+<desc id="dsc">Thinking Machines, vLLM and SGLang, GRIEF, LLM-42, MarginGate, and the swarm testing, ddmin and mutation testing literature. What differs here is that the schedule is supplied rather than observed, so minimisation is exact rather than confirmed.</desc>
+<defs>
+<linearGradient id="gstep" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#B474B4"/><stop offset="1" stop-color="#D0A3D0"/>
+</linearGradient>
+<linearGradient id="gdrift" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#E87D8F"/><stop offset="1" stop-color="#F2ABB6"/>
+</linearGradient>
+<linearGradient id="gslate" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#8A8A8A"/><stop offset="1" stop-color="#A9AAAA"/>
+</linearGradient>
+<linearGradient id="grule" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#4F4F4F"/>
+  <stop offset="1" stop-color="#4F4F4F" stop-opacity="0"/>
+</linearGradient>
+<pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+  <circle cx="1" cy="1" r="0.8" fill="#4F4F4F" opacity="0.5"/>
+</pattern>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#7C7D7D" stroke-width="1.6" opacity="0.42"/>
+</pattern>
+<pattern id="hatchd" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#E87D8F" stroke-width="1.6" opacity="0.7"/>
+</pattern>
+<filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+  <feGaussianBlur stdDeviation="1.6" result="b"/>
+  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+</defs>
+<rect x="0.0" y="0.0" width="840.0" height="548.0" rx="16" fill="#2C2C2C" stroke="#454545" stroke-width="1"/>
+<rect x="1.0" y="1.0" width="838.0" height="546.0" rx="15" fill="url(#dots)" opacity="0.5"/>
+<rect x="22.0" y="26.0" width="7.0" height="7.0" rx="1.5" fill="#B474B4"/>
+<text x="39.0" y="33.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#B474B4" font-weight="700" letter-spacing="2.2">PRIOR ART</text>
+<rect x="119.8" y="29.2" width="598.2" height="1.0" fill="url(#grule)"/>
+<path d="M 738 30 L 752 30 L 760 22 L 772 22 L 780 30 L 808 30" fill="none" stroke="#B474B4" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 738 30 L 752 30 L 760 22 L 772 22 L 780 30 L 808 30" fill="none" stroke="#D0A3D0" stroke-width="2" stroke-dasharray="1 3.4" stroke-linecap="round"/>
+<text x="22.0" y="68.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="18" fill="#F3F4F4" font-weight="700" letter-spacing="-0.3">Checked against its source rather than cited from memory</text>
+<text x="22.0" y="90.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#A9AAAA">and what is actually different here</text>
+<line x1="28.0" y1="108.0" x2="28.0" y2="492.0" stroke="#4F4F4F" stroke-width="1" opacity="0.9"/>
+<line x1="28.0" y1="108.0" x2="35.0" y2="108.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="121.0" x2="32.0" y2="121.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="134.0" x2="32.0" y2="134.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="147.0" x2="32.0" y2="147.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="160.0" x2="35.0" y2="160.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="173.0" x2="32.0" y2="173.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="186.0" x2="32.0" y2="186.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="199.0" x2="32.0" y2="199.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="212.0" x2="35.0" y2="212.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="225.0" x2="32.0" y2="225.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="238.0" x2="32.0" y2="238.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="251.0" x2="32.0" y2="251.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="264.0" x2="35.0" y2="264.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="277.0" x2="32.0" y2="277.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="290.0" x2="32.0" y2="290.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="303.0" x2="32.0" y2="303.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="316.0" x2="35.0" y2="316.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="329.0" x2="32.0" y2="329.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="342.0" x2="32.0" y2="342.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="355.0" x2="32.0" y2="355.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="368.0" x2="35.0" y2="368.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="381.0" x2="32.0" y2="381.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="394.0" x2="32.0" y2="394.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="407.0" x2="32.0" y2="407.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="420.0" x2="35.0" y2="420.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="433.0" x2="32.0" y2="433.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="446.0" x2="32.0" y2="446.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="459.0" x2="32.0" y2="459.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="472.0" x2="35.0" y2="472.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="485.0" x2="32.0" y2="485.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="22.0" y1="514.0" x2="818.0" y2="514.0" stroke="#3D3D3D" stroke-width="1"/>
+<rect x="22.0" y="527.0" width="5.0" height="5.0" rx="1" fill="#7C7D7D" opacity="0.8"/>
+<text x="36.0" y="532.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D" font-weight="700" letter-spacing="1.6">SOURCE</text>
+<text x="98.0" y="532.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">docs/kickoff/02-technical-architecture.md s2</text>
+<text x="818.0" y="532.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D" font-weight="700" text-anchor="end" letter-spacing="1.6">LOCKSTEP</text>
+<rect x="52.0" y="116.0" width="752.0" height="42.0" rx="7" fill="#333333" stroke="#454545" stroke-width="1"/>
+<text x="68.0" y="142.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="11.5" fill="#B474B4" font-weight="700">Thinking Machines</text>
+<text x="242.0" y="142.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#F3F4F4">the diagnosis, taken as given</text>
+<text x="492.0" y="142.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">batch_invariant_ops</text>
+<rect x="52.0" y="164.0" width="752.0" height="42.0" rx="7" fill="#333333" stroke="#454545" stroke-width="1"/>
+<text x="68.0" y="190.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="11.5" fill="#B474B4" font-weight="700">vLLM, SGLang</text>
+<text x="242.0" y="190.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#F3F4F4">shipped deterministic modes</text>
+<text x="492.0" y="190.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">the subjects certified here</text>
+<rect x="52.0" y="212.0" width="752.0" height="42.0" rx="7" fill="#333333" stroke="#454545" stroke-width="1"/>
+<text x="68.0" y="238.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="11.5" fill="#B474B4" font-weight="700">GRIEF</text>
+<text x="242.0" y="238.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#F3F4F4">greybox fuzzing of serving systems</text>
+<text x="492.0" y="238.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">confirms by replay against a live server</text>
+<rect x="52.0" y="260.0" width="752.0" height="42.0" rx="7" fill="#333333" stroke="#454545" stroke-width="1"/>
+<text x="68.0" y="286.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="11.5" fill="#B474B4" font-weight="700">LLM-42</text>
+<text x="242.0" y="286.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#F3F4F4">argues invariance is over-constrained</text>
+<text x="492.0" y="286.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">conceded, and the price is measured</text>
+<rect x="52.0" y="308.0" width="752.0" height="42.0" rx="7" fill="#333333" stroke="#454545" stroke-width="1"/>
+<text x="68.0" y="334.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="11.5" fill="#B474B4" font-weight="700">MarginGate</text>
+<text x="242.0" y="334.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#F3F4F4">sparse margin-triggered verification</text>
+<text x="492.0" y="334.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">adjacent to F1's near-tie threshold</text>
+<rect x="52.0" y="356.0" width="752.0" height="42.0" rx="7" fill="#333333" stroke="#454545" stroke-width="1"/>
+<text x="68.0" y="382.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="11.5" fill="#B474B4" font-weight="700">swarm, ddmin, mutants</text>
+<text x="242.0" y="382.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#F3F4F4">Groce 2012, Zeller 2002, Just 2014</text>
+<text x="492.0" y="382.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">the methods this harness is built from</text>
+<rect x="52.0" y="414.0" width="752.0" height="88.0" rx="8" fill="#382C3A" stroke="#B474B4" stroke-width="1"/>
+<text x="70.0" y="440.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#B474B4" font-weight="700" letter-spacing="2">WHAT IS ACTUALLY DIFFERENT</text>
+<text x="70.0" y="464.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#F3F4F4">the schedule is supplied rather than observed, so minimisation is exact rather than confirmed.</text>
+<text x="70.0" y="484.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11.5" fill="#A9AAAA">ddmin proves a case 1-minimal, and the replay is a hash comparison rather than a re-observation.</text>
+</svg>

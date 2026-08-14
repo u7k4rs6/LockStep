@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 396" width="840" height="396" role="img" aria-labelledby="ttl dsc">
+<title id="ttl">Lockstep</title>
+<desc id="dsc">Lockstep: a batch-invariant inference engine and the harness that tries to prove it wrong. Two traces of one workload run coincident and then fork at 44 co-resident byte-identical requests, where logprobs disagree, which became vllm-project/vllm issue 51187. 65 of 65 relation runs bitwise, 10 of 10 seeded faults killed, 19 of 25 lifecycle 2-grams reached, one finding filed upstream.</desc>
+<defs>
+<linearGradient id="gstep" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#B474B4"/><stop offset="1" stop-color="#D0A3D0"/>
+</linearGradient>
+<linearGradient id="gdrift" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#E87D8F"/><stop offset="1" stop-color="#F2ABB6"/>
+</linearGradient>
+<linearGradient id="gslate" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#8A8A8A"/><stop offset="1" stop-color="#A9AAAA"/>
+</linearGradient>
+<linearGradient id="grule" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#4F4F4F"/>
+  <stop offset="1" stop-color="#4F4F4F" stop-opacity="0"/>
+</linearGradient>
+<pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+  <circle cx="1" cy="1" r="0.8" fill="#4F4F4F" opacity="0.5"/>
+</pattern>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#7C7D7D" stroke-width="1.6" opacity="0.42"/>
+</pattern>
+<pattern id="hatchd" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#E87D8F" stroke-width="1.6" opacity="0.7"/>
+</pattern>
+<filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+  <feGaussianBlur stdDeviation="1.6" result="b"/>
+  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+</defs>
+<rect x="0.0" y="0.0" width="840.0" height="396.0" rx="16" fill="#2C2C2C" stroke="#454545" stroke-width="1"/>
+<rect x="1.0" y="1.0" width="838.0" height="394.0" rx="15" fill="url(#dots)" opacity="0.55"/>
+<text x="36" y="96" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="52" font-weight="700" letter-spacing="-1.5" fill="url(#gstep)" filter="url(#soft)">LOCKSTEP</text>
+<text x="40.0" y="124.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="13.5" fill="#A9AAAA">a batch-invariant inference engine, and the harness that tries to prove it wrong</text>
+<text x="818.0" y="62.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D" text-anchor="end">sm_89  ::  torch 2.6.0  ::  Qwen3-0.6B fp16</text>
+<text x="818.0" y="80.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D" text-anchor="end">every claim scoped to this tuple</text>
+<path d="M 40 222 L 142 222 L 172 194 L 272 194 L 302 222 L 492 222" fill="none" stroke="#B474B4" stroke-width="6" stroke-linejoin="round" stroke-linecap="round" opacity="0.5"/>
+<path d="M 40 222 L 142 222 L 172 194 L 272 194 L 302 222 L 492 222" fill="none" stroke="#D0A3D0" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 492 222 L 788 222" fill="none" stroke="#B474B4" stroke-width="2.4" stroke-linecap="round"/>
+<path d="M 492 222 L 526 254 L 788 254" fill="none" stroke="#E87D8F" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="7 5"/>
+<circle cx="492" cy="222" r="5.5" fill="#E87D8F"/>
+<line x1="492.0" y1="176.0" x2="492.0" y2="212.0" stroke="#E87D8F" stroke-width="1" stroke-dasharray="3 3" opacity="0.85"/>
+<text x="504.0" y="170.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#E87D8F" font-weight="700">44 co-resident, byte-identical, same order</text>
+<text x="40.0" y="168.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D" font-weight="700" letter-spacing="2.2">TWO TRACES, EXACTLY OVERLAID</text>
+<text x="40.0" y="252.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#B474B4">bitwise identical under any schedule, preemption or eviction</text>
+<text x="788.0" y="276.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#E87D8F" font-weight="700" text-anchor="end">logprobs disagree  -&gt;  vllm-project/vllm#51187</text>
+<line x1="22.0" y1="278.0" x2="818.0" y2="278.0" stroke="#3D3D3D" stroke-width="1"/>
+<text x="22.0" y="322" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="26" font-weight="700" fill="url(#gstep)">65 / 65</text>
+<text x="22.0" y="342.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#7C7D7D">relation runs, bitwise</text>
+<line x1="207.0" y1="292.0" x2="207.0" y2="342.0" stroke="#3D3D3D" stroke-width="1"/>
+<text x="221.0" y="322" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="26" font-weight="700" fill="url(#gstep)">10 / 10</text>
+<text x="221.0" y="342.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#7C7D7D">seeded faults killed</text>
+<line x1="406.0" y1="292.0" x2="406.0" y2="342.0" stroke="#3D3D3D" stroke-width="1"/>
+<text x="420.0" y="322" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="26" font-weight="700" fill="url(#gstep)">19 / 25</text>
+<text x="420.0" y="342.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#7C7D7D">lifecycle 2-grams reached</text>
+<line x1="605.0" y1="292.0" x2="605.0" y2="342.0" stroke="#3D3D3D" stroke-width="1"/>
+<text x="619.0" y="322" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="26" font-weight="700" fill="url(#gdrift)">1</text>
+<text x="619.0" y="342.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#7C7D7D">finding filed upstream</text>
+<text x="22.0" y="374.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#A9AAAA" font-weight="700">the engine is a fixture. the harness is the product.</text>
+<text x="818.0" y="374.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#7C7D7D" text-anchor="end">u7k4rs6/LockStep</text>
+</svg>

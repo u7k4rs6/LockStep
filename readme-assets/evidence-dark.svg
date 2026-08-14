@@ -1,0 +1,132 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 589" width="840" height="589" role="img" aria-labelledby="ttl dsc">
+<title id="ttl">Committed evidence artifacts and what each backs</title>
+<desc id="dsc">Nine committed artifacts under evidence/ and what each one backs, from the relation runs and the fuzz campaign to the three runs the upstream filing rests on. A replay command recomputes a committed trajectory hash on a fresh clone with no GPU.</desc>
+<defs>
+<linearGradient id="gstep" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#B474B4"/><stop offset="1" stop-color="#D0A3D0"/>
+</linearGradient>
+<linearGradient id="gdrift" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#E87D8F"/><stop offset="1" stop-color="#F2ABB6"/>
+</linearGradient>
+<linearGradient id="gslate" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#8A8A8A"/><stop offset="1" stop-color="#A9AAAA"/>
+</linearGradient>
+<linearGradient id="grule" x1="0" y1="0" x2="1" y2="0">
+  <stop offset="0" stop-color="#4F4F4F"/>
+  <stop offset="1" stop-color="#4F4F4F" stop-opacity="0"/>
+</linearGradient>
+<pattern id="dots" width="14" height="14" patternUnits="userSpaceOnUse">
+  <circle cx="1" cy="1" r="0.8" fill="#4F4F4F" opacity="0.5"/>
+</pattern>
+<pattern id="hatch" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#7C7D7D" stroke-width="1.6" opacity="0.42"/>
+</pattern>
+<pattern id="hatchd" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+  <line x1="0" y1="0" x2="0" y2="7" stroke="#E87D8F" stroke-width="1.6" opacity="0.7"/>
+</pattern>
+<filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+  <feGaussianBlur stdDeviation="1.6" result="b"/>
+  <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+</filter>
+</defs>
+<rect x="0.0" y="0.0" width="840.0" height="589.0" rx="16" fill="#2C2C2C" stroke="#454545" stroke-width="1"/>
+<rect x="1.0" y="1.0" width="838.0" height="587.0" rx="15" fill="url(#dots)" opacity="0.5"/>
+<rect x="22.0" y="26.0" width="7.0" height="7.0" rx="1.5" fill="#B474B4"/>
+<text x="39.0" y="33.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10" fill="#B474B4" font-weight="700" letter-spacing="2.2">EVIDENCE</text>
+<rect x="111.6" y="29.2" width="606.4" height="1.0" fill="url(#grule)"/>
+<path d="M 738 30 L 752 30 L 760 22 L 772 22 L 780 30 L 808 30" fill="none" stroke="#B474B4" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+<path d="M 738 30 L 752 30 L 760 22 L 772 22 L 780 30 L 808 30" fill="none" stroke="#D0A3D0" stroke-width="2" stroke-dasharray="1 3.4" stroke-linecap="round"/>
+<text x="22.0" y="68.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="18" fill="#F3F4F4" font-weight="700" letter-spacing="-0.3">Every published number, and the artifact behind it</text>
+<text x="22.0" y="90.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="12.5" fill="#A9AAAA">committed on purpose, replayable on a fresh clone</text>
+<line x1="28.0" y1="108.0" x2="28.0" y2="533.0" stroke="#4F4F4F" stroke-width="1" opacity="0.9"/>
+<line x1="28.0" y1="108.0" x2="35.0" y2="108.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="121.0" x2="32.0" y2="121.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="134.0" x2="32.0" y2="134.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="147.0" x2="32.0" y2="147.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="160.0" x2="35.0" y2="160.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="173.0" x2="32.0" y2="173.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="186.0" x2="32.0" y2="186.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="199.0" x2="32.0" y2="199.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="212.0" x2="35.0" y2="212.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="225.0" x2="32.0" y2="225.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="238.0" x2="32.0" y2="238.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="251.0" x2="32.0" y2="251.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="264.0" x2="35.0" y2="264.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="277.0" x2="32.0" y2="277.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="290.0" x2="32.0" y2="290.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="303.0" x2="32.0" y2="303.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="316.0" x2="35.0" y2="316.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="329.0" x2="32.0" y2="329.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="342.0" x2="32.0" y2="342.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="355.0" x2="32.0" y2="355.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="368.0" x2="35.0" y2="368.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="381.0" x2="32.0" y2="381.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="394.0" x2="32.0" y2="394.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="407.0" x2="32.0" y2="407.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="420.0" x2="35.0" y2="420.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="433.0" x2="32.0" y2="433.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="446.0" x2="32.0" y2="446.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="459.0" x2="32.0" y2="459.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="472.0" x2="35.0" y2="472.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="28.0" y1="485.0" x2="32.0" y2="485.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="498.0" x2="32.0" y2="498.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="511.0" x2="32.0" y2="511.0" stroke="#4F4F4F" stroke-width="1" opacity="0.45"/>
+<line x1="28.0" y1="524.0" x2="35.0" y2="524.0" stroke="#4F4F4F" stroke-width="1" opacity="0.95"/>
+<line x1="22.0" y1="555.0" x2="818.0" y2="555.0" stroke="#3D3D3D" stroke-width="1"/>
+<rect x="22.0" y="568.0" width="5.0" height="5.0" rx="1" fill="#7C7D7D" opacity="0.8"/>
+<text x="36.0" y="573.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D" font-weight="700" letter-spacing="1.6">SOURCE</text>
+<text x="98.0" y="573.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D">evidence/index.json</text>
+<text x="818.0" y="573.5" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#7C7D7D" font-weight="700" text-anchor="end" letter-spacing="1.6">LOCKSTEP</text>
+<text x="66.0" y="116.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#7C7D7D" font-weight="700" letter-spacing="1.8">COMMITTED UNDER evidence/</text>
+<text x="392.0" y="116.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9" fill="#7C7D7D" font-weight="700" letter-spacing="1.8">BACKS</text>
+<rect x="52.0" y="128.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="144" r="3" fill="#B474B4"/>
+<text x="82.0" y="148.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">verify-0002.json</text>
+<line x1="352.0" y1="144.0" x2="382.0" y2="144.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="148.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">claim 1, 65 of 65 relation runs</text>
+<rect x="52.0" y="165.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="181" r="3" fill="#B474B4"/>
+<text x="82.0" y="185.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">fuzz-0002.json</text>
+<line x1="352.0" y1="181.0" x2="382.0" y2="181.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="185.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">claim 2, 10 of 10 killed over 192 cases</text>
+<rect x="52.0" y="202.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="218" r="3" fill="#B474B4"/>
+<text x="82.0" y="222.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">throughput-0004.json</text>
+<line x1="352.0" y1="218.0" x2="382.0" y2="218.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="222.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">claim 3, isolated and interleaved</text>
+<rect x="52.0" y="239.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="255" r="3" fill="#B474B4"/>
+<text x="82.0" y="259.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">fidelity-0001.json</text>
+<line x1="352.0" y1="255.0" x2="382.0" y2="255.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="259.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">F1, 7 of 7 bounds</text>
+<rect x="52.0" y="276.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="292" r="3" fill="#B474B4"/>
+<text x="82.0" y="296.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">case-0003.json</text>
+<line x1="352.0" y1="292.0" x2="382.0" y2="292.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="296.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">the eviction finding, minimised and 1-minimal</text>
+<rect x="52.0" y="313.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="329" r="3" fill="#B474B4"/>
+<text x="82.0" y="333.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">case-witness.json</text>
+<line x1="352.0" y1="329.0" x2="382.0" y2="329.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="333.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">a replay witness, runs on a fresh clone</text>
+<rect x="52.0" y="350.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="366" r="3" fill="#B474B4"/>
+<text x="82.0" y="370.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">certify-pairs-{a,b,mns8}.json</text>
+<line x1="352.0" y1="366.0" x2="382.0" y2="366.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="370.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">the three runs vllm#51187 rests on</text>
+<rect x="52.0" y="387.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="403" r="3" fill="#B474B4"/>
+<text x="82.0" y="407.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">certify-clean-revision.json</text>
+<line x1="352.0" y1="403.0" x2="382.0" y2="403.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="407.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">the same finding at a clean revision</text>
+<rect x="52.0" y="424.0" width="752.0" height="32.0" rx="6" fill="#333333" stroke="#454545" stroke-width="1"/>
+<circle cx="68" cy="440" r="3" fill="#B474B4"/>
+<text x="82.0" y="444.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="10.5" fill="#F3F4F4" font-weight="600">upstream-finding.json</text>
+<line x1="352.0" y1="440.0" x2="382.0" y2="440.0" stroke="#4F4F4F" stroke-width="1"/>
+<text x="392.0" y="444.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">provenance for the filed issue</text>
+<rect x="52.0" y="469.0" width="752.0" height="74.0" rx="8" fill="#292929" stroke="#454545" stroke-width="1"/>
+<text x="70.0" y="495.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="9.5" fill="#B474B4" font-weight="700" letter-spacing="2">REPLAY</text>
+<text x="142.0" y="495.0" font-family="ui-monospace, SFMono-Regular, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace" font-size="11" fill="#F3F4F4" font-weight="600">uv run ./lockstep replay evidence/case-witness.json</text>
+<text x="70.0" y="519.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">recomputes a committed trajectory hash in a fresh process and compares. no GPU, no server, seconds after a clone.</text>
+<text x="70.0" y="535.0" font-family="ui-sans-serif, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="11" fill="#A9AAAA">results/ stays gitignored: bulk campaign output, superseded every run, and no published number points at one.</text>
+</svg>
