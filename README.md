@@ -1,3 +1,12 @@
+**If you run evals or RL post-training and your numbers move between runs,
+Lockstep tells you whether the inference engine is the reason.**
+
+It has already caught that in a shipped engine: vLLM 0.26.0 in batch-invariant mode returned
+different logprobs for byte-identical requests once 44 of them ran together
+([vllm-project/vllm#51187](https://github.com/vllm-project/vllm/issues/51187)).
+Another engineer reproduced it with this harness and traced it to an RMSNorm
+kernel bug that was already fixed on vLLM main but still in the release.
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/img/hero-dark.svg">
   <img alt="Lockstep: a batch-invariant inference engine and the harness that tries to prove it wrong. Two traces of one workload run coincident and then fork at 44 co-resident byte-identical requests, where logprobs disagree, which became vllm-project/vllm issue 51187. 65 of 65 relation runs bitwise, 10 of 10 seeded faults killed, 19 of 25 lifecycle 2-grams reached, one finding filed upstream." src="docs/img/hero-light.svg" width="840">
@@ -5,10 +14,8 @@
 
 [![ci](https://github.com/u7k4rs6/LockStep/actions/workflows/ci.yml/badge.svg)](https://github.com/u7k4rs6/LockStep/actions/workflows/ci.yml)
 
-If you run evals or RL post-training and your numbers move between runs, this
-tells you whether the inference engine is the reason. The certifier works
-against any OpenAI-compatible endpoint, so you can point it at your own
-deployment without adopting anything else here.
+The certifier works against any OpenAI-compatible endpoint, so you can point it
+at your own deployment without adopting anything else here.
 
 Batch-invariant kernels are already shipped by Thinking Machines, vLLM and
 SGLang. Nothing here claims novelty on kernels. What was unbuilt is the
